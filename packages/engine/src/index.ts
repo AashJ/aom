@@ -10,3 +10,5 @@ export class WebGPUUnsupportedError extends Error {
 export function isWebGPUSupported(): boolean {
   return typeof navigator !== "undefined" && navigator.gpu !== undefined;
 }
+
+export { initGPU, type DeviceLostCallback, type GpuContext } from "./gpu/device";
