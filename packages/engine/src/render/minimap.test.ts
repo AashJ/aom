@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MAP_TILES, VERTS_PER_ROW, generateHeightmap } from "../terrain/heightmap";
+import { MAP_TILES, VERTS_PER_ROW, generateHeightmap } from "@aom/sim";
 import { MINIMAP_TEX_SIZE, buildMinimapTexels, worldToMinimapUnit } from "./minimap";
 
 function flatHeights(height: number): Float32Array {

@@ -1,8 +1,8 @@
 // Heightfield raycast for absolute ground picking (commands, future building placement).
 // The y=0 plane intersect is only valid for relative anchoring; this is the
 // terrain-true version. Render-side module - determinism rules don't apply.
+import { heightAt, MAP_TILES } from "@aom/sim";
 import type { Vec3 } from "../math/vec3";
-import { heightAt, MAP_TILES } from "./heightmap";
 
 // Conservative bound only used to clip the search range.
 const MAX_TERRAIN_HEIGHT = 24;

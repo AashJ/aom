@@ -1,9 +1,8 @@
-import { MAX_UNITS, type RenderSnapshot } from "@aom/sim";
+import { MAP_TILES, MAX_UNITS, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
 import { screenToGround, type Camera } from "../camera/camera";
 import { DEPTH_FORMAT } from "../gpu/device";
 import * as vec3 from "../math/vec3";
 import minimapWgsl from "../shaders/minimap.wgsl?raw";
-import { MAP_TILES, VERTS_PER_ROW } from "../terrain/heightmap";
 
 export const MINIMAP_TEX_SIZE = 256;
 

@@ -4,11 +4,11 @@ import {
   createWorld,
   setSelected,
   spawnUnit,
+  VERTS_PER_ROW,
   type RenderSnapshot,
   writeSnapshot,
 } from "@aom/sim";
 import { createCamera, updateMatrices } from "../camera/camera";
-import { VERTS_PER_ROW } from "../terrain/heightmap";
 import { marqueeSelect, pickUnit } from "./pick";
 
 function snapshot(xs: number[], zs: number[]): RenderSnapshot {

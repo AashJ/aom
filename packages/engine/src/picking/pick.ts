@@ -3,6 +3,7 @@ import {
   clearSelection,
   COMMAND_MOVE,
   enqueueCommand,
+  heightAt,
   setSelected,
   SIM_MAP_SIZE,
   type RenderSnapshot,
@@ -10,7 +11,6 @@ import {
 } from "@aom/sim";
 import { screenRay, screenToGround, type Camera } from "../camera/camera";
 import * as vec3 from "../math/vec3";
-import { heightAt } from "../terrain/heightmap";
 import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
 

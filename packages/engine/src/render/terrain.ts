@@ -1,7 +1,8 @@
+import { VERTS_PER_ROW } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import { aabbIntersectsFrustum, type Frustum } from "../math/frustum";
 import terrainWgsl from "../shaders/terrain.wgsl?raw";
-import { CHUNK_TILES, CHUNKS_PER_ROW, VERTS_PER_ROW } from "../terrain/heightmap";
+import { CHUNK_TILES, CHUNKS_PER_ROW } from "../terrain/heightmap";
 
 export interface TerrainChunkBounds {
   minX: number;

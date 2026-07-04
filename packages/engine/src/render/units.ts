@@ -1,7 +1,6 @@
-import type { RenderSnapshot } from "@aom/sim";
+import { heightAt, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
-import { heightAt, VERTS_PER_ROW } from "../terrain/heightmap";
 
 export interface UnitsRenderer {
   draw(

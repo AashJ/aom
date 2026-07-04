@@ -6,3 +6,11 @@ export { clearSelection, setSelected } from "./ecs/world";
 export * from "./hash";
 export * from "./snapshot";
 export * from "./math/prng";
+export {
+  MAP_TILES,
+  VERTS_PER_ROW,
+  generateHeightmap,
+  heightAt,
+  WALKABLE_MAX_SLOPE,
+  computeWalkable,
+} from "./terrain";

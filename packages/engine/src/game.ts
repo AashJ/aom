@@ -18,7 +18,6 @@ import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
-import { generateHeightmap } from "./terrain/heightmap";
 
 export interface GameHandle {
   start(): void;
@@ -65,9 +64,10 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
-  // CPU terrain data survives device loss; only GPU buffers/pipelines are recreated.
-  const heights = generateHeightmap(1337);
   const world = createWorld(1337);
+  // Init handoff: createWorld(1337) derives the same terrain seed the engine used before,
+  // so rendering receives identical heights without a per-tick channel.
+  const heights = world.heights;
   spawnUnits(world, 1_000);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);

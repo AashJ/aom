@@ -18,6 +18,7 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
+  // heights/walkable are static after creation and seed-derived; rehashing constants buys nothing.
   const arrays = [
     world.posX,
     world.posZ,

@@ -3,10 +3,11 @@
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
 import { COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
+import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 
 export const TICK_HZ = 20;
 export const TICK_S = 0.05;
-export const SIM_MAP_SIZE = 256;
+export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 export const UNIT_SPEED = 3;
 
@@ -14,6 +15,8 @@ export interface World {
   tick: number;
   count: number;
   rng: Pcg32;
+  heights: Float32Array;
+  walkable: Uint8Array;
   posX: Float64Array;
   posZ: Float64Array;
   velX: Float64Array;
@@ -27,10 +30,17 @@ export interface World {
 }
 
 export function createWorld(seed: number): World {
+  const heights = generateHeightmap(seed);
+  const walkable = computeWalkable(heights);
+
   return {
     tick: 0,
     count: 0,
     rng: createPcg32(seed),
+    // One seed now derives the whole world: terrain and units can never disagree
+    // about which map they're on.
+    heights,
+    walkable,
     // SoA typed arrays: cache-friendly linear iteration, zero per-tick allocation, and
     // trivially hashable for future desync detection.
     posX: new Float64Array(MAX_UNITS),
