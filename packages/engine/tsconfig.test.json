@@ -2,7 +2,7 @@
   "extends": "@aom/config/tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["@webgpu/types"]
+    "types": ["@webgpu/types", "bun"]
   },
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src"]
 }
