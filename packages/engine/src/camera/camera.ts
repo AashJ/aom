@@ -2,6 +2,7 @@ import * as mat4 from "../math/mat4";
 import type { Mat4 } from "../math/mat4";
 import * as vec3 from "../math/vec3";
 import type { Vec3 } from "../math/vec3";
+import { createFrustum, frustumFromViewProj, type Frustum } from "../math/frustum";
 
 const PITCH_RAD = (-55 * Math.PI) / 180;
 const YAW_RAD = Math.PI / 4;
@@ -31,6 +32,7 @@ export interface Camera {
   proj: Mat4;
   viewProj: Mat4;
   invViewProj: Mat4;
+  frustum: Frustum;
 }
 
 export function createCamera(): Camera {
@@ -50,6 +52,7 @@ export function createCamera(): Camera {
     proj: mat4.create(),
     viewProj: mat4.create(),
     invViewProj: mat4.create(),
+    frustum: createFrustum(),
   };
 }
 
@@ -59,6 +62,8 @@ export function updateMatrices(camera: Camera, aspect: number): void {
   mat4.perspective(camera.proj, FOV_Y_RAD, aspect, NEAR, FAR);
   mat4.multiply(camera.viewProj, camera.proj, camera.view);
   mat4.invert(camera.invViewProj, camera.viewProj);
+  // Derived with the matrices so it can never be stale relative to them.
+  frustumFromViewProj(camera.frustum, camera.viewProj);
 }
 
 export function pan(camera: Camera, rightUnits: number, forwardUnits: number): void {

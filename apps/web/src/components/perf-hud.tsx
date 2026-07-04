@@ -22,6 +22,7 @@ export function PerfHud({ game }: { game: GameHandle | null }) {
         "avg  " + stats.frameMsAvg.toFixed(2) + " ms",
         "p99  " + stats.frameMsP99.toFixed(2) + " ms",
         "heap " + (stats.heapMB > 0 ? stats.heapMB.toFixed(1) + " MB" : "n/a"),
+        "chnk " + stats.chunksVisible + "/" + stats.chunksTotal,
       ].join("\n");
     });
   }, [open, game]);

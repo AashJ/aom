@@ -101,7 +101,9 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
     const encoder = gpu.device.createCommandEncoder();
     const pass = encoder.beginRenderPass(passDescriptor);
-    terrain.draw(pass, gpu.device.queue, camera.viewProj);
+    const visibleChunks = terrain.draw(pass, gpu.device.queue, camera.viewProj, camera.frustum);
+    statsCollector.frameGauges.chunksVisible = visibleChunks;
+    statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
     pass.end();
     gpu.device.queue.submit([encoder.finish()]);
   }

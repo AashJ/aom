@@ -1,4 +1,5 @@
 import { DEPTH_FORMAT } from "../gpu/device";
+import { aabbIntersectsFrustum, type Frustum } from "../math/frustum";
 import terrainWgsl from "../shaders/terrain.wgsl?raw";
 import { CHUNK_TILES, CHUNKS_PER_ROW, VERTS_PER_ROW } from "../terrain/heightmap";
 
@@ -12,7 +13,12 @@ export interface TerrainChunkBounds {
 }
 
 export interface TerrainRenderer {
-  draw(pass: GPURenderPassEncoder, queue: GPUQueue, viewProj: Float32Array): void;
+  draw(
+    pass: GPURenderPassEncoder,
+    queue: GPUQueue,
+    viewProj: Float32Array,
+    frustum: Frustum,
+  ): number;
   readonly chunkBounds: readonly TerrainChunkBounds[];
 }
 
@@ -140,16 +146,27 @@ export function createTerrainRenderer(
 
   return {
     chunkBounds,
-    draw(pass, queue, viewProj): void {
+    draw(pass, queue, viewProj, frustum): number {
       queue.writeBuffer(uniformBuffer, 0, viewProj);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
       pass.setIndexBuffer(indexBuffer, "uint16");
 
+      let drawn = 0;
+
       for (let i = 0; i < chunks.length; i += 1) {
+        const b = chunkBounds[i]!;
+
+        if (!aabbIntersectsFrustum(frustum, b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ)) {
+          continue;
+        }
+
         pass.setVertexBuffer(0, chunks[i]!.vertexBuffer);
         pass.drawIndexed(INDEX_COUNT);
+        drawn += 1;
       }
+
+      return drawn;
     },
   };
 }

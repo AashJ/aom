@@ -3,6 +3,8 @@ export interface GameStats {
   frameMsAvg: number;
   frameMsP99: number;
   heapMB: number;
+  chunksVisible: number;
+  chunksTotal: number;
 }
 
 export type StatsCallback = (stats: GameStats) => void;
@@ -17,12 +19,22 @@ interface PerformanceWithMemory extends Performance {
 }
 
 export function createStatsCollector(): {
+  frameGauges: { chunksVisible: number; chunksTotal: number };
   sample(frameStart: number, cpuMs: number): void;
   subscribe(cb: StatsCallback): () => void;
 } {
   const samples = new Float32Array(WINDOW_SIZE);
   const scratch = new Float32Array(WINDOW_SIZE);
-  const stats: GameStats = { fps: 0, frameMsAvg: 0, frameMsP99: 0, heapMB: 0 };
+  const stats: GameStats = {
+    fps: 0,
+    frameMsAvg: 0,
+    frameMsP99: 0,
+    heapMB: 0,
+    chunksVisible: 0,
+    chunksTotal: 0,
+  };
+  // Per-frame gauges written by the render path, latched into GameStats at emit time.
+  const frameGauges = { chunksVisible: 0, chunksTotal: 0 };
   const callbacks = new Set<StatsCallback>();
 
   let sampleIndex = 0;
@@ -58,6 +70,8 @@ export function createStatsCollector(): {
     stats.fps = (framesSinceEmit * 1000) / elapsed;
     stats.frameMsAvg = total / sampleCount;
     stats.frameMsP99 = scratch[Math.min(sampleCount - 1, Math.floor(sampleCount * 0.99))] ?? 0;
+    stats.chunksVisible = frameGauges.chunksVisible;
+    stats.chunksTotal = frameGauges.chunksTotal;
 
     const memory = (performance as PerformanceWithMemory).memory;
     stats.heapMB = memory ? memory.usedJSHeapSize / (1024 * 1024) : 0;
@@ -79,5 +93,5 @@ export function createStatsCollector(): {
     };
   }
 
-  return { sample, subscribe };
+  return { frameGauges, sample, subscribe };
 }
