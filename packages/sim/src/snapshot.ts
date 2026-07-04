@@ -28,6 +28,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
     // while sim keeps f64.
     out.posX[i] = world.posX[i]!;
     out.posZ[i] = world.posZ[i]!;
-    out.selected[i] = world.selectable[i]!;
+    // Copies selected, not selectable; selectable only means the unit may be selected.
+    out.selected[i] = world.selected[i]!;
   }
 }

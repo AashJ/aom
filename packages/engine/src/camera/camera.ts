@@ -116,18 +116,38 @@ export function smoothCamera(camera: Camera, dtMs: number): void {
 }
 
 // Requires updateMatrices() after the last camera mutation. Depth 0/1 are near/far in WebGPU NDC.
-export function screenToGround(camera: Camera, ndcX: number, ndcY: number, out: Vec3): boolean {
-  vec3.set(nearPoint, ndcX, ndcY, 0);
+export function screenRay(
+  camera: Camera,
+  ndcX: number,
+  ndcY: number,
+  outOrigin: Vec3,
+  outDir: Vec3,
+): void {
+  vec3.set(outOrigin, ndcX, ndcY, 0);
   vec3.set(farPoint, ndcX, ndcY, 1);
-  mat4.transformPoint(nearPoint, camera.invViewProj, nearPoint);
+  mat4.transformPoint(outOrigin, camera.invViewProj, outOrigin);
   mat4.transformPoint(farPoint, camera.invViewProj, farPoint);
+
+  const fx = farPoint[0]!;
+  const fy = farPoint[1]!;
+  const fz = farPoint[2]!;
+
+  // Callers use parametric t in [0,1] across the whole depth range; normalization is wasted.
+  outDir[0] = fx - outOrigin[0]!;
+  outDir[1] = fy - outOrigin[1]!;
+  outDir[2] = fz - outOrigin[2]!;
+}
+
+// Requires updateMatrices() after the last camera mutation. Depth 0/1 are near/far in WebGPU NDC.
+export function screenToGround(camera: Camera, ndcX: number, ndcY: number, out: Vec3): boolean {
+  screenRay(camera, ndcX, ndcY, nearPoint, farPoint);
 
   const nx = nearPoint[0]!;
   const ny = nearPoint[1]!;
   const nz = nearPoint[2]!;
-  const dx = farPoint[0]! - nx;
-  const dy = farPoint[1]! - ny;
-  const dz = farPoint[2]! - nz;
+  const dx = farPoint[0]!;
+  const dy = farPoint[1]!;
+  const dz = farPoint[2]!;
 
   if (Math.abs(dy) < 1e-8) {
     return false;

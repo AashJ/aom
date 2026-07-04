@@ -11,6 +11,7 @@ import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
+import { consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
@@ -130,6 +131,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     applyInput(input.state, camera, dtMs / 1000, canvas);
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
+    consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 
     const encoder = gpu.device.createCommandEncoder();

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { createPcg32, nextFloat, nextU32 } from "./math/prng";
-import { createWorld, SIM_MAP_SIZE, spawnDriftingUnits, tickWorld } from "./ecs/world";
+import {
+  clearSelection,
+  createWorld,
+  setSelected,
+  SIM_MAP_SIZE,
+  spawnDriftingUnits,
+  tickWorld,
+} from "./ecs/world";
 import { createSnapshot, writeSnapshot } from "./snapshot";
 
 describe("sim", () => {
@@ -87,7 +94,23 @@ describe("sim", () => {
     for (const index of [0, 17, 255, 999]) {
       expect(snapshot.posX[index]).toBe(Math.fround(world.posX[index]!));
       expect(snapshot.posZ[index]).toBe(Math.fround(world.posZ[index]!));
-      expect(snapshot.selected[index]).toBe(world.selectable[index]);
+      expect(snapshot.selected[index]).toBe(0);
     }
+  });
+
+  test("selection writes to snapshots and can be cleared", () => {
+    const world = createWorld(42);
+    const snapshot = createSnapshot(16);
+
+    spawnDriftingUnits(world, 10);
+    setSelected(world, 5, true);
+    writeSnapshot(world, snapshot);
+
+    expect(snapshot.selected[5]).toBe(1);
+
+    clearSelection(world);
+    writeSnapshot(world, snapshot);
+
+    expect(snapshot.selected[5]).toBe(0);
   });
 });

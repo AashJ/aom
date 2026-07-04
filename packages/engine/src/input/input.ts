@@ -9,6 +9,14 @@ export interface InputState {
   dragAnchorX: number;
   dragAnchorZ: number;
   hasDragAnchor: boolean;
+  clickPending: boolean;
+  clickX: number;
+  clickY: number;
+  marqueePending: boolean;
+  marqueeMinX: number;
+  marqueeMinY: number;
+  marqueeMaxX: number;
+  marqueeMaxY: number;
 }
 
 export function attachInput(canvas: HTMLCanvasElement): { state: InputState; detach(): void } {
@@ -25,6 +33,14 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     dragAnchorX: 0,
     dragAnchorZ: 0,
     hasDragAnchor: false,
+    clickPending: false,
+    clickX: 0,
+    clickY: 0,
+    marqueePending: false,
+    marqueeMinX: 0,
+    marqueeMinY: 0,
+    marqueeMaxX: 0,
+    marqueeMaxY: 0,
   };
   let w = false;
   let s = false;
@@ -34,6 +50,20 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   let down = false;
   let left = false;
   let right = false;
+  let leftDown = false;
+  let leftDownX = 0;
+  let leftDownY = 0;
+  let marqueeActive = false;
+  const marquee = document.createElement("div");
+
+  marquee.style.position = "absolute";
+  marquee.style.border = "1px solid rgba(120, 180, 255, 0.9)";
+  marquee.style.background = "rgba(120, 180, 255, 0.15)";
+  marquee.style.pointerEvents = "none";
+  marquee.style.display = "none";
+  // The React wrapper ignores imperative children it did not render; the wrapper is
+  // position:relative, so absolute coordinates are canvas-relative.
+  (canvas.parentElement ?? document.body).appendChild(marquee);
 
   function recomputeKeyPan(): void {
     state.keyPanX = (d || right ? 1 : 0) - (a || left ? 1 : 0);
@@ -97,6 +127,28 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       state.pointerX = event.offsetX;
       state.pointerY = event.offsetY;
       state.pointerInside = true;
+
+      if (leftDown) {
+        const dx = event.offsetX - leftDownX;
+        const dy = event.offsetY - leftDownY;
+
+        if (!marqueeActive && Math.abs(dx) + Math.abs(dy) >= 4) {
+          marqueeActive = true;
+          marquee.style.display = "block";
+        }
+
+        if (marqueeActive) {
+          const minX = Math.min(leftDownX, event.offsetX);
+          const minY = Math.min(leftDownY, event.offsetY);
+          const maxX = Math.max(leftDownX, event.offsetX);
+          const maxY = Math.max(leftDownY, event.offsetY);
+
+          marquee.style.left = `${minX}px`;
+          marquee.style.top = `${minY}px`;
+          marquee.style.width = `${maxX - minX}px`;
+          marquee.style.height = `${maxY - minY}px`;
+        }
+      }
     },
     { signal },
   );
@@ -110,6 +162,14 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   canvas.addEventListener(
     "pointerdown",
     (event) => {
+      if (event.button === 0) {
+        leftDown = true;
+        leftDownX = event.offsetX;
+        leftDownY = event.offsetY;
+        canvas.setPointerCapture(event.pointerId);
+        return;
+      }
+
       if (event.button !== 1 && event.button !== 2) {
         return;
       }
@@ -122,15 +182,43 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   );
   canvas.addEventListener(
     "pointerup",
-    () => {
-      state.dragging = false;
-      state.hasDragAnchor = false;
+    (event) => {
+      if (event.button === 0) {
+        const dx = event.offsetX - leftDownX;
+        const dy = event.offsetY - leftDownY;
+
+        if (marqueeActive) {
+          state.marqueeMinX = Math.min(leftDownX, event.offsetX);
+          state.marqueeMinY = Math.min(leftDownY, event.offsetY);
+          state.marqueeMaxX = Math.max(leftDownX, event.offsetX);
+          state.marqueeMaxY = Math.max(leftDownY, event.offsetY);
+          state.marqueePending = true;
+          marqueeActive = false;
+          marquee.style.display = "none";
+        } else if (leftDown && Math.sqrt(dx * dx + dy * dy) < 4) {
+          state.clickX = event.offsetX;
+          state.clickY = event.offsetY;
+          state.clickPending = true;
+        }
+
+        leftDown = false;
+        return;
+      }
+
+      if (event.button === 1 || event.button === 2) {
+        // Left release no longer kills an active middle/right drag.
+        state.dragging = false;
+        state.hasDragAnchor = false;
+      }
     },
     { signal },
   );
   canvas.addEventListener(
     "pointercancel",
     () => {
+      leftDown = false;
+      marqueeActive = false;
+      marquee.style.display = "none";
       state.dragging = false;
       state.hasDragAnchor = false;
     },
@@ -156,6 +244,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     state,
     detach(): void {
       controller.abort();
+      marquee.remove();
     },
   };
 }

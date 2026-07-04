@@ -17,6 +17,7 @@ export interface World {
   velX: Float64Array;
   velZ: Float64Array;
   selectable: Uint8Array;
+  selected: Uint8Array;
 }
 
 export function createWorld(seed: number): World {
@@ -31,6 +32,8 @@ export function createWorld(seed: number): World {
     velX: new Float64Array(MAX_UNITS),
     velZ: new Float64Array(MAX_UNITS),
     selectable: new Uint8Array(MAX_UNITS),
+    // Per-client UI state in multiplayer eventually, but a plain component in M1.
+    selected: new Uint8Array(MAX_UNITS),
   };
 }
 
@@ -46,8 +49,21 @@ export function spawnUnit(world: World, x: number, z: number, vx: number, vz: nu
   world.velX[id] = vx;
   world.velZ[id] = vz;
   world.selectable[id] = 1;
+  world.selected[id] = 0;
   world.count += 1;
   return id;
+}
+
+export function clearSelection(world: World): void {
+  world.selected.fill(0, 0, world.count);
+}
+
+export function setSelected(world: World, id: number, on: boolean): void {
+  if (id < 0 || id >= world.count) {
+    return;
+  }
+
+  world.selected[id] = on ? 1 : 0;
 }
 
 export function spawnDriftingUnits(world: World, count: number): void {

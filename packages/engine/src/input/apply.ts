@@ -2,7 +2,7 @@ import { pan, screenToGround, updateMatrices, zoom, type Camera } from "../camer
 import * as vec3 from "../math/vec3";
 import type { InputState } from "./input";
 
-const EDGE_MARGIN_PX = 24;
+const EDGE_MARGIN_PX = 256;
 const PAN_UNITS_PER_SEC = 1.2;
 const ZOOM_RATE = 0.0015;
 const MAX_DT_S = 0.1;
@@ -11,6 +11,27 @@ const scratchA = vec3.create();
 const scratchB = vec3.create();
 const savedTarget = vec3.create();
 let savedDistance = 0;
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function smoothStep(value: number): number {
+  return value * value * (3 - 2 * value);
+}
+
+function edgeAxis(pointer: number, size: number): number {
+  // pointer is on left/top edge
+  if (pointer < EDGE_MARGIN_PX) {
+    return -smoothStep(clamp01(1 - pointer / EDGE_MARGIN_PX));
+  }
+
+  if (pointer > size - EDGE_MARGIN_PX) {
+    return smoothStep(clamp01((pointer - (size - EDGE_MARGIN_PX)) / EDGE_MARGIN_PX));
+  }
+
+  return 0;
+}
 
 export function applyInput(
   input: InputState,
@@ -25,17 +46,8 @@ export function applyInput(
   let panY = input.keyPanY;
 
   if (input.pointerInside && !input.dragging) {
-    if (input.pointerX < EDGE_MARGIN_PX) {
-      panX -= 1;
-    } else if (input.pointerX > clientWidth - EDGE_MARGIN_PX) {
-      panX += 1;
-    }
-
-    if (input.pointerY < EDGE_MARGIN_PX) {
-      panY += 1;
-    } else if (input.pointerY > clientHeight - EDGE_MARGIN_PX) {
-      panY -= 1;
-    }
+    panX += edgeAxis(input.pointerX, clientWidth);
+    panY -= edgeAxis(input.pointerY, clientHeight);
   }
 
   panX = Math.max(-1, Math.min(1, panX));

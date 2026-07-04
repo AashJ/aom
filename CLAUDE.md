@@ -67,6 +67,23 @@ options. Every delegation prompt must therefore carry a strict spec, written by 
 - After every run, review the diff for layering creep before showing it for commit: strip
   small violations inline ourselves; re-delegate with tighter constraints if it's structural.
 
+### Tests: Aash writes them, Codex explains them
+
+Aash learns the architecture by writing the tests himself — before or after the
+implementation chunk, his choice. Therefore:
+
+- **Codex does not write new test files.** Implementation chunks are code-only. (Exception:
+  when a refactor breaks *existing* tests, Codex may mechanically update them so the suite
+  stays green — new behavioral coverage is Aash's.)
+- **Each implementation chunk is followed by a delegated "test brief"**: Codex explains to
+  Aash how to test the new code — which behaviors are worth pinning and *why*, how to set up
+  the harness (bun:test, patterns from existing suites), the edge cases that matter, and
+  expected values where they're exactly known. The brief teaches "what and why" — it must NOT
+  contain paste-able test code.
+- After Aash writes the tests, we review them: do they pin behavior (survives refactors)
+  rather than implementation details, and do the edge cases actually exercise the failure
+  modes named in the brief?
+
 ### Managing background Codex jobs
 
 - `/codex:status [job-id]` — active/recent Codex jobs for this repo.
