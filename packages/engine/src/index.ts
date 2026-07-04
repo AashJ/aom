@@ -12,3 +12,4 @@ export function isWebGPUSupported(): boolean {
 }
 
 export { initGPU, type DeviceLostCallback, type GpuContext } from "./gpu/device";
+export { observeCanvasSize, type CanvasResizeCallback } from "./gpu/surface";

@@ -45,6 +45,28 @@ Use the `/codex:*` slash commands (they run inline and forward to the Codex runt
 - `/codex:transfer` — move this session into a resumable Codex thread (prints a
   `codex resume <session-id>` command); good for a full handoff.
 
+### Prompting Codex: we own the design, Codex owns the typing
+
+Codex left to its own devices over-abstracts — extra helper layers, wrapper types, speculative
+options. Every delegation prompt must therefore carry a strict spec, written by us first:
+
+- **We decide the architecture in the prompt**: exact file paths, the exported symbols with
+  their signatures, the data flow / order of operations inside each function, and what calls
+  what. Codex implements inside that skeleton; it does not get to invent module boundaries,
+  helpers, or layers we didn't name.
+- **State the abstraction ceiling explicitly** in the prompt: plain functions unless a class is
+  named in the spec; no wrapper/factory/manager layers; no options objects for a single call
+  site; no single-use helper functions when the code reads fine inline; no re-export shims
+  beyond what the spec lists.
+- **Budget the diff** ("one new file, ~60–90 lines"). A blown budget means the design drifted —
+  reject and re-issue rather than accept the sprawl.
+- **Comments**: only where the underlying API semantics are non-obvious (e.g. WebGPU quirks).
+  No narrative or section-header comments.
+- If Codex believes the spec is missing a file or abstraction, it should say so in its final
+  answer — not silently create it.
+- After every run, review the diff for layering creep before showing it for commit: strip
+  small violations inline ourselves; re-delegate with tighter constraints if it's structural.
+
 ### Managing background Codex jobs
 
 - `/codex:status [job-id]` — active/recent Codex jobs for this repo.
