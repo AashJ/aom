@@ -73,10 +73,10 @@ Aash learns the architecture by writing the tests himself — before or after th
 implementation chunk, his choice. Therefore:
 
 - **Codex does not write new test files.** Implementation chunks are code-only. (Exception:
-  when a refactor breaks *existing* tests, Codex may mechanically update them so the suite
+  when a refactor breaks _existing_ tests, Codex may mechanically update them so the suite
   stays green — new behavioral coverage is Aash's.)
 - **Each implementation chunk is followed by a delegated "test brief"**: Codex explains to
-  Aash how to test the new code — which behaviors are worth pinning and *why*, how to set up
+  Aash how to test the new code — which behaviors are worth pinning and _why_, how to set up
   the harness (bun:test, patterns from existing suites), the edge cases that matter, and
   expected values where they're exactly known. The brief teaches "what and why" — it must NOT
   contain paste-able test code.

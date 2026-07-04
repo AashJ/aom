@@ -13,6 +13,7 @@ import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
 import { consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
+import { createMinimapRenderer } from "./render/minimap";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
@@ -47,6 +48,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         // GPU resources die with their device, so recreate renderer-owned state.
         terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights);
         units = createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS);
+        minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
         gpuTimer = createGpuTimer(nextGpu.device);
         passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
         recreateDepthTexture();
@@ -66,13 +68,14 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   // CPU terrain data survives device loss; only GPU buffers/pipelines are recreated.
   const heights = generateHeightmap(1337);
   const world = createWorld(1337);
-  spawnDriftingUnits(world, 1000);
+  spawnDriftingUnits(world, 10_000);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights);
   let units = createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS);
+  let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
 
@@ -146,7 +149,8 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
       alpha,
       heights,
     );
-    statsCollector.frameGauges.drawCalls = visibleChunks + 1;
+    minimap.draw(pass, gpu.device.queue, gpu.canvas.width, gpu.canvas.height);
+    statsCollector.frameGauges.drawCalls = visibleChunks + 2;
     statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;

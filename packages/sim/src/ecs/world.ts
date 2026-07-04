@@ -6,7 +6,7 @@ import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 export const TICK_HZ = 20;
 export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = 256;
-export const MAX_UNITS = 2048;
+export const MAX_UNITS = 10_000;
 
 export interface World {
   tick: number;
