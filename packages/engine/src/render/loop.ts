@@ -5,6 +5,7 @@ const MAX_TICKS_PER_FRAME = 5;
 export interface FrameCallbacks {
   tick(): void;
   render(alpha: number): void;
+  sample?(frameStart: number, cpuMs: number): void;
 }
 
 export function createFrameLoop(callbacks: FrameCallbacks): { start(): void; stop(): void } {
@@ -35,6 +36,8 @@ export function createFrameLoop(callbacks: FrameCallbacks): { start(): void; sto
     }
 
     callbacks.render(accumulator / TICK_MS);
+    // rAF timestamps share performance.now()'s clock; this approximates CPU time spent this frame.
+    callbacks.sample?.(now, performance.now() - now);
     rafId = requestAnimationFrame(frame);
   };
 

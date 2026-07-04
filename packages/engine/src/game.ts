@@ -1,11 +1,13 @@
 import { initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { createFrameLoop } from "./render/loop";
+import { createStatsCollector, type StatsCallback } from "./render/stats";
 
 export interface GameHandle {
   start(): void;
   stop(): void;
   dispose(): void;
+  onStats(cb: StatsCallback): () => void;
 }
 
 export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle> {
@@ -63,7 +65,8 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     gpu.device.queue.submit([encoder.finish()]);
   }
 
-  loop = createFrameLoop({ render, tick });
+  const statsCollector = createStatsCollector();
+  loop = createFrameLoop({ render, sample: statsCollector.sample, tick });
 
   function dispose(): void {
     if (disposed) {
@@ -79,6 +82,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
   return {
     dispose,
+    onStats: statsCollector.subscribe,
     start(): void {
       if (disposed) {
         return;

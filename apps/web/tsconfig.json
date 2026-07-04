@@ -12,7 +12,6 @@
     "paths": {
       "@/*": ["./src/*"],
       "@aom/engine": ["../../packages/engine/src/index.ts"],
-      "@aom/engine/*": ["../../packages/engine/src/*"],
       "@aom/ui/*": ["../../packages/ui/src/*"]
     }
   }
