@@ -3,9 +3,10 @@ import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
-import { createGroundRenderer } from "./render/ground";
+import { createTerrainRenderer } from "./render/terrain";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
+import { generateHeightmap } from "./terrain/heightmap";
 
 export interface GameHandle {
   start(): void;
@@ -33,7 +34,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
-        ground = createGroundRenderer(nextGpu.device, nextGpu.format);
+        terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights);
         recreateDepthTexture();
 
         if (wasRunning) {
@@ -48,7 +49,9 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
-  let ground = createGroundRenderer(gpu.device, gpu.format);
+  // CPU terrain data survives device loss; only GPU buffers/pipelines are recreated.
+  const heights = generateHeightmap(1337);
+  let terrain = createTerrainRenderer(gpu.device, gpu.format, heights);
   let depthTexture: GPUTexture | null = null;
 
   const colorAttachment: GPURenderPassColorAttachment = {
@@ -98,7 +101,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
     const encoder = gpu.device.createCommandEncoder();
     const pass = encoder.beginRenderPass(passDescriptor);
-    ground.draw(pass, gpu.device.queue, camera.viewProj);
+    terrain.draw(pass, gpu.device.queue, camera.viewProj);
     pass.end();
     gpu.device.queue.submit([encoder.finish()]);
   }
