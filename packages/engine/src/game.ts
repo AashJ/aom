@@ -47,7 +47,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
         terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights);
-        units = createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS);
+        units = createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS, heights);
         minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
         gpuTimer = createGpuTimer(nextGpu.device);
         passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
@@ -74,7 +74,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights);
-  let units = createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS);
+  let units = createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
