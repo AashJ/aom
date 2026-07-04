@@ -2,7 +2,7 @@ import { pan, screenToGround, updateMatrices, zoom, type Camera } from "../camer
 import * as vec3 from "../math/vec3";
 import type { InputState } from "./input";
 
-const EDGE_MARGIN_PX = 256;
+const EDGE_MARGIN_PX = 128;
 const PAN_UNITS_PER_SEC = 1.2;
 const ZOOM_RATE = 0.0015;
 const MAX_DT_S = 0.1;
@@ -42,10 +42,27 @@ export function applyInput(
   const dt = Math.min(dtSeconds, MAX_DT_S);
   const clientWidth = canvas.clientWidth;
   const clientHeight = canvas.clientHeight;
+
+  if (input.minimapJumpPending) {
+    input.minimapJumpPending = false;
+    camera.goalTarget[0] = input.minimapJumpX;
+    camera.goalTarget[2] = input.minimapJumpZ;
+    // Minimap jump snaps both goal and displayed state: a smoothed glide across the whole map
+    // reads as lag; this matches AoM. pan(0,0) reapplies bounds clamping.
+    pan(camera, 0, 0);
+    vec3.copy(camera.target, camera.goalTarget);
+  }
+
   let panX = input.keyPanX;
   let panY = input.keyPanY;
 
-  if (input.pointerInside && !input.dragging) {
+  // The minimap owns its diamond-shaped screen region; edge-scroll only applies to world space.
+  if (
+    input.pointerInside &&
+    !input.pointerOverMinimap &&
+    !input.dragging &&
+    !input.minimapDragging
+  ) {
     panX += edgeAxis(input.pointerX, clientWidth);
     panY -= edgeAxis(input.pointerY, clientHeight);
   }

@@ -10,6 +10,7 @@ export const MINIMAP_TEX_SIZE = 256;
 const SUN_X = 0.466;
 const SUN_Y = 0.828;
 const SUN_Z = 0.311;
+const minimapRectScratch = new Float32Array(4);
 const footprintScratch = vec3.create();
 
 export interface MinimapRenderer {
@@ -34,6 +35,52 @@ export function worldToMinimapUnit(x: number, z: number, out: Float32Array, offs
 
   out[offset] = 0.5 + (v - u) * 0.5;
   out[offset + 1] = (u + v) * 0.5;
+}
+
+export function minimapRectPx(width: number, height: number, out: Float32Array): void {
+  // Single source of truth for minimap placement: the renderer feeds it physical pixels, the
+  // input hit-test feeds it CSS pixels; the fractions are resolution-independent so both agree
+  // geometrically.
+  const size = Math.round(height * 0.32);
+  const margin = Math.round(height * 0.02);
+  const x1 = width - margin;
+  const y1 = height - margin;
+
+  out[0] = x1 - size;
+  out[1] = y1 - size;
+  out[2] = x1;
+  out[3] = y1;
+}
+
+export function minimapUnitFromPixel(
+  px: number,
+  py: number,
+  rect: Float32Array,
+  out: Float32Array,
+  offset: number,
+): void {
+  // Pixel y grows down, diamond unit y grows up - same flip as NDC.
+  out[offset] = (px - rect[0]!) / (rect[2]! - rect[0]!);
+  out[offset + 1] = 1 - (py - rect[1]!) / (rect[3]! - rect[1]!);
+}
+
+export function isInsideMinimapDiamond(ux: number, uy: number): boolean {
+  // Manhattan distance from center <= half-extent is the diamond.
+  return Math.abs(ux - 0.5) + Math.abs(uy - 0.5) <= 0.5;
+}
+
+export function minimapUnitToWorld(
+  ux: number,
+  uy: number,
+  out: Float32Array,
+  offset: number,
+): void {
+  const u = uy - ux + 0.5;
+  const v = uy + ux - 0.5;
+
+  // Clamp so drags that wander off the diamond pin to the map edge.
+  out[offset] = Math.max(0, Math.min(1, u)) * MAP_TILES;
+  out[offset + 1] = Math.max(0, Math.min(1, v)) * MAP_TILES;
 }
 
 export function buildMinimapTexels(heights: Float32Array): Uint8Array {
@@ -182,12 +229,11 @@ export function createMinimapRenderer(
 
   return {
     draw(pass, queue, canvasWidth, canvasHeight, camera, prev, curr, alpha): void {
-      const size = Math.round(canvasHeight * 0.32);
-      const margin = Math.round(canvasHeight * 0.02);
-      const minPxX = canvasWidth - margin - size;
-      const maxPxX = canvasWidth - margin;
-      const minPxY = canvasHeight - margin;
-      const maxPxY = canvasHeight - margin - size;
+      minimapRectPx(canvasWidth, canvasHeight, minimapRectScratch);
+      const minPxX = minimapRectScratch[0]!;
+      const minPxY = minimapRectScratch[3]!;
+      const maxPxX = minimapRectScratch[2]!;
+      const maxPxY = minimapRectScratch[1]!;
 
       rect[0] = (minPxX / canvasWidth) * 2 - 1;
       rect[1] = 1 - (minPxY / canvasHeight) * 2;

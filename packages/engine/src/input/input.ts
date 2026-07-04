@@ -1,3 +1,14 @@
+import {
+  isInsideMinimapDiamond,
+  minimapRectPx,
+  minimapUnitFromPixel,
+  minimapUnitToWorld,
+} from "../render/minimap";
+
+// Pure geometry only - no GPU coupling.
+const minimapRectScratch = new Float32Array(4);
+const minimapPairScratch = new Float32Array(2);
+
 export interface InputState {
   keyPanX: number;
   keyPanY: number;
@@ -5,6 +16,10 @@ export interface InputState {
   pointerY: number;
   pointerInside: boolean;
   dragging: boolean;
+  minimapDragging: boolean;
+  minimapJumpPending: boolean;
+  minimapJumpX: number;
+  minimapJumpZ: number;
   wheelDelta: number;
   dragAnchorX: number;
   dragAnchorZ: number;
@@ -17,6 +32,7 @@ export interface InputState {
   marqueeMinY: number;
   marqueeMaxX: number;
   marqueeMaxY: number;
+  pointerOverMinimap: boolean;
 }
 
 export function attachInput(canvas: HTMLCanvasElement): { state: InputState; detach(): void } {
@@ -29,6 +45,10 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     pointerY: 0,
     pointerInside: false,
     dragging: false,
+    minimapDragging: false,
+    minimapJumpPending: false,
+    minimapJumpX: 0,
+    minimapJumpZ: 0,
     wheelDelta: 0,
     dragAnchorX: 0,
     dragAnchorZ: 0,
@@ -41,6 +61,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     marqueeMinY: 0,
     marqueeMaxX: 0,
     marqueeMaxY: 0,
+    pointerOverMinimap: false,
   };
   let w = false;
   let s = false;
@@ -119,6 +140,15 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     recomputeKeyPan();
   }
 
+  function updatePointerOverMinimap(x: number, y: number): void {
+    minimapRectPx(canvas.clientWidth, canvas.clientHeight, minimapRectScratch);
+    minimapUnitFromPixel(x, y, minimapRectScratch, minimapPairScratch, 0);
+    state.pointerOverMinimap = isInsideMinimapDiamond(
+      minimapPairScratch[0]!,
+      minimapPairScratch[1]!,
+    );
+  }
+
   window.addEventListener("keydown", handleKeyDown, { signal });
   window.addEventListener("keyup", handleKeyUp, { signal });
   canvas.addEventListener(
@@ -127,6 +157,23 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       state.pointerX = event.offsetX;
       state.pointerY = event.offsetY;
       state.pointerInside = true;
+      updatePointerOverMinimap(event.offsetX, event.offsetY);
+
+      if (state.minimapDragging) {
+        minimapRectPx(canvas.clientWidth, canvas.clientHeight, minimapRectScratch);
+        minimapUnitFromPixel(
+          event.offsetX,
+          event.offsetY,
+          minimapRectScratch,
+          minimapPairScratch,
+          0,
+        );
+        minimapUnitToWorld(minimapPairScratch[0]!, minimapPairScratch[1]!, minimapPairScratch, 0);
+        state.minimapJumpX = minimapPairScratch[0]!;
+        state.minimapJumpZ = minimapPairScratch[1]!;
+        state.minimapJumpPending = true;
+        return;
+      }
 
       if (leftDown) {
         const dx = event.offsetX - leftDownX;
@@ -156,13 +203,30 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     "pointerleave",
     () => {
       state.pointerInside = false;
+      state.pointerOverMinimap = false;
     },
     { signal },
   );
   canvas.addEventListener(
     "pointerdown",
     (event) => {
+      state.pointerX = event.offsetX;
+      state.pointerY = event.offsetY;
+      state.pointerInside = true;
+      updatePointerOverMinimap(event.offsetX, event.offsetY);
+
       if (event.button === 0) {
+        if (state.pointerOverMinimap) {
+          state.minimapDragging = true;
+          canvas.setPointerCapture(event.pointerId);
+          minimapUnitToWorld(minimapPairScratch[0]!, minimapPairScratch[1]!, minimapPairScratch, 0);
+          state.minimapJumpX = minimapPairScratch[0]!;
+          state.minimapJumpZ = minimapPairScratch[1]!;
+          state.minimapJumpPending = true;
+          event.preventDefault();
+          return;
+        }
+
         leftDown = true;
         leftDownX = event.offsetX;
         leftDownY = event.offsetY;
@@ -184,6 +248,11 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     "pointerup",
     (event) => {
       if (event.button === 0) {
+        if (state.minimapDragging) {
+          state.minimapDragging = false;
+          return;
+        }
+
         const dx = event.offsetX - leftDownX;
         const dy = event.offsetY - leftDownY;
 
@@ -216,11 +285,13 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   canvas.addEventListener(
     "pointercancel",
     () => {
+      state.minimapDragging = false;
       leftDown = false;
       marqueeActive = false;
       marquee.style.display = "none";
       state.dragging = false;
       state.hasDragAnchor = false;
+      state.pointerOverMinimap = false;
     },
     { signal },
   );

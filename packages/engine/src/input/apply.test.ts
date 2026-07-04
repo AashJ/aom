@@ -12,6 +12,10 @@ function createInput(overrides: Partial<InputState> = {}): InputState {
     pointerY: 0,
     pointerInside: false,
     dragging: false,
+    minimapDragging: false,
+    minimapJumpPending: false,
+    minimapJumpX: 0,
+    minimapJumpZ: 0,
     wheelDelta: 0,
     dragAnchorX: 0,
     dragAnchorZ: 0,
@@ -24,6 +28,7 @@ function createInput(overrides: Partial<InputState> = {}): InputState {
     marqueeMinY: 0,
     marqueeMaxX: 0,
     marqueeMaxY: 0,
+    pointerOverMinimap: false,
     ...overrides,
   };
 }
