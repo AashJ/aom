@@ -5,7 +5,9 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 1. **Extremely performant.** 60fps minimum on a mid-tier laptop, with headroom for thousands of units later. Performance is a feature we design for, not tune in afterward.
 2. **Build sequentially.** Every milestone is a small, playable, verifiable increment. No speculative systems — but boundaries that would be brutal to retrofit (determinism, sim/render split) are designed in from day one.
 
-**Milestone 1 (this doc's focus):** frontend only. A 3D terrain map you can pan, zoom, and edge-scroll around, with dummy units, marquee selection, a minimap, and a perf HUD. No gameplay, no networking, no backend.
+**Milestone 1 (complete):** frontend only. A 3D terrain map you can pan, zoom, and edge-scroll around, with dummy units, marquee selection, a minimap, and a perf HUD. No gameplay, no networking, no backend.
+
+**Milestone 3 (current focus):** gameplay sim — commands and movement. Built **before** M2 (meshes/animation) on purpose: movement needs no art, exercises the deterministic-sim investment, and finally binds right-click. M2's meshes then land on units that already behave. See its section below.
 
 ---
 
@@ -229,9 +231,82 @@ Each step lands independently, runs via `bun dev` (port 3001), and is verifiable
 
 **Exit criteria:** all budgets met with 256×256 terrain + 1,000 units while continuously panning, zooming, and marquee-selecting.
 
+---
+
+## Milestone 3 — gameplay sim: commands & movement
+
+Scope: right-click move orders for selected units, pathfinding around unwalkable terrain, groups that arrive without stacking on a point. No combat, no economy, no buildings, no networking — but every design below is a seam M4's lockstep plugs into rather than a thing it replaces.
+
+### Decisions
+
+| Decision      | Choice                                                                | Rationale                                                                                                                                                                                                                                                                                            |
+| ------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command flow  | **All gameplay mutations enter through a tick-stamped command queue** | The lockstep seam. Commands are plain serializable data (numbers/arrays only — that IS the future wire format), stamped for a tick, applied at that tick's start. Single-player is a loopback queue; M4 swaps the transport, not the design. The engine never mutates gameplay state directly again. |
+| Pathfinding   | **Flow fields over a 256×256 walkability grid**                       | Group moves are the RTS common case: one field serves every unit ordered to the same target, so cost is per-_command_, not per-unit. Per-unit A\* scales with selection size — wrong shape for marquee-select-and-move. Fields are cached by goal cell.                                              |
+| Walkability   | **Slope threshold on a sim-owned heightmap**                          | Gameplay now reads terrain, so heightmap generation moves into `@aom/sim` (closes the parked "terrain ownership" question — the existing generator already uses only determinism-legal ops). Steep = unwalkable. The engine receives heights once at init; rendering is unchanged.                   |
+| Movement      | **Flow-field seek + arrival + soft separation; no hard collision**    | Steering needs only `+ - * / sqrt` — no trig, so no sim/math table work yet. Separation via a spatial hash keeps groups from collapsing to a point; true collision resolution is deferred until combat makes it matter.                                                                              |
+| Unit identity | **Commands address units by entity index**                            | Indices are stable while nothing dies. Generational ids arrive with combat (M-later); designing them now is speculative.                                                                                                                                                                             |
+| Selection     | **Stays in World for now, excluded from state hashing**               | Selection is per-client UI state, not shared sim state — in lockstep it must never enter the hash or the command stream's effects. Excluding it from `hashWorld` now documents that boundary without a disruptive move.                                                                              |
+
+### Command queue
+
+- `Command` = flat numeric data: `{ tick, type, ...payload }`. M3 types: `Move { unitIds[], targetX, targetZ }`, `Stop { unitIds[] }`.
+- The engine issues commands for `currentTick + 1` via `enqueueCommand(world, cmd)` (engine→sim imports are the legal direction). The queue applies everything stamped for tick T at the start of `tick(T)`, in issue order (multiplayer adds a player-id tiebreak later — noted, not built).
+- Determinism test shape this enables: two worlds, same seed, same scripted command list → identical state hashes forever. This becomes the core regression test of the whole milestone.
+
+### Movement pipeline (inside each tick, fixed order, zero allocation)
+
+1. Apply this tick's commands → units get a goal (a shared reference to that target's flow field).
+2. Flow-field lookup at the unit's cell → desired direction (fields store unit direction pairs, no angles).
+3. Separation: query the spatial hash for neighbors within ~1 unit, accumulate a soft push (fixed iteration order).
+4. Integrate: blend desired + separation, clamp speed (single speed constant in M3), arrive-and-stop within a radius of the goal; clamp to walkable.
+
+### Flow fields
+
+- Integration field: Dijkstra/BFS (8-neighbor, diagonal cost √2 as a constant) outward from the goal cell over the walkability grid, `Uint16` costs; then a direction field: per cell, the neighbor-descent direction stored as a normalized `(dx, dz)` pair (`Int8` quantized or two `Float32Array`s — decided at implementation).
+- Built on command application, cached keyed by goal cell, small LRU (a handful of fields — groups share). Build budget below; if a 256×256 build can't hit it, the fallback is a coarser field grid (128×128) — noted, only if measured over budget.
+
+### State hashing (M4 prep at ~zero M3 cost)
+
+- `hashWorld(world): number` — FNV-style fold over the gameplay arrays (positions, velocities, move targets, tick), reading `Float64Array` bits exactly; **excludes** selection (per-client). Cheap, and it upgrades every determinism test from "sampled fields look equal" to "entire state is bit-identical".
+
+### Engine-side changes (deliberately small)
+
+- **Right-click binds at last**: press-release under the 4 px threshold = move command at the `screenToGround` point (dropped on ground misses); a longer right-drag stays grab-pan; middle-drag unchanged.
+- A brief move-marker at the ordered point (render-side chrome — non-deterministic freedom applies).
+- Perf HUD gains a `tick` line (ms per sim tick) — also closes the one budget M1's HUD never displayed.
+- `RenderSnapshot` is **unchanged** in M3. Facing/orientation joins the snapshot with M2's meshes.
+
+### Performance budgets (adds to the M1 table)
+
+| Metric                                                            | Budget                                                               |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Sim tick, 1k units moving (field lookup + separation + integrate) | < 0.5 ms (the M1 budget holds)                                       |
+| Flow-field build, 256×256                                         | < 2 ms, on command application (an occasional spike, never per tick) |
+| Command → visible response                                        | ≤ 1 tick (50 ms) + interpolation                                     |
+
+### Milestone 3 — sequential build order
+
+1. **Command queue + straight-line seek.** Queue, Move/Stop commands, right-click binding, seek-and-arrive with no obstacles. _Verify: units walk to the click and stop; scripted-command determinism test (two worlds, equal `hashWorld` every tick)._
+2. **Terrain into sim + walkability.** Generator moves to `@aom/sim` (engine consumes the same heights via init handoff — pixels identical), slope-threshold walkability grid, debug overlay toggle to visualize it. _Verify: same seed renders the same map; unwalkable cells tint in the overlay._
+3. **Flow fields.** Build + cache + per-unit lookup replaces straight-line seek. _Verify: a group ordered across a cliff routes around it; repeat command hits the field cache; build time under budget._
+4. **Separation.** Spatial hash + soft push. _Verify: a 200-unit marquee move arrives as a blob, not a point; tick stays under 0.5 ms._
+5. **Feedback polish.** Move marker, HUD tick line, Stop hotkey. _Verify: full loop feels like an RTS._
+
+**Exit criteria:** 1k units, mixed group move orders across obstructed terrain, all budgets met, and the scripted-command determinism test green in CI (`bun test`).
+
+### M3 open questions (parked, on purpose)
+
+- Formations / group cohesion beyond separation (arrival spread is enough for M3).
+- Hard collision vs. soft separation only — revisit with combat.
+- Lockstep input-delay scheme (fixed delay vs. rollback) — M4's first design question.
+- When selection moves out of World into a client-local store (likely M4, when hashing goes live).
+
+---
+
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation (instanced skinning) → M3 gameplay sim: movement, flow-field pathfinding, commands (right-click gets bound) → M4 lockstep netcode: command queue, tick hashing, desync detection, backend service → M5 fog of war (compute), economy/buildings, and onward.
+M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question) → M4 lockstep netcode: command transport, tick hashing, desync detection, backend service → M5 fog of war (compute), economy/buildings, and onward.
 
 ## Open questions (parked, on purpose)
 
