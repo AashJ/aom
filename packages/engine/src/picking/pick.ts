@@ -1,8 +1,17 @@
 // CPU picking per ARCHITECTURE.md M1. GPU id-buffer picking is the known upgrade path.
-import { clearSelection, setSelected, type RenderSnapshot, type World } from "@aom/sim";
-import { screenRay, type Camera } from "../camera/camera";
+import {
+  clearSelection,
+  COMMAND_MOVE,
+  enqueueCommand,
+  setSelected,
+  SIM_MAP_SIZE,
+  type RenderSnapshot,
+  type World,
+} from "@aom/sim";
+import { screenRay, screenToGround, type Camera } from "../camera/camera";
 import * as vec3 from "../math/vec3";
 import { heightAt } from "../terrain/heightmap";
+import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
 
 const HALF_W = 0.3;
@@ -10,6 +19,7 @@ const UNIT_H = 1.2;
 
 const rayOrigin = vec3.create();
 const rayDir = vec3.create();
+const commandTarget = vec3.create();
 
 export function pickUnit(
   camera: Camera,
@@ -113,6 +123,59 @@ export function consumeSelectionInput(
     // The tint appears after the next snapshot write, at most 50 ms later.
     setSelected(world, hit, true);
   }
+}
+
+export function consumeCommandInput(
+  input: InputState,
+  world: World,
+  camera: Camera,
+  heights: Float32Array,
+  canvas: HTMLCanvasElement,
+): void {
+  if (!input.commandPending) {
+    return;
+  }
+
+  input.commandPending = false;
+
+  const ndcX = (input.commandX / canvas.clientWidth) * 2 - 1;
+  const ndcY = 1 - (input.commandY / canvas.clientHeight) * 2;
+
+  screenRay(camera, ndcX, ndcY, rayOrigin, rayDir);
+
+  if (!raycastHeightfield(heights, rayOrigin, rayDir, commandTarget)) {
+    // Off-map clicks still order a move to the map edge - generous, AoM-like.
+    if (!screenToGround(camera, ndcX, ndcY, commandTarget)) {
+      return;
+    }
+  }
+
+  // The sim trusts engine-clamped targets — its movement loop has no bounds check
+  // by design.
+  const targetX = Math.min(SIM_MAP_SIZE, Math.max(0, commandTarget[0]!));
+  const targetZ = Math.min(SIM_MAP_SIZE, Math.max(0, commandTarget[2]!));
+  const unitIds: number[] = [];
+
+  // Allocation is fine at click rate; commands are serializable-by-construction plain data.
+  for (let i = 0; i < world.count; i += 1) {
+    if (world.selected[i] === 1) {
+      unitIds.push(i);
+    }
+  }
+
+  if (unitIds.length === 0) {
+    return;
+  }
+
+  // +1 = "apply next tick" — the slot where lockstep input delay will live in
+  // M4.
+  enqueueCommand(world, {
+    tick: world.tick + 1,
+    type: COMMAND_MOVE,
+    unitIds,
+    targetX,
+    targetZ,
+  });
 }
 
 export function marqueeSelect(

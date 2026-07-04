@@ -2,7 +2,7 @@ import {
   createSnapshot,
   createWorld,
   MAX_UNITS,
-  spawnDriftingUnits,
+  spawnUnits,
   tickWorld,
   writeSnapshot,
 } from "@aom/sim";
@@ -11,7 +11,7 @@ import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
-import { consumeSelectionInput } from "./picking/pick";
+import { consumeCommandInput, consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
 import { createMinimapRenderer } from "./render/minimap";
 import { createTerrainRenderer } from "./render/terrain";
@@ -68,7 +68,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   // CPU terrain data survives device loss; only GPU buffers/pipelines are recreated.
   const heights = generateHeightmap(1337);
   const world = createWorld(1337);
-  spawnDriftingUnits(world, 1_000);
+  spawnUnits(world, 1_000);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
   writeSnapshot(world, prevSnap);
@@ -135,6 +135,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
     consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
+    consumeCommandInput(input.state, world, camera, heights, canvas);
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 
     const encoder = gpu.device.createCommandEncoder();

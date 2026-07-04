@@ -1,12 +1,14 @@
 // Determinism rules: allowed math is + - * /, Math.sqrt/fround/abs/min/max/floor/ceil/
 // trunc/sign, integer ops, and comparisons. Banned: transcendental Math functions,
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
+import { COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 
 export const TICK_HZ = 20;
 export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = 256;
 export const MAX_UNITS = 10_000;
+export const UNIT_SPEED = 3;
 
 export interface World {
   tick: number;
@@ -16,8 +18,12 @@ export interface World {
   posZ: Float64Array;
   velX: Float64Array;
   velZ: Float64Array;
+  moveTargetX: Float64Array;
+  moveTargetZ: Float64Array;
+  moving: Uint8Array;
   selectable: Uint8Array;
   selected: Uint8Array;
+  commands: Command[];
 }
 
 export function createWorld(seed: number): World {
@@ -31,9 +37,13 @@ export function createWorld(seed: number): World {
     posZ: new Float64Array(MAX_UNITS),
     velX: new Float64Array(MAX_UNITS),
     velZ: new Float64Array(MAX_UNITS),
+    moveTargetX: new Float64Array(MAX_UNITS),
+    moveTargetZ: new Float64Array(MAX_UNITS),
+    moving: new Uint8Array(MAX_UNITS),
     selectable: new Uint8Array(MAX_UNITS),
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
+    commands: [],
   };
 }
 
@@ -48,6 +58,9 @@ export function spawnUnit(world: World, x: number, z: number, vx: number, vz: nu
   world.posZ[id] = z;
   world.velX[id] = vx;
   world.velZ[id] = vz;
+  world.moveTargetX[id] = 0;
+  world.moveTargetZ[id] = 0;
+  world.moving[id] = 0;
   world.selectable[id] = 1;
   world.selected[id] = 0;
   world.count += 1;
@@ -66,50 +79,76 @@ export function setSelected(world: World, id: number, on: boolean): void {
   world.selected[id] = on ? 1 : 0;
 }
 
-export function spawnDriftingUnits(world: World, count: number): void {
+export function spawnUnits(world: World, count: number): void {
   for (let i = 0; i < count; i += 1) {
     const x = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
     const z = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
-    const vx = (nextFloat(world.rng) - 0.5) * 1.2;
-    const vz = (nextFloat(world.rng) - 0.5) * 1.2;
 
-    spawnUnit(world, x, z, vx, vz);
+    // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
+    spawnUnit(world, x, z, 0, 0);
   }
 }
 
 export function tickWorld(world: World): void {
+  applyPendingCommands(world);
+
   // Fixed dense iteration order is a determinism rule.
   for (let i = 0; i < world.count; i += 1) {
-    let x = world.posX[i]! + world.velX[i]! * TICK_S;
-    let z = world.posZ[i]! + world.velZ[i]! * TICK_S;
-    let vx = world.velX[i]!;
-    let vz = world.velZ[i]!;
-
-    if (x < 0) {
-      x = -x;
-      vx = -vx;
+    if (world.moving[i] === 0) {
+      continue;
     }
 
-    if (x > SIM_MAP_SIZE) {
-      x = 2 * SIM_MAP_SIZE - x;
-      vx = -vx;
-    }
+    const dx = world.moveTargetX[i]! - world.posX[i]!;
+    const dz = world.moveTargetZ[i]! - world.posZ[i]!;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    const step = UNIT_SPEED * TICK_S;
 
-    if (z < 0) {
-      z = -z;
-      vz = -vz;
+    if (dist <= step) {
+      world.posX[i] = world.moveTargetX[i]!;
+      world.posZ[i] = world.moveTargetZ[i]!;
+      world.moving[i] = 0;
+    } else {
+      // No bounds clamp needed: straight lines toward in-bounds targets cannot exit the map,
+      // and command targets get clamped at the engine boundary in the next chunk.
+      world.posX[i] = world.posX[i]! + (dx / dist) * step;
+      world.posZ[i] = world.posZ[i]! + (dz / dist) * step;
     }
-
-    if (z > SIM_MAP_SIZE) {
-      z = 2 * SIM_MAP_SIZE - z;
-      vz = -vz;
-    }
-
-    world.posX[i] = x;
-    world.posZ[i] = z;
-    world.velX[i] = vx;
-    world.velZ[i] = vz;
   }
 
   world.tick += 1;
+}
+
+function applyPendingCommands(world: World): void {
+  for (let i = 0; i < world.commands.length; ) {
+    const command = world.commands[i]!;
+
+    if (command.tick > world.tick) {
+      i += 1;
+      continue;
+    }
+
+    // Late commands apply ASAP instead of dropping; deterministic because queue order is fixed.
+    if (command.type === COMMAND_MOVE) {
+      for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+        const id = command.unitIds[unitIndex]!;
+
+        if (id >= 0 && id < world.count) {
+          world.moveTargetX[id] = command.targetX;
+          world.moveTargetZ[id] = command.targetZ;
+          world.moving[id] = 1;
+        }
+      }
+    } else if (command.type === COMMAND_STOP) {
+      for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+        const id = command.unitIds[unitIndex]!;
+
+        if (id >= 0 && id < world.count) {
+          world.moving[id] = 0;
+        }
+      }
+    }
+
+    // Rare path, allocation acceptable: command queue handling runs at click rate.
+    world.commands.splice(i, 1);
+  }
 }

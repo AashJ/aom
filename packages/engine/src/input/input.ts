@@ -27,6 +27,9 @@ export interface InputState {
   clickPending: boolean;
   clickX: number;
   clickY: number;
+  commandPending: boolean;
+  commandX: number;
+  commandY: number;
   marqueePending: boolean;
   marqueeMinX: number;
   marqueeMinY: number;
@@ -56,6 +59,9 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     clickPending: false,
     clickX: 0,
     clickY: 0,
+    commandPending: false,
+    commandX: 0,
+    commandY: 0,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -74,6 +80,9 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   let leftDown = false;
   let leftDownX = 0;
   let leftDownY = 0;
+  let rightDown = false;
+  let rightDownX = 0;
+  let rightDownY = 0;
   let marqueeActive = false;
   const marquee = document.createElement("div");
 
@@ -159,6 +168,17 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       state.pointerInside = true;
       updatePointerOverMinimap(event.offsetX, event.offsetY);
 
+      if (rightDown && !state.dragging) {
+        const dx = event.offsetX - rightDownX;
+        const dy = event.offsetY - rightDownY;
+
+        // A right press is ambiguous until it moves — under 4 px it's a command click,
+        // over it's the M1 grab-pan.
+        if (Math.abs(dx) + Math.abs(dy) >= 4) {
+          state.dragging = true;
+        }
+      }
+
       if (state.minimapDragging) {
         minimapRectPx(canvas.clientWidth, canvas.clientHeight, minimapRectScratch);
         minimapUnitFromPixel(
@@ -234,13 +254,20 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
         return;
       }
 
-      if (event.button !== 1 && event.button !== 2) {
+      if (event.button === 1) {
+        state.dragging = true;
+        canvas.setPointerCapture(event.pointerId);
+        event.preventDefault();
         return;
       }
 
-      state.dragging = true;
-      canvas.setPointerCapture(event.pointerId);
-      event.preventDefault();
+      if (event.button === 2) {
+        rightDown = true;
+        rightDownX = event.offsetX;
+        rightDownY = event.offsetY;
+        canvas.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      }
     },
     { signal },
   );
@@ -274,7 +301,20 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
         return;
       }
 
-      if (event.button === 1 || event.button === 2) {
+      if (event.button === 2) {
+        if (rightDown && !state.dragging) {
+          state.commandPending = true;
+          state.commandX = event.offsetX;
+          state.commandY = event.offsetY;
+        }
+
+        rightDown = false;
+        state.dragging = false;
+        state.hasDragAnchor = false;
+        return;
+      }
+
+      if (event.button === 1) {
         // Left release no longer kills an active middle/right drag.
         state.dragging = false;
         state.hasDragAnchor = false;
@@ -287,6 +327,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     () => {
       state.minimapDragging = false;
       leftDown = false;
+      rightDown = false;
       marqueeActive = false;
       marquee.style.display = "none";
       state.dragging = false;

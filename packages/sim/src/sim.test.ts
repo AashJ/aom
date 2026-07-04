@@ -5,7 +5,7 @@ import {
   createWorld,
   setSelected,
   SIM_MAP_SIZE,
-  spawnDriftingUnits,
+  spawnUnits,
   tickWorld,
 } from "./ecs/world";
 import { createSnapshot, writeSnapshot } from "./snapshot";
@@ -42,8 +42,8 @@ describe("sim", () => {
     const a = createWorld(42);
     const b = createWorld(42);
 
-    spawnDriftingUnits(a, 1000);
-    spawnDriftingUnits(b, 1000);
+    spawnUnits(a, 1000);
+    spawnUnits(b, 1000);
 
     for (let tick = 0; tick < 200; tick += 1) {
       tickWorld(a);
@@ -66,7 +66,7 @@ describe("sim", () => {
   test("drifting units stay in bounds", () => {
     const world = createWorld(42);
 
-    spawnDriftingUnits(world, 1000);
+    spawnUnits(world, 1000);
 
     for (let tick = 0; tick < 2000; tick += 1) {
       tickWorld(world);
@@ -84,7 +84,7 @@ describe("sim", () => {
     const world = createWorld(42);
     const snapshot = createSnapshot(1000);
 
-    spawnDriftingUnits(world, 1000);
+    spawnUnits(world, 1000);
     tickWorld(world);
     writeSnapshot(world, snapshot);
 
@@ -102,7 +102,7 @@ describe("sim", () => {
     const world = createWorld(42);
     const snapshot = createSnapshot(16);
 
-    spawnDriftingUnits(world, 10);
+    spawnUnits(world, 10);
     setSelected(world, 5, true);
     writeSnapshot(world, snapshot);
 
