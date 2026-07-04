@@ -1,4 +1,4 @@
-import { VERTS_PER_ROW } from "@aom/sim";
+import { MAP_TILES, VERTS_PER_ROW } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import { aabbIntersectsFrustum, type Frustum } from "../math/frustum";
 import terrainWgsl from "../shaders/terrain.wgsl?raw";
@@ -19,6 +19,7 @@ export interface TerrainRenderer {
     queue: GPUQueue,
     viewProj: Float32Array,
     frustum: Frustum,
+    debugOverlay: boolean,
   ): number;
   readonly chunkBounds: readonly TerrainChunkBounds[];
 }
@@ -31,12 +32,33 @@ export function createTerrainRenderer(
   device: GPUDevice,
   format: GPUTextureFormat,
   heights: Float32Array,
+  walkable: Uint8Array,
 ): TerrainRenderer {
   const module = device.createShaderModule({ code: terrainWgsl });
   const uniformBuffer = device.createBuffer({
-    size: 64,
+    size: 80,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
+  const staging = new Float32Array(20);
+  const walkTexture = device.createTexture({
+    size: [MAP_TILES, MAP_TILES],
+    format: "r8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  const walkData = new Uint8Array(MAP_TILES * MAP_TILES);
+
+  for (let i = 0; i < walkData.length; i += 1) {
+    walkData[i] = walkable[i] === 1 ? 255 : 0;
+  }
+
+  // r8unorm normalizes to 0..1 in the shader; raw 0/1 bytes would read as 0.004 --
+  // the classic unorm gotcha.
+  device.queue.writeTexture(
+    { texture: walkTexture },
+    walkData,
+    { bytesPerRow: MAP_TILES, rowsPerImage: MAP_TILES },
+    { width: MAP_TILES, height: MAP_TILES },
+  );
   // Every chunk has the same 32x32-quad local topology, so one index buffer is shared.
   const indexData = new Uint16Array(INDEX_COUNT);
   let indexOffset = 0;
@@ -142,13 +164,18 @@ export function createTerrainRenderer(
   });
   const bindGroup = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+    entries: [
+      { binding: 0, resource: { buffer: uniformBuffer } },
+      { binding: 1, resource: walkTexture.createView() },
+    ],
   });
 
   return {
     chunkBounds,
-    draw(pass, queue, viewProj, frustum): number {
-      queue.writeBuffer(uniformBuffer, 0, viewProj);
+    draw(pass, queue, viewProj, frustum, debugOverlay): number {
+      staging.set(viewProj);
+      staging[16] = debugOverlay ? 1 : 0;
+      queue.writeBuffer(uniformBuffer, 0, staging);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
       pass.setIndexBuffer(indexBuffer, "uint16");

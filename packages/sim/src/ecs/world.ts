@@ -10,6 +10,12 @@ export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 export const UNIT_SPEED = 3;
+const GRID_CELL = 2;
+const GRID_DIM = SIM_MAP_SIZE / GRID_CELL;
+const GRID_CELLS = GRID_DIM * GRID_DIM;
+export const SEPARATION_RADIUS = 0.8;
+// Slightly under the 0.15 move step so movers still make net progress through a crowd.
+const SEPARATION_MAX_STEP = 0.12;
 
 export interface World {
   tick: number;
@@ -27,6 +33,13 @@ export interface World {
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
+  // Per-tick derived scratch, rebuilt from positions each tick. Excluded from hashWorld
+  // because they're a pure function of hashed state.
+  cellCount: Uint32Array;
+  cellStart: Uint32Array;
+  cellUnits: Uint32Array;
+  pushX: Float64Array;
+  pushZ: Float64Array;
 }
 
 export function createWorld(seed: number): World {
@@ -54,6 +67,11 @@ export function createWorld(seed: number): World {
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
     commands: [],
+    cellCount: new Uint32Array(GRID_CELLS),
+    cellStart: new Uint32Array(GRID_CELLS + 1),
+    cellUnits: new Uint32Array(MAX_UNITS),
+    pushX: new Float64Array(MAX_UNITS),
+    pushZ: new Float64Array(MAX_UNITS),
   };
 }
 
@@ -100,29 +118,142 @@ export function spawnUnits(world: World, count: number): void {
 }
 
 export function tickWorld(world: World): void {
+  // 1. Apply commands at the start of the tick.
   applyPendingCommands(world);
 
-  // Fixed dense iteration order is a determinism rule.
+  // 2. Build a spatial grid from start-of-tick positions.
+  world.cellCount.fill(0, 0, GRID_CELLS);
+
   for (let i = 0; i < world.count; i += 1) {
+    const rawCellX = Math.floor(world.posX[i]! / GRID_CELL);
+    const rawCellZ = Math.floor(world.posZ[i]! / GRID_CELL);
+    const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
+    const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+    const cell = cellX + GRID_DIM * cellZ;
+
+    world.cellCount[cell] = world.cellCount[cell]! + 1;
+  }
+
+  world.cellStart[0] = 0;
+  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
+    world.cellStart[cell + 1] = world.cellStart[cell]! + world.cellCount[cell]!;
+  }
+
+  world.cellCount.fill(0, 0, GRID_CELLS);
+
+  for (let i = 0; i < world.count; i += 1) {
+    const rawCellX = Math.floor(world.posX[i]! / GRID_CELL);
+    const rawCellZ = Math.floor(world.posZ[i]! / GRID_CELL);
+    const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
+    const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+    const cell = cellX + GRID_DIM * cellZ;
+    const offset = world.cellStart[cell]! + world.cellCount[cell]!;
+
+    // Scatter runs in unit order, so each bucket's fixed neighbor order keeps float sums deterministic.
+    world.cellUnits[offset] = i;
+    world.cellCount[cell] = world.cellCount[cell]! + 1;
+  }
+
+  // 3. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
+  const step = UNIT_SPEED * TICK_S;
+
+  for (let i = 0; i < world.count; i += 1) {
+    const x = world.posX[i]!;
+    const z = world.posZ[i]!;
+    let pushX = 0;
+    let pushZ = 0;
+
     if (world.moving[i] === 0) {
-      continue;
-    }
-
-    const dx = world.moveTargetX[i]! - world.posX[i]!;
-    const dz = world.moveTargetZ[i]! - world.posZ[i]!;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    const step = UNIT_SPEED * TICK_S;
-
-    if (dist <= step) {
-      world.posX[i] = world.moveTargetX[i]!;
-      world.posZ[i] = world.moveTargetZ[i]!;
-      world.moving[i] = 0;
+      pushX = 0;
+      pushZ = 0;
     } else {
-      // No bounds clamp needed: straight lines toward in-bounds targets cannot exit the map,
-      // and command targets get clamped at the engine boundary in the next chunk.
-      world.posX[i] = world.posX[i]! + (dx / dist) * step;
-      world.posZ[i] = world.posZ[i]! + (dz / dist) * step;
+      const dx = world.moveTargetX[i]! - x;
+      const dz = world.moveTargetZ[i]! - z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist <= step) {
+        pushX = dx;
+        pushZ = dz;
+        world.moving[i] = 0;
+      } else {
+        pushX = (dx / dist) * step;
+        pushZ = (dz / dist) * step;
+      }
     }
+
+    // Idle units are separated too, so arriving crowds spread out instead of stacking.
+    let separationX = 0;
+    let separationZ = 0;
+    const rawCellX = Math.floor(x / GRID_CELL);
+    const rawCellZ = Math.floor(z / GRID_CELL);
+    const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
+    const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+    const minCellX = cellX > 0 ? cellX - 1 : 0;
+    const maxCellX = cellX < GRID_DIM - 1 ? cellX + 1 : GRID_DIM - 1;
+    const minCellZ = cellZ > 0 ? cellZ - 1 : 0;
+    const maxCellZ = cellZ < GRID_DIM - 1 ? cellZ + 1 : GRID_DIM - 1;
+
+    // Radius 0.8 is smaller than the 2-unit cell size, so the 3x3 neighborhood always suffices.
+    for (let neighborCellZ = minCellZ; neighborCellZ <= maxCellZ; neighborCellZ += 1) {
+      for (let neighborCellX = minCellX; neighborCellX <= maxCellX; neighborCellX += 1) {
+        const cell = neighborCellX + GRID_DIM * neighborCellZ;
+        const start = world.cellStart[cell]!;
+        const end = world.cellStart[cell + 1]!;
+
+        for (let unitOffset = start; unitOffset < end; unitOffset += 1) {
+          const j = world.cellUnits[unitOffset]!;
+
+          if (j === i) {
+            continue;
+          }
+
+          let dx = x - world.posX[j]!;
+          let dz = z - world.posZ[j]!;
+          let distSq = dx * dx + dz * dz;
+
+          if (distSq >= SEPARATION_RADIUS * SEPARATION_RADIUS) {
+            continue;
+          }
+
+          if (distSq < 1e-12) {
+            // Any fixed function of (i, j) works here; it must not be random or order-dependent.
+            const pairSign = i > j ? 1e-3 : -1e-3;
+
+            dx = pairSign;
+            dz = (i + j) % 2 === 0 ? pairSign : -pairSign;
+            distSq = dx * dx + dz * dz;
+          }
+
+          const dist = Math.sqrt(distSq);
+          const strength = 1 - dist / SEPARATION_RADIUS;
+
+          separationX += (dx / dist) * strength * SEPARATION_MAX_STEP;
+          separationZ += (dz / dist) * strength * SEPARATION_MAX_STEP;
+        }
+      }
+    }
+
+    const separationDistSq = separationX * separationX + separationZ * separationZ;
+
+    if (separationDistSq > SEPARATION_MAX_STEP * SEPARATION_MAX_STEP) {
+      // A crowd of N neighbors must not multiply the push.
+      const scale = SEPARATION_MAX_STEP / Math.sqrt(separationDistSq);
+
+      separationX *= scale;
+      separationZ *= scale;
+    }
+
+    world.pushX[i] = pushX + separationX;
+    world.pushZ[i] = pushZ + separationZ;
+  }
+
+  // 4. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
+  for (let i = 0; i < world.count; i += 1) {
+    const x = world.posX[i]! + world.pushX[i]!;
+    const z = world.posZ[i]! + world.pushZ[i]!;
+
+    world.posX[i] = x < 0 ? 0 : x > SIM_MAP_SIZE ? SIM_MAP_SIZE : x;
+    world.posZ[i] = z < 0 ? 0 : z > SIM_MAP_SIZE ? SIM_MAP_SIZE : z;
   }
 
   world.tick += 1;

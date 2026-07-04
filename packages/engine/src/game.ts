@@ -45,7 +45,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
-        terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights);
+        terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights, world.walkable);
         units = createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS, heights);
         minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
         gpuTimer = createGpuTimer(nextGpu.device);
@@ -73,7 +73,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   let currSnap = createSnapshot(MAX_UNITS);
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
-  let terrain = createTerrainRenderer(gpu.device, gpu.format, heights);
+  let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
   let units = createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let gpuTimer = createGpuTimer(gpu.device);
@@ -140,7 +140,13 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
     const encoder = gpu.device.createCommandEncoder();
     const pass = encoder.beginRenderPass(passDescriptor);
-    const visibleChunks = terrain.draw(pass, gpu.device.queue, camera.viewProj, camera.frustum);
+    const visibleChunks = terrain.draw(
+      pass,
+      gpu.device.queue,
+      camera.viewProj,
+      camera.frustum,
+      input.state.debugOverlay,
+    );
     const instances = units.draw(
       pass,
       gpu.device.queue,

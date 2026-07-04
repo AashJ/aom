@@ -1,8 +1,10 @@
 struct Uniforms {
   viewProj: mat4x4f,
+  debug: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var walkTex: texture_2d<f32>;
 
 const SUN_DIR = vec3f(0.466, 0.828, 0.311);
 
@@ -40,6 +42,18 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   color = mix(color, rock, smoothstep(6.0, 11.0, in.worldPos.y));
   color = mix(color, rock, 1.0 - smoothstep(0.65, 0.85, normal.y));
   color = mix(color, vec3f(0.42, 0.46, 0.36), gridIntensity(in.worldPos.xz, 1.0) * 0.12);
+
+  // tile = floor(world xz) because tiles are 1x1 world units; unwalkable tints red --
+  // with WALKABLE_MAX_SLOPE tuned near the rock threshold, red should mostly coincide
+  // with rocky slopes.
+  if (u.debug.x > 0.5) {
+    let tile = vec2u(clamp(floor(in.worldPos.xz), vec2f(0.0), vec2f(255.0)));
+
+    if (textureLoad(walkTex, tile, 0).x < 0.5) {
+      color = mix(color, vec3f(0.75, 0.12, 0.10), 0.45);
+    }
+  }
+
   color *= 0.45 + 0.55 * max(dot(normal, SUN_DIR), 0.0);
 
   return vec4f(color, 1.0);

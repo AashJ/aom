@@ -8,6 +8,7 @@ function createInput(overrides: Partial<InputState> = {}): InputState {
   return {
     keyPanX: 0,
     keyPanY: 0,
+    debugOverlay: false,
     pointerX: 0,
     pointerY: 0,
     pointerInside: false,

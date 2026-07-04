@@ -1,7 +1,8 @@
 // FNV-1a 32-bit over gameplay state: the future desync detector (M4) and the teeth
 // of every determinism test (two worlds, same commands -> equal hashes forever).
 // Excludes selectable/selected: per-client UI state, never part of shared lockstep
-// state (ARCHITECTURE.md M3 decision).
+// state (ARCHITECTURE.md M3 decision). Also excludes the grid/push scratch arrays
+// cellCount/cellStart/cellUnits/pushX/pushZ, which are rebuilt from hashed state.
 import type { World } from "./ecs/world";
 
 const FNV_OFFSET = 0x811c9dc5;

@@ -12,6 +12,7 @@ const minimapPairScratch = new Float32Array(2);
 export interface InputState {
   keyPanX: number;
   keyPanY: number;
+  debugOverlay: boolean;
   pointerX: number;
   pointerY: number;
   pointerInside: boolean;
@@ -44,6 +45,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   const state: InputState = {
     keyPanX: 0,
     keyPanY: 0,
+    debugOverlay: false,
     pointerX: 0,
     pointerY: 0,
     pointerInside: false,
@@ -134,6 +136,13 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
+    if (event.code === "Backquote" && !event.repeat) {
+      // A persistent flag read by the render loop each frame, not a consumed intent --
+      // toggles are state, clicks are events.
+      state.debugOverlay = !state.debugOverlay;
+      return;
+    }
+
     if (event.repeat || !setKey(event.code, true)) {
       return;
     }

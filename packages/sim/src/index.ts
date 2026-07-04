@@ -2,7 +2,7 @@
 // are bugs even when they work. See ARCHITECTURE.md determinism rules before editing sim.
 export * from "./commands";
 export * from "./ecs/world";
-export { clearSelection, setSelected } from "./ecs/world";
+export { clearSelection, SEPARATION_RADIUS, setSelected } from "./ecs/world";
 export * from "./hash";
 export * from "./snapshot";
 export * from "./math/prng";
