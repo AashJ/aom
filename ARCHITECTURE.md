@@ -11,13 +11,13 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 
 ## Decisions
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Perspective | **True 3D** (heightmap terrain, fixed-angle camera) | Authentic AoM feel; camera rotation and real terrain become possible later. Costs more per milestone than 2D isometric — accepted trade-off. |
-| Renderer | **Custom, WebGPU only** | Full control over every draw call and byte on the GPU; no library overhead between us and the hardware. WebGPU (not WebGL2) for explicit pipelines, cheap draw submission, and compute shaders later (culling, fog of war, skinning). No WebGL2 fallback — a dual-backend RHI would roughly double renderer effort. Supported: Chrome/Edge, Safari 26+, recent Firefox. Unsupported browsers get a clear error screen. |
-| Camera | **Fixed pitch/yaw, pan + zoom** | Classic RTS camera. Simpler culling, picking, and minimap math. Yaw rotation can be added later without structural rework (nothing may assume axis-aligned view). |
-| Simulation | **Deterministic lockstep-ready from day 1** | "Online" means lockstep multiplayer eventually: identical inputs must produce identical state on every client. Retrofitting determinism into a float-soup sim is a rewrite; designing for it now costs almost nothing in M1. |
-| UI shell | **React for chrome only** | React renders menus, HUD, routes. It never participates in the frame loop and never re-renders per frame. The game is one canvas owned by imperative code. |
+| Decision    | Choice                                              | Rationale                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Perspective | **True 3D** (heightmap terrain, fixed-angle camera) | Authentic AoM feel; camera rotation and real terrain become possible later. Costs more per milestone than 2D isometric — accepted trade-off.                                                                                                                                                                                                                                                                           |
+| Renderer    | **Custom, WebGPU only**                             | Full control over every draw call and byte on the GPU; no library overhead between us and the hardware. WebGPU (not WebGL2) for explicit pipelines, cheap draw submission, and compute shaders later (culling, fog of war, skinning). No WebGL2 fallback — a dual-backend RHI would roughly double renderer effort. Supported: Chrome/Edge, Safari 26+, recent Firefox. Unsupported browsers get a clear error screen. |
+| Camera      | **Fixed pitch/yaw, pan + zoom**                     | Classic RTS camera. Simpler culling, picking, and minimap math. Yaw rotation can be added later without structural rework (nothing may assume axis-aligned view).                                                                                                                                                                                                                                                      |
+| Simulation  | **Deterministic lockstep-ready from day 1**         | "Online" means lockstep multiplayer eventually: identical inputs must produce identical state on every client. Retrofitting determinism into a float-soup sim is a rewrite; designing for it now costs almost nothing in M1.                                                                                                                                                                                           |
+| UI shell    | **React for chrome only**                           | React renders menus, HUD, routes. It never participates in the frame loop and never re-renders per frame. The game is one canvas owned by imperative code.                                                                                                                                                                                                                                                             |
 
 Rejected alternatives, for the record: 2D isometric sprites (cheapest path to performance, but not AoM), PixiJS/Three.js (faster start, less control), Canvas 2D (can't hit the perf bar), WebGPU+WebGL2 dual backend (too much surface area for a sequential build).
 
@@ -100,9 +100,9 @@ Component data lives in preallocated typed arrays indexed by entity id — cache
 
 ```ts
 // M1 components — deliberately minimal
-positionX: Float64Array   // sim-space, deterministic math only
-positionZ: Float64Array
-selectableFlags: Uint8Array
+positionX: Float64Array; // sim-space, deterministic math only
+positionZ: Float64Array;
+selectableFlags: Uint8Array;
 ```
 
 No archetype machinery, no events, no reactive queries in M1. Grow it when a milestone demands it. (`bitecs` is the reference point if we ever want to adopt instead of build.)
@@ -113,15 +113,15 @@ The only sim→engine channel. A pair of preallocated buffers (previous tick / c
 
 ```ts
 interface RenderSnapshot {
-  tick: number
-  count: number
-  posX: Float32Array   // f64 sim state narrowed to f32 at the boundary
-  posZ: Float32Array
-  selected: Uint8Array
+  tick: number;
+  count: number;
+  posX: Float32Array; // f64 sim state narrowed to f32 at the boundary
+  posZ: Float32Array;
+  selected: Uint8Array;
 }
 ```
 
-Future lockstep slots in *around* this design, not through it: a command queue feeds `tick()`, state hashes compare across clients. Not built in M1 — just not precluded.
+Future lockstep slots in _around_ this design, not through it: a command queue feeds `tick()`, state hashes compare across clients. Not built in M1 — just not precluded.
 
 ---
 
@@ -161,16 +161,16 @@ Zero-allocation discipline in the hot path: scratch vectors/matrices are module-
 
 ### Input mapping (M1)
 
-| Input | Action |
-|---|---|
-| Mouse at screen edge | Edge-scroll pan |
-| WASD / arrows | Pan |
-| Middle-drag (or right-drag in M1) | Grab-pan the map |
-| Wheel | Zoom to cursor |
-| Left click | Select unit under cursor (ray vs. per-unit AABB) |
-| Left drag | Marquee select (project unit centers to screen, rect test) |
+| Input                             | Action                                                     |
+| --------------------------------- | ---------------------------------------------------------- |
+| Mouse at screen edge              | Edge-scroll pan                                            |
+| WASD / arrows                     | Pan                                                        |
+| Middle-drag (or right-drag in M1) | Grab-pan the map                                           |
+| Wheel                             | Zoom to cursor                                             |
+| Left click                        | Select unit under cursor (ray vs. per-unit AABB)           |
+| Left drag                         | Marquee select (project unit centers to screen, rect test) |
 
-Input handlers translate raw DOM events into *intents* consumed once per frame — no game logic in event callbacks. Right-click is left unbound on purpose; it becomes the command button when gameplay arrives.
+Input handlers translate raw DOM events into _intents_ consumed once per frame — no game logic in event callbacks. Right-click is left unbound on purpose; it becomes the command button when gameplay arrives.
 
 ### Picking
 
@@ -191,7 +191,7 @@ A plain DOM element (not React state — no re-render churn) updated ~4 Hz:
 - Draw calls, instances drawn, visible chunk count
 - `performance.memory.usedJSHeapSize` where available (Chrome)
 
-This ships in M1 *early* (step 4 below) so every subsequent step is measured as it lands.
+This ships in M1 _early_ (step 4 below) so every subsequent step is measured as it lands.
 
 ### Device & lifecycle
 
@@ -205,13 +205,13 @@ This ships in M1 *early* (step 4 below) so every subsequent step is measured as 
 
 Measured on a mid-tier laptop (integrated GPU), 1080p:
 
-| Metric | Budget |
-|---|---|
-| Frame time | ≤ 8 ms CPU+GPU typical, 60fps minimum sustained while panning + zooming |
-| Draw calls / frame | < 100 (expected: ~64 chunk + 1 unit + ~4 overlay) |
-| Per-frame allocations in loop | 0 (verify: no sawtooth in the heap graph while idle-panning) |
-| Sim tick (1k entities) | < 0.5 ms |
-| Cold load to first frame | < 2 s |
+| Metric                        | Budget                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| Frame time                    | ≤ 8 ms CPU+GPU typical, 60fps minimum sustained while panning + zooming |
+| Draw calls / frame            | < 100 (expected: ~64 chunk + 1 unit + ~4 overlay)                       |
+| Per-frame allocations in loop | 0 (verify: no sawtooth in the heap graph while idle-panning)            |
+| Sim tick (1k entities)        | < 0.5 ms                                                                |
+| Cold load to first frame      | < 2 s                                                                   |
 
 ---
 
@@ -219,13 +219,13 @@ Measured on a mid-tier laptop (integrated GPU), 1080p:
 
 Each step lands independently, runs via `bun dev` (port 3001), and is verifiable in the browser before the next begins.
 
-1. **WebGPU bootstrap.** `@aom/engine` package; device init, canvas config, resize, clear-color frame loop with the fixed-timestep accumulator (sim tick is a no-op stub). `/game` route mounts it. *Verify: clear color at 60fps, resize works, unsupported-browser error screen.*
-2. **Camera + ground plane.** Math module, RTS camera, a flat grid-shaded plane. Pan (edge/keys/drag) and zoom-to-cursor. *Verify: cursor-anchored zoom, clamped pan.*
-3. **Terrain.** Heightmap generation, chunked meshes, per-chunk frustum culling, height/slope coloring. *Verify: hills render, visible-chunk count drops when zoomed in.*
-4. **Perf HUD.** Timing, draw-call and chunk counters, timestamp queries. *Verify against the budget table; keep it on screen for all later steps.*
-5. **Sim skeleton + dummy units.** `@aom/sim` package: ECS stores, PCG32, tick loop, snapshot double-buffer; 1k instanced units rendered with interpolation (give units a slow deterministic drift so interpolation is visibly exercised). *Verify: smooth motion at 20 Hz tick / 144 Hz display; sim tick under budget.*
-6. **Picking + marquee.** Ray picking, DOM marquee rect, screen-space rect select, selection rendering. *Verify: click and drag-select at full frame rate.*
-7. **Minimap.** Height texture, overlay pass, frustum footprint, unit dots, click-to-jump. *Verify: footprint matches the main view; jump is instant.*
+1. **WebGPU bootstrap.** `@aom/engine` package; device init, canvas config, resize, clear-color frame loop with the fixed-timestep accumulator (sim tick is a no-op stub). `/game` route mounts it. _Verify: clear color at 60fps, resize works, unsupported-browser error screen._
+2. **Camera + ground plane.** Math module, RTS camera, a flat grid-shaded plane. Pan (edge/keys/drag) and zoom-to-cursor. _Verify: cursor-anchored zoom, clamped pan._
+3. **Terrain.** Heightmap generation, chunked meshes, per-chunk frustum culling, height/slope coloring. _Verify: hills render, visible-chunk count drops when zoomed in._
+4. **Perf HUD.** Timing, draw-call and chunk counters, timestamp queries. _Verify against the budget table; keep it on screen for all later steps._
+5. **Sim skeleton + dummy units.** `@aom/sim` package: ECS stores, PCG32, tick loop, snapshot double-buffer; 1k instanced units rendered with interpolation (give units a slow deterministic drift so interpolation is visibly exercised). _Verify: smooth motion at 20 Hz tick / 144 Hz display; sim tick under budget._
+6. **Picking + marquee.** Ray picking, DOM marquee rect, screen-space rect select, selection rendering. _Verify: click and drag-select at full frame rate._
+7. **Minimap.** Height texture, overlay pass, frustum footprint, unit dots, click-to-jump. _Verify: footprint matches the main view; jump is instant._
 
 **Exit criteria:** all budgets met with 256×256 terrain + 1,000 units while continuously panning, zooming, and marquee-selecting.
 

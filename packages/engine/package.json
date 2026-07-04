@@ -1,0 +1,14 @@
+{
+  "name": "@aom/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@aom/config": "workspace:*",
+    "@webgpu/types": "catalog:",
+    "typescript": "catalog:"
+  }
+}
