@@ -1,11 +1,10 @@
-import { Button } from "@aom/ui/components/button";
-import { createFileRoute } from "@tanstack/react-router";
+import { buttonVariants } from "@aom/ui/components/button";
+import { cn } from "@aom/ui/lib/utils";
+import { Link, createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,
 });
-
-const menuItems = ["Single Player", "Online"] as const;
 
 function HomeComponent() {
   return (
@@ -41,17 +40,15 @@ function HomeComponent() {
           <div className="relative rounded-sm bg-[#191f73]/95 p-3 shadow-2xl ring-4 ring-[#d8bb5a] sm:p-4">
             <div className="absolute inset-1 rounded-sm ring-1 ring-white/20" />
             <div className="relative grid gap-2">
-              {menuItems.map((item) => (
-                <Button
-                  key={item}
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  className="mythic-menu-button h-8 rounded-full border-2 border-[#d8bb5a] px-3 font-display text-base font-medium hover:mythic-menu-button-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b] sm:h-7 sm:text-sm"
-                >
-                  {item}
-                </Button>
-              ))}
+              <Link
+                to="/single-player/new"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "lg" }),
+                  "mythic-menu-button h-8 rounded-full border-2 border-[#d8bb5a] px-3 font-display text-base font-medium hover:mythic-menu-button-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b] sm:h-7 sm:text-sm",
+                )}
+              >
+                Single Player
+              </Link>
             </div>
           </div>
         </section>

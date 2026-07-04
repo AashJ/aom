@@ -7,10 +7,12 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "skipLibCheck": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "@webgpu/types"],
     "rootDirs": ["."],
     "paths": {
       "@/*": ["./src/*"],
+      "@aom/engine": ["../../packages/engine/src/index.ts"],
+      "@aom/engine/*": ["../../packages/engine/src/*"],
       "@aom/ui/*": ["../../packages/ui/src/*"]
     }
   }

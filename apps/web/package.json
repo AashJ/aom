@@ -11,6 +11,7 @@
     "check-types": "vite build && tsc --noEmit"
   },
   "dependencies": {
+    "@aom/engine": "workspace:*",
     "@aom/env": "workspace:*",
     "@aom/ui": "workspace:*",
     "@hookform/resolvers": "^5.2.2",
@@ -32,6 +33,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^6.0.1",
+    "@webgpu/types": "catalog:",
     "postcss": "^8.5.10",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
