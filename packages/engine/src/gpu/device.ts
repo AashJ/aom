@@ -1,5 +1,7 @@
 import { WebGPUUnsupportedError } from "../index";
 
+export const DEPTH_FORMAT: GPUTextureFormat = "depth24plus";
+
 export interface GpuContext {
   readonly adapter: GPUAdapter;
   readonly device: GPUDevice;

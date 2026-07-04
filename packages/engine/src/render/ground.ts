@@ -1,3 +1,4 @@
+import { DEPTH_FORMAT } from "../gpu/device";
 import groundWgsl from "../shaders/ground.wgsl?raw";
 
 export interface GroundRenderer {
@@ -14,6 +15,9 @@ export function createGroundRenderer(device: GPUDevice, format: GPUTextureFormat
     layout: "auto",
     vertex: { module },
     fragment: { module, targets: [{ format }] },
+    // Standard-Z: clear to 1.0 and nearer fragments have smaller depth. Reverse-Z would
+    // flip this compare and the pass clear value together.
+    depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
     // Cull nothing until terrain owns the final winding and back-face policy.
     primitive: { topology: "triangle-list", cullMode: "none" },
   });

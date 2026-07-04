@@ -1,5 +1,5 @@
 import { createCamera, smoothCamera, updateMatrices } from "./camera/camera";
-import { initGPU } from "./gpu/device";
+import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
@@ -34,6 +34,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
         ground = createGroundRenderer(nextGpu.device, nextGpu.format);
+        recreateDepthTexture();
 
         if (wasRunning) {
           running = true;
@@ -48,8 +49,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
   let ground = createGroundRenderer(gpu.device, gpu.format);
-  const unobserveResize = observeCanvasSize(canvas, gpu.device);
-  const input = attachInput(canvas);
+  let depthTexture: GPUTexture | null = null;
 
   const colorAttachment: GPURenderPassColorAttachment = {
     clearValue: { r: 0.05, g: 0.07, b: 0.1, a: 1 },
@@ -57,9 +57,34 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     storeOp: "store",
     view: undefined as unknown as GPUTextureView,
   };
+  const depthAttachment: GPURenderPassDepthStencilAttachment = {
+    // Nothing reads depth after the pass, so discard avoids paying to write it back to memory,
+    // especially on tile GPUs.
+    depthClearValue: 1,
+    depthLoadOp: "clear",
+    depthStoreOp: "discard",
+    view: undefined as unknown as GPUTextureView,
+  };
   const passDescriptor: GPURenderPassDescriptor = {
     colorAttachments: [colorAttachment],
+    depthStencilAttachment: depthAttachment,
   };
+
+  function recreateDepthTexture(): void {
+    depthTexture?.destroy();
+    // Unlike the canvas swapchain texture, the depth texture does not resize itself; this is
+    // the lifecycle owned by the resize hook foreshadowed in surface.ts.
+    depthTexture = gpu.device.createTexture({
+      size: [gpu.canvas.width, gpu.canvas.height],
+      format: DEPTH_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    depthAttachment.view = depthTexture.createView();
+  }
+
+  const unobserveResize = observeCanvasSize(canvas, gpu.device, recreateDepthTexture);
+  recreateDepthTexture();
+  const input = attachInput(canvas);
 
   function tick(): void {}
 
@@ -91,6 +116,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     loop.stop();
     unobserveResize();
     input.detach();
+    depthTexture?.destroy();
     gpu.device.destroy();
   }
 
