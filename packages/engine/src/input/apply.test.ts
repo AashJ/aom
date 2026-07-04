@@ -190,7 +190,7 @@ function distanceXZ(target: Vec3, startX: number, startZ: number): number {
   return Math.sqrt(dx * dx + dz * dz);
 }
 
-test.only("edge scrolling should be graded", () => {
+test("edge scrolling should be graded", () => {
   const canvas = createCanvas();
   const cam1 = createCamera();
   const cam2 = createCamera();

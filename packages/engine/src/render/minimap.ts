@@ -1,4 +1,7 @@
+import { MAX_UNITS, type RenderSnapshot } from "@aom/sim";
+import { screenToGround, type Camera } from "../camera/camera";
 import { DEPTH_FORMAT } from "../gpu/device";
+import * as vec3 from "../math/vec3";
 import minimapWgsl from "../shaders/minimap.wgsl?raw";
 import { MAP_TILES, VERTS_PER_ROW } from "../terrain/heightmap";
 
@@ -7,6 +10,7 @@ export const MINIMAP_TEX_SIZE = 256;
 const SUN_X = 0.466;
 const SUN_Y = 0.828;
 const SUN_Z = 0.311;
+const footprintScratch = vec3.create();
 
 export interface MinimapRenderer {
   draw(
@@ -14,7 +18,22 @@ export interface MinimapRenderer {
     queue: GPUQueue,
     canvasWidth: number,
     canvasHeight: number,
+    camera: Camera,
+    prev: RenderSnapshot,
+    curr: RenderSnapshot,
+    alpha: number,
   ): void;
+}
+
+// Derived from the shader's diamond corner table:
+// world(0,0)->unit(0.5,0) bottom, world(256,256)->unit(0.5,1) top,
+// world(0,256)->unit(1,0.5) right, world(256,0)->unit(0,0.5) left.
+export function worldToMinimapUnit(x: number, z: number, out: Float32Array, offset: number): void {
+  const u = x / MAP_TILES;
+  const v = z / MAP_TILES;
+
+  out[offset] = 0.5 + (v - u) * 0.5;
+  out[offset + 1] = (u + v) * 0.5;
 }
 
 export function buildMinimapTexels(heights: Float32Array): Uint8Array {
@@ -79,12 +98,66 @@ export function createMinimapRenderer(
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const rect = new Float32Array(4);
+  const footprintStaging = new Float32Array(10);
+  const footprintBuffer = device.createBuffer({
+    size: 40,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
+  const dotStaging = new Float32Array(MAX_UNITS * 3);
+  const dotBuffer = device.createBuffer({
+    size: dotStaging.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
+  const dotUniform = new Float32Array(4);
+  const dotUniformBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  // Base pipeline: textured diamond terrain overview.
   const pipeline = device.createRenderPipeline({
     layout: "auto",
-    vertex: { module },
-    fragment: { module, targets: [{ format }] },
+    vertex: { module, entryPoint: "vs" },
+    fragment: { module, entryPoint: "fs", targets: [{ format }] },
     primitive: { topology: "triangle-list" },
     // Overlay: always passes depth and draws over the world because it is drawn last.
+    depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: "always" },
+  });
+  // Footprint pipeline: camera frustum outline in minimap NDC space.
+  const footprintPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module,
+      entryPoint: "vs_line",
+      buffers: [
+        {
+          arrayStride: 8,
+          attributes: [{ format: "float32x2", offset: 0, shaderLocation: 0 }],
+        },
+      ],
+    },
+    fragment: { module, entryPoint: "fs_line", targets: [{ format }] },
+    primitive: { topology: "line-strip" },
+    depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: "always" },
+  });
+  // Dots pipeline: one instanced quad per unit position on the minimap.
+  const dotPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module,
+      entryPoint: "vs_dot",
+      buffers: [
+        {
+          arrayStride: 12,
+          stepMode: "instance",
+          attributes: [
+            { format: "float32x2", offset: 0, shaderLocation: 0 },
+            { format: "float32", offset: 8, shaderLocation: 1 },
+          ],
+        },
+      ],
+    },
+    fragment: { module, entryPoint: "fs_dot", targets: [{ format }] },
+    primitive: { topology: "triangle-list" },
     depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: "always" },
   });
   const bindGroup = device.createBindGroup({
@@ -95,6 +168,10 @@ export function createMinimapRenderer(
       { binding: 2, resource: texture.createView() },
     ],
   });
+  const dotBindGroup = device.createBindGroup({
+    layout: dotPipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: dotUniformBuffer } }],
+  });
 
   device.queue.writeTexture(
     { texture },
@@ -104,7 +181,7 @@ export function createMinimapRenderer(
   );
 
   return {
-    draw(pass, queue, canvasWidth, canvasHeight): void {
+    draw(pass, queue, canvasWidth, canvasHeight, camera, prev, curr, alpha): void {
       const size = Math.round(canvasHeight * 0.32);
       const margin = Math.round(canvasHeight * 0.02);
       const minPxX = canvasWidth - margin - size;
@@ -116,10 +193,68 @@ export function createMinimapRenderer(
       rect[1] = 1 - (minPxY / canvasHeight) * 2;
       rect[2] = (maxPxX / canvasWidth) * 2 - 1;
       rect[3] = 1 - (maxPxY / canvasHeight) * 2;
+      const rectMinX = rect[0]!;
+      const rectMinY = rect[1]!;
+      const rectMaxX = rect[2]!;
+      const rectMaxY = rect[3]!;
+      const rectWidth = rectMaxX - rectMinX;
+      const rectHeight = rectMaxY - rectMinY;
+
       queue.writeBuffer(uniformBuffer, 0, rect);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
       pass.draw(6);
+
+      let drawFootprint = true;
+
+      for (let i = 0; i < 4; i += 1) {
+        const ndcX = i === 0 || i === 3 ? -1 : 1;
+        const ndcY = i < 2 ? -1 : 1;
+
+        if (!screenToGround(camera, ndcX, ndcY, footprintScratch)) {
+          drawFootprint = false;
+          break;
+        }
+
+        const worldX = Math.min(MAP_TILES, Math.max(0, footprintScratch[0]!));
+        const worldZ = Math.min(MAP_TILES, Math.max(0, footprintScratch[2]!));
+        const offset = i * 2;
+
+        worldToMinimapUnit(worldX, worldZ, footprintStaging, offset);
+        footprintStaging[offset] = rectMinX + footprintStaging[offset]! * rectWidth;
+        footprintStaging[offset + 1] = rectMinY + footprintStaging[offset + 1]! * rectHeight;
+      }
+
+      if (drawFootprint) {
+        footprintStaging[8] = footprintStaging[0]!;
+        footprintStaging[9] = footprintStaging[1]!;
+        queue.writeBuffer(footprintBuffer, 0, footprintStaging);
+        pass.setPipeline(footprintPipeline);
+        pass.setVertexBuffer(0, footprintBuffer);
+        pass.draw(5);
+      }
+
+      for (let i = 0; i < curr.count; i += 1) {
+        const prevX = i < prev.count ? prev.posX[i]! : curr.posX[i]!;
+        const prevZ = i < prev.count ? prev.posZ[i]! : curr.posZ[i]!;
+        const x = prevX + (curr.posX[i]! - prevX) * alpha;
+        const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
+        const offset = i * 3;
+
+        worldToMinimapUnit(x, z, dotStaging, offset);
+        dotStaging[offset] = rectMinX + dotStaging[offset]! * rectWidth;
+        dotStaging[offset + 1] = rectMinY + dotStaging[offset + 1]! * rectHeight;
+        dotStaging[offset + 2] = curr.selected[i]!;
+      }
+
+      dotUniform[0] = (2.5 * 2) / canvasWidth;
+      dotUniform[1] = (2.5 * 2) / canvasHeight;
+      queue.writeBuffer(dotBuffer, 0, dotStaging, 0, curr.count * 3);
+      queue.writeBuffer(dotUniformBuffer, 0, dotUniform);
+      pass.setPipeline(dotPipeline);
+      pass.setBindGroup(0, dotBindGroup);
+      pass.setVertexBuffer(0, dotBuffer);
+      pass.draw(6, curr.count);
     },
   };
 }

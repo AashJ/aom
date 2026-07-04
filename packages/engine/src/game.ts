@@ -68,7 +68,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   // CPU terrain data survives device loss; only GPU buffers/pipelines are recreated.
   const heights = generateHeightmap(1337);
   const world = createWorld(1337);
-  spawnDriftingUnits(world, 10_000);
+  spawnDriftingUnits(world, 1_000);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
   writeSnapshot(world, prevSnap);
@@ -149,8 +149,18 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
       alpha,
       heights,
     );
-    minimap.draw(pass, gpu.device.queue, gpu.canvas.width, gpu.canvas.height);
-    statsCollector.frameGauges.drawCalls = visibleChunks + 2;
+    minimap.draw(
+      pass,
+      gpu.device.queue,
+      gpu.canvas.width,
+      gpu.canvas.height,
+      camera,
+      prevSnap,
+      currSnap,
+      alpha,
+    );
+    // +4 = units + minimap base + minimap footprint + minimap dots.
+    statsCollector.frameGauges.drawCalls = visibleChunks + 4;
     statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
