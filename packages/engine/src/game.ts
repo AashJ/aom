@@ -1,5 +1,7 @@
+import { createCamera, updateMatrices } from "./camera/camera";
 import { initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
+import { createGroundRenderer } from "./render/ground";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
 
@@ -28,6 +30,8 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         }
 
         gpu = nextGpu;
+        // GPU resources die with their device, so recreate renderer-owned state.
+        ground = createGroundRenderer(nextGpu.device, nextGpu.format);
 
         if (wasRunning) {
           running = true;
@@ -40,6 +44,8 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   }
 
   let gpu = await initGPU(canvas, handleDeviceLost);
+  const camera = createCamera();
+  let ground = createGroundRenderer(gpu.device, gpu.format);
   const unobserveResize = observeCanvasSize(canvas, gpu.device);
 
   const colorAttachment: GPURenderPassColorAttachment = {
@@ -57,10 +63,12 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   function render(alpha: number): void {
     void alpha;
 
+    updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 
     const encoder = gpu.device.createCommandEncoder();
     const pass = encoder.beginRenderPass(passDescriptor);
+    ground.draw(pass, gpu.device.queue, camera.viewProj);
     pass.end();
     gpu.device.queue.submit([encoder.finish()]);
   }
