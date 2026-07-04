@@ -1,4 +1,4 @@
-import { createCamera, updateMatrices } from "./camera/camera";
+import { createCamera, smoothCamera, updateMatrices } from "./camera/camera";
 import { initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
@@ -67,6 +67,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     void alpha;
 
     applyInput(input.state, camera, dtMs / 1000, canvas);
+    smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 

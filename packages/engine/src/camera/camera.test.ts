@@ -50,32 +50,86 @@ describe("camera", () => {
 
   test("pans in ground-plane view axes and clamps to bounds", () => {
     const cam = camera.createCamera();
+    const startX = cam.goalTarget[0]!;
+    const startY = cam.goalTarget[1]!;
+    const startZ = cam.goalTarget[2]!;
+
+    camera.pan(cam, 0, 10);
+
+    const dx = cam.goalTarget[0]! - startX;
+    const dz = cam.goalTarget[2]! - startZ;
+    expect(Math.sqrt(dx * dx + dz * dz)).toBeCloseTo(10, 4);
+    expect(cam.goalTarget[1]!).toBeCloseTo(startY, 5);
+
+    camera.pan(cam, 10000, 10000);
+
+    expect(cam.goalTarget[0]!).toBeGreaterThanOrEqual(cam.bounds[0]!);
+    expect(cam.goalTarget[0]!).toBeLessThanOrEqual(cam.bounds[2]!);
+    expect(cam.goalTarget[2]!).toBeGreaterThanOrEqual(cam.bounds[1]!);
+    expect(cam.goalTarget[2]!).toBeLessThanOrEqual(cam.bounds[3]!);
+  });
+
+  test("zoom clamps goal distance", () => {
+    const cam = camera.createCamera();
+
+    camera.zoom(cam, 0.0001);
+    expect(cam.goalDistance).toBe(camera.MIN_DISTANCE);
+
+    camera.zoom(cam, 10000);
+    expect(cam.goalDistance).toBe(camera.MAX_DISTANCE);
+  });
+
+  test("pan moves goalTarget and leaves target unchanged until smoothing runs", () => {
+    const cam = camera.createCamera();
     const startX = cam.target[0]!;
     const startY = cam.target[1]!;
     const startZ = cam.target[2]!;
 
     camera.pan(cam, 0, 10);
 
-    const dx = cam.target[0]! - startX;
-    const dz = cam.target[2]! - startZ;
-    expect(Math.sqrt(dx * dx + dz * dz)).toBeCloseTo(10, 4);
+    expect(cam.goalTarget[0]!).not.toBeCloseTo(startX, 5);
+    expect(cam.target[0]!).toBeCloseTo(startX, 5);
     expect(cam.target[1]!).toBeCloseTo(startY, 5);
-
-    camera.pan(cam, 10000, 10000);
-
-    expect(cam.target[0]!).toBeGreaterThanOrEqual(cam.bounds[0]!);
-    expect(cam.target[0]!).toBeLessThanOrEqual(cam.bounds[2]!);
-    expect(cam.target[2]!).toBeGreaterThanOrEqual(cam.bounds[1]!);
-    expect(cam.target[2]!).toBeLessThanOrEqual(cam.bounds[3]!);
+    expect(cam.target[2]!).toBeCloseTo(startZ, 5);
   });
 
-  test("zoom clamps distance", () => {
+  test("zoom changes goalDistance only", () => {
+    const cam = camera.createCamera();
+    const startDistance = cam.distance;
+
+    camera.zoom(cam, 1.5);
+
+    expect(cam.goalDistance).toBeCloseTo(startDistance * 1.5, 5);
+    expect(cam.distance).toBe(startDistance);
+  });
+
+  test("smoothCamera converges and snaps settled state", () => {
     const cam = camera.createCamera();
 
-    camera.zoom(cam, 0.0001);
-    expect(cam.distance).toBe(camera.MIN_DISTANCE);
+    vec3.set(cam.goalTarget, 150, 0, 96);
+    cam.goalDistance = 65;
 
-    camera.zoom(cam, 10000);
-    expect(cam.distance).toBe(camera.MAX_DISTANCE);
+    camera.smoothCamera(cam, 10000);
+
+    expect(cam.target[0]).toBe(cam.goalTarget[0]);
+    expect(cam.target[1]).toBe(cam.goalTarget[1]);
+    expect(cam.target[2]).toBe(cam.goalTarget[2]);
+    expect(cam.distance).toBe(cam.goalDistance);
+  });
+
+  test("smoothCamera is frame-rate independent", () => {
+    const camA = camera.createCamera();
+    const camB = camera.createCamera();
+
+    vec3.set(camA.goalTarget, 170, 0, 90);
+    vec3.set(camB.goalTarget, 170, 0, 90);
+    camA.goalDistance = 80;
+    camB.goalDistance = 80;
+
+    camera.smoothCamera(camA, 50);
+    camera.smoothCamera(camA, 50);
+    camera.smoothCamera(camB, 100);
+
+    expect(camA.distance).toBeCloseTo(camB.distance, 3);
   });
 });

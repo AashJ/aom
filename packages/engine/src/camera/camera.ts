@@ -12,11 +12,16 @@ const FAR = 600;
 export const MIN_DISTANCE = 12;
 export const MAX_DISTANCE = 80;
 
+const SMOOTH_TAU_MS = 80;
+
 const UP = vec3.create(0, 1, 0);
 const nearPoint = vec3.create();
 const farPoint = vec3.create();
 
 export interface Camera {
+  // Input writes goals; smoothCamera eases displayed target/distance toward them; matrices derive from displayed.
+  goalTarget: Vec3;
+  goalDistance: number;
   target: Vec3;
   distance: number;
   bounds: Float32Array;
@@ -30,6 +35,8 @@ export interface Camera {
 
 export function createCamera(): Camera {
   return {
+    goalTarget: vec3.create(128, 0, 128),
+    goalDistance: 40,
     target: vec3.create(128, 0, 128),
     distance: 40,
     bounds: new Float32Array([0, 0, 256, 256]),
@@ -62,7 +69,7 @@ export function pan(camera: Camera, rightUnits: number, forwardUnits: number): v
   const fz = len === 0 ? 0 : vz / len;
   const rx = -fz;
   const rz = fx;
-  const target = camera.target;
+  const target = camera.goalTarget;
   const bounds = camera.bounds;
 
   target[0] = Math.min(
@@ -76,7 +83,31 @@ export function pan(camera: Camera, rightUnits: number, forwardUnits: number): v
 }
 
 export function zoom(camera: Camera, factor: number): void {
-  camera.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, camera.distance * factor));
+  camera.goalDistance = Math.min(
+    MAX_DISTANCE,
+    Math.max(MIN_DISTANCE, camera.goalDistance * factor),
+  );
+}
+
+export function smoothCamera(camera: Camera, dtMs: number): void {
+  // A time-based decay constant makes the glide frame-rate independent: 144 Hz and 60 Hz
+  // settle identically, and about 63% of the gap closes per 80 ms.
+  const k = 1 - Math.exp(-dtMs / SMOOTH_TAU_MS);
+
+  vec3.lerp(camera.target, camera.target, camera.goalTarget, k);
+  camera.distance += (camera.goalDistance - camera.distance) * k;
+
+  const dx = camera.goalTarget[0]! - camera.target[0]!;
+  const dy = camera.goalTarget[1]! - camera.target[1]!;
+  const dz = camera.goalTarget[2]! - camera.target[2]!;
+
+  if (dx * dx + dy * dy + dz * dz < 1e-8) {
+    vec3.copy(camera.target, camera.goalTarget);
+  }
+
+  if (Math.abs(camera.goalDistance - camera.distance) < 1e-5) {
+    camera.distance = camera.goalDistance;
+  }
 }
 
 // Requires updateMatrices() after the last camera mutation. Depth 0/1 are near/far in WebGPU NDC.
