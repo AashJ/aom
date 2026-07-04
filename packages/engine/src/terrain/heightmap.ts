@@ -27,6 +27,26 @@ export function generateHeightmap(seed: number): Float32Array {
   return heights;
 }
 
+export function heightAt(heights: Float32Array, x: number, z: number): number {
+  // Render-side unit Y comes from this in M1; the sim does not know terrain exists yet.
+  const cx = Math.min(MAP_TILES, Math.max(0, x));
+  const cz = Math.min(MAP_TILES, Math.max(0, z));
+  const x0 = Math.floor(cx);
+  const z0 = Math.floor(cz);
+  const x1 = Math.min(MAP_TILES, x0 + 1);
+  const z1 = Math.min(MAP_TILES, z0 + 1);
+  const tx = cx - x0;
+  const tz = cz - z0;
+  const h00 = heights[z0 * VERTS_PER_ROW + x0]!;
+  const h10 = heights[z0 * VERTS_PER_ROW + x1]!;
+  const h01 = heights[z1 * VERTS_PER_ROW + x0]!;
+  const h11 = heights[z1 * VERTS_PER_ROW + x1]!;
+  const hx0 = h00 + (h10 - h00) * tx;
+  const hx1 = h01 + (h11 - h01) * tx;
+
+  return hx0 + (hx1 - hx0) * tz;
+}
+
 function hash2D(ix: number, iz: number, seed: number): number {
   let h = Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + Math.imul(seed, 1274126177);
   h = Math.imul(h ^ (h >>> 13), 1274126177);

@@ -58,6 +58,9 @@
     "packages/engine": {
       "name": "@aom/engine",
       "version": "0.0.0",
+      "dependencies": {
+        "@aom/sim": "workspace:*",
+      },
       "devDependencies": {
         "@aom/config": "workspace:*",
         "@types/bun": "catalog:",
@@ -76,6 +79,15 @@
       "devDependencies": {
         "@aom/config": "workspace:*",
         "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/sim": {
+      "name": "@aom/sim",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@aom/config": "workspace:*",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -130,6 +142,8 @@
     "@aom/engine": ["@aom/engine@workspace:packages/engine"],
 
     "@aom/env": ["@aom/env@workspace:packages/env"],
+
+    "@aom/sim": ["@aom/sim@workspace:packages/sim"],
 
     "@aom/ui": ["@aom/ui@workspace:packages/ui"],
 

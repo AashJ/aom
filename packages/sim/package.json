@@ -1,5 +1,5 @@
 {
-  "name": "@aom/engine",
+  "name": "@aom/sim",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,13 +10,9 @@
     "check-types": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "bun test"
   },
-  "dependencies": {
-    "@aom/sim": "workspace:*"
-  },
   "devDependencies": {
     "@aom/config": "workspace:*",
     "@types/bun": "catalog:",
-    "@webgpu/types": "catalog:",
     "typescript": "catalog:"
   }
 }

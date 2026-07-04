@@ -1,9 +1,19 @@
+import {
+  createSnapshot,
+  createWorld,
+  MAX_UNITS,
+  spawnDriftingUnits,
+  tickWorld,
+  writeSnapshot,
+} from "@aom/sim";
 import { createCamera, smoothCamera, updateMatrices } from "./camera/camera";
 import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
+import { createGpuTimer } from "./render/gpu-timer";
 import { createTerrainRenderer } from "./render/terrain";
+import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
 import { generateHeightmap } from "./terrain/heightmap";
@@ -35,6 +45,9 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
         terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights);
+        units = createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS);
+        gpuTimer = createGpuTimer(nextGpu.device);
+        passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
         recreateDepthTexture();
 
         if (wasRunning) {
@@ -51,7 +64,15 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   const camera = createCamera();
   // CPU terrain data survives device loss; only GPU buffers/pipelines are recreated.
   const heights = generateHeightmap(1337);
+  const world = createWorld(1337);
+  spawnDriftingUnits(world, 1000);
+  let prevSnap = createSnapshot(MAX_UNITS);
+  let currSnap = createSnapshot(MAX_UNITS);
+  writeSnapshot(world, prevSnap);
+  writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights);
+  let units = createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS);
+  let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
 
   const colorAttachment: GPURenderPassColorAttachment = {
@@ -71,6 +92,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   const passDescriptor: GPURenderPassDescriptor = {
     colorAttachments: [colorAttachment],
     depthStencilAttachment: depthAttachment,
+    timestampWrites: gpuTimer.passTimestampWrites,
   };
 
   function recreateDepthTexture(): void {
@@ -89,11 +111,22 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   recreateDepthTexture();
   const input = attachInput(canvas);
 
-  function tick(): void {}
+  function tick(): void {
+    tickWorld(world);
+
+    // Prev/curr double-buffer swap: render interpolates between the last two completed ticks,
+    // so display runs one tick behind real time by design.
+    const tmp = prevSnap;
+    prevSnap = currSnap;
+    currSnap = tmp;
+    writeSnapshot(world, currSnap);
+  }
+
+  function onGpuSample(gpuMs: number): void {
+    statsCollector.frameGauges.gpuMs = gpuMs;
+  }
 
   function render(alpha: number, dtMs: number): void {
-    void alpha;
-
     applyInput(input.state, camera, dtMs / 1000, canvas);
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
@@ -102,10 +135,23 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     const encoder = gpu.device.createCommandEncoder();
     const pass = encoder.beginRenderPass(passDescriptor);
     const visibleChunks = terrain.draw(pass, gpu.device.queue, camera.viewProj, camera.frustum);
+    const instances = units.draw(
+      pass,
+      gpu.device.queue,
+      camera.viewProj,
+      prevSnap,
+      currSnap,
+      alpha,
+      heights,
+    );
+    statsCollector.frameGauges.drawCalls = visibleChunks + 1;
+    statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
     pass.end();
+    gpuTimer.afterPass(encoder);
     gpu.device.queue.submit([encoder.finish()]);
+    gpuTimer.afterSubmit(onGpuSample);
   }
 
   const statsCollector = createStatsCollector();

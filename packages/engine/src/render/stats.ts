@@ -2,7 +2,10 @@ export interface GameStats {
   fps: number;
   frameMsAvg: number;
   frameMsP99: number;
+  gpuMs: number;
   heapMB: number;
+  drawCalls: number;
+  instances: number;
   chunksVisible: number;
   chunksTotal: number;
 }
@@ -19,7 +22,13 @@ interface PerformanceWithMemory extends Performance {
 }
 
 export function createStatsCollector(): {
-  frameGauges: { chunksVisible: number; chunksTotal: number };
+  frameGauges: {
+    gpuMs: number;
+    drawCalls: number;
+    instances: number;
+    chunksVisible: number;
+    chunksTotal: number;
+  };
   sample(frameStart: number, cpuMs: number): void;
   subscribe(cb: StatsCallback): () => void;
 } {
@@ -29,12 +38,15 @@ export function createStatsCollector(): {
     fps: 0,
     frameMsAvg: 0,
     frameMsP99: 0,
+    gpuMs: 0,
     heapMB: 0,
+    drawCalls: 0,
+    instances: 0,
     chunksVisible: 0,
     chunksTotal: 0,
   };
   // Per-frame gauges written by the render path, latched into GameStats at emit time.
-  const frameGauges = { chunksVisible: 0, chunksTotal: 0 };
+  const frameGauges = { gpuMs: 0, drawCalls: 0, instances: 0, chunksVisible: 0, chunksTotal: 0 };
   const callbacks = new Set<StatsCallback>();
 
   let sampleIndex = 0;
@@ -70,6 +82,9 @@ export function createStatsCollector(): {
     stats.fps = (framesSinceEmit * 1000) / elapsed;
     stats.frameMsAvg = total / sampleCount;
     stats.frameMsP99 = scratch[Math.min(sampleCount - 1, Math.floor(sampleCount * 0.99))] ?? 0;
+    stats.gpuMs = frameGauges.gpuMs;
+    stats.drawCalls = frameGauges.drawCalls;
+    stats.instances = frameGauges.instances;
     stats.chunksVisible = frameGauges.chunksVisible;
     stats.chunksTotal = frameGauges.chunksTotal;
 

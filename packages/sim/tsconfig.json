@@ -1,0 +1,8 @@
+{
+  "extends": "@aom/config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": []
+  },
+  "exclude": ["src/**/*.test.ts"]
+}

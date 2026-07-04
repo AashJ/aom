@@ -23,7 +23,10 @@ export async function initGPU(
     throw new WebGPUUnsupportedError();
   }
 
-  const device = await adapter.requestDevice();
+  // Features must be requested at device creation; they cannot be enabled later.
+  const device = await adapter.requestDevice({
+    requiredFeatures: adapter.features.has("timestamp-query") ? ["timestamp-query"] : [],
+  });
   const context = canvas.getContext("webgpu");
 
   if (!context) {
