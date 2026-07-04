@@ -6,6 +6,7 @@ import {
   WebGPUUnsupportedError,
   type GameHandle,
 } from "@aom/engine";
+import { PerfHud } from "@/components/perf-hud";
 
 export const Route = createFileRoute("/game")({
   component: GameComponent,
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/game")({
 function GameComponent() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<"unsupported" | "startup" | null>(null);
+  const [game, setGame] = useState<GameHandle | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,6 +41,7 @@ function GameComponent() {
 
         handle = game;
         game.start();
+        setGame(game);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -57,7 +60,12 @@ function GameComponent() {
     return <GameErrorScreen kind={error} />;
   }
 
-  return <canvas ref={canvasRef} className="block h-dvh w-screen" />;
+  return (
+    <div className="relative h-dvh w-screen">
+      <canvas ref={canvasRef} className="block h-full w-full" />
+      <PerfHud game={game} />
+    </div>
+  );
 }
 
 function GameErrorScreen({ kind }: { kind: "unsupported" | "startup" }) {
