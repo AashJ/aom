@@ -1,6 +1,5 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
-import { packId } from "./ecs/id";
-import type { World } from "./ecs/world";
+import { unitIdAt, type World } from "./ecs/world";
 
 export interface RenderSnapshot {
   tick: number;
@@ -29,7 +28,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
   for (let i = 0; i < world.count; i += 1) {
     // The renderer will use id equality to decide interpolate-vs-snap once swap-remove exists;
     // picking uses it to convert screen hits into command ids.
-    out.ids[i] = packId(i, world.generation[i]!);
+    out.ids[i] = unitIdAt(world, i);
     // f64 sim state narrows to f32 at this boundary: render precision is enough for pixels,
     // while sim keeps f64.
     out.posX[i] = world.posX[i]!;

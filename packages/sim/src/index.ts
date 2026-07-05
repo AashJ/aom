@@ -3,7 +3,14 @@
 export * from "./commands";
 export { idGeneration, idIndex, packId } from "./ecs/id";
 export * from "./ecs/world";
-export { clearSelection, resolveId, SEPARATION_RADIUS, setSelected, unitIdAt } from "./ecs/world";
+export {
+  clearSelection,
+  killUnit,
+  resolveId,
+  SEPARATION_RADIUS,
+  setSelected,
+  unitIdAt,
+} from "./ecs/world";
 export { buildFlowField, cellOf, type FlowField } from "./flow";
 export * from "./hash";
 export * from "./snapshot";

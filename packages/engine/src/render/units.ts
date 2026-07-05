@@ -228,10 +228,12 @@ export async function createUnitsRenderer(
   return {
     draw(pass, queue, viewProj, prev, curr, alpha, heights): number {
       for (let i = 0; i < curr.count; i += 1) {
-        // Counts only differ if spawns happened between snapshots. That cannot happen in M1,
-        // but this avoids reading garbage.
-        const prevX = i < prev.count ? prev.posX[i]! : curr.posX[i]!;
-        const prevZ = i < prev.count ? prev.posZ[i]! : curr.posZ[i]!;
+        // Swap-remove reorders dense slots when units die. Interpolating across an
+        // identity change would smear one unit's position toward another's; snap instead,
+        // one imperceptible frame.
+        const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
+        const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
+        const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
         // Snapshot interpolation is why the double buffer exists: 20 Hz sim ticks can render
         // smoothly at arbitrary display refresh rates.
         const x = prevX + (curr.posX[i]! - prevX) * alpha;

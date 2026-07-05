@@ -435,7 +435,7 @@ Scope: units belong to players; you command only your own; right-click an enemy 
 
 ### M5 open questions (parked, on purpose)
 
-- Ranged units / projectiles (deterministic ballistics is its own design pass).
+- Ranged units are a COMMITTED requirement (archers etc.), not a maybe — M5's combat therefore keeps stats in a per-unit-type table from day one and separates "decide to hit" from "apply damage" so projectiles can slot into that seam. Deterministic projectile flight (travel time, dodgeable arrows) remains its own design pass in a later milestone.
 - Attack-move, stances, formations — command vocabulary beyond point-and-click.
 - Unit types and counters (one unit type in M5; the component layout should not assume it stays that way).
 - Whether target acquisition should respect fog once fog exists (it must — noted for the fog milestone).

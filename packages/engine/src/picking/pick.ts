@@ -43,8 +43,12 @@ export function pickUnit(
   let best = -1;
 
   for (let i = 0; i < curr.count; i += 1) {
-    const prevX = i < prev.count ? prev.posX[i]! : curr.posX[i]!;
-    const prevZ = i < prev.count ? prev.posZ[i]! : curr.posZ[i]!;
+    // Swap-remove reorders dense slots when units die. Interpolating across an
+    // identity change would smear one unit's position toward another's; snap instead,
+    // one imperceptible frame.
+    const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
+    const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
+    const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
     const x = prevX + (curr.posX[i]! - prevX) * alpha;
     const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
     const y = heightAt(heights, x, z);
@@ -217,8 +221,9 @@ export function marqueeSelect(
   const clientHeight = canvas.clientHeight;
 
   for (let i = 0; i < curr.count; i += 1) {
-    const prevX = i < prev.count ? prev.posX[i]! : curr.posX[i]!;
-    const prevZ = i < prev.count ? prev.posZ[i]! : curr.posZ[i]!;
+    const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
+    const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
+    const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
     const x = prevX + (curr.posX[i]! - prevX) * alpha;
     const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
     const y = heightAt(heights, x, z) + UNIT_H * 0.5;

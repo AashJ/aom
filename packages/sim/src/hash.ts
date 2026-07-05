@@ -20,6 +20,10 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
+  word = world.nextHandle >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
   // heights/walkable are static after creation and seed-derived; rehashing constants buys nothing.
   const arrays = [
     world.posX,
@@ -59,10 +63,30 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
-  // Generations are shared state — a client that disagrees about a slot's generation would
-  // accept/reject different commands.
+  // Handle wiring determines which commands resolve — clients must agree on it exactly.
   for (let i = 0; i < world.count; i += 1) {
+    word = world.handleOf[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // Generations are indexed by handle, not dense slot. A client that disagrees about a
+  // handle's generation would accept/reject different commands.
+  for (let i = 0; i < world.nextHandle; i += 1) {
     word = world.generation[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // The free-handle stack decides which handle the NEXT spawn gets. Without it, a
+  // divergence in death bookkeeping could hide until a later spawn surfaces it —
+  // fold it so desyncs are detected at the tick they happen, not ticks later.
+  word = world.freeHandleCount >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
+  for (let i = 0; i < world.freeHandleCount; i += 1) {
+    word = world.freeHandles[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

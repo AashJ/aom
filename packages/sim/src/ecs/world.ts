@@ -35,8 +35,19 @@ export interface World {
   moveTargetX: Float64Array;
   moveTargetZ: Float64Array;
   moving: Uint8Array;
-  // Bumped when a slot's unit dies — next chunk.
+  // Indexed by stable HANDLE, not dense slot. Per-dense-slot generations cannot
+  // survive swap-remove: the moved unit's dense index changes, and its outstanding
+  // ids must stay valid while it lives. Before any death, handle === dense index,
+  // preserving M5 1a's generation-0 numeric equality.
   generation: Uint16Array;
+  slotOf: Int32Array;
+  handleOf: Uint32Array;
+  nextHandle: number;
+  freeHandles: Uint32Array;
+  freeHandleCount: number;
+  dying: Uint8Array;
+  pendingDeaths: Uint32Array;
+  pendingDeathCount: number;
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
@@ -56,6 +67,9 @@ export interface World {
 export function createWorld(seed: number): World {
   const heights = generateHeightmap(seed);
   const walkable = computeWalkable(heights);
+  const slotOf = new Int32Array(MAX_UNITS);
+
+  slotOf.fill(-1);
 
   return {
     tick: 0,
@@ -75,6 +89,14 @@ export function createWorld(seed: number): World {
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
     generation: new Uint16Array(MAX_UNITS),
+    slotOf,
+    handleOf: new Uint32Array(MAX_UNITS),
+    nextHandle: 0,
+    freeHandles: new Uint32Array(MAX_UNITS),
+    freeHandleCount: 0,
+    dying: new Uint8Array(MAX_UNITS),
+    pendingDeaths: new Uint32Array(MAX_UNITS),
+    pendingDeathCount: 0,
     selectable: new Uint8Array(MAX_UNITS),
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
@@ -95,36 +117,54 @@ export function spawnUnit(world: World, x: number, z: number, vx: number, vz: nu
     throw new RangeError("World unit capacity exceeded.");
   }
 
-  const id = world.count;
+  const index = world.count;
+  const handle =
+    world.freeHandleCount > 0 ? world.freeHandles[--world.freeHandleCount]! : world.nextHandle++;
 
-  world.posX[id] = x;
-  world.posZ[id] = z;
-  world.velX[id] = vx;
-  world.velZ[id] = vz;
-  world.moveTargetX[id] = 0;
-  world.moveTargetZ[id] = 0;
-  world.moving[id] = 0;
-  world.selectable[id] = 1;
-  world.selected[id] = 0;
+  world.slotOf[handle] = index;
+  world.handleOf[index] = handle;
+  world.posX[index] = x;
+  world.posZ[index] = z;
+  world.velX[index] = vx;
+  world.velZ[index] = vz;
+  world.moveTargetX[index] = 0;
+  world.moveTargetZ[index] = 0;
+  world.moving[index] = 0;
+  world.selectable[index] = 1;
+  world.selected[index] = 0;
   world.count += 1;
   // Numerically identical while generations are 0; callers holding "indices" from spawnUnit
   // are already holding valid packed ids.
-  return packId(id, world.generation[id]!);
+  return packId(handle, world.generation[handle]!);
 }
 
 export function resolveId(world: World, id: number): number {
-  const index = idIndex(id);
+  const handle = idIndex(id);
 
   // -1 = stale or invalid — a unit that died during the input-delay window; callers treat it
   // as a silent, deterministic no-op. Ordering a corpse around must never be an error and NEVER
-  // a desync.
-  if (index >= world.count || world.generation[index] !== idGeneration(id)) return -1;
-  return index;
+  // a desync. Dead handles keep slotOf = -1, so they resolve to -1 naturally.
+  if (handle >= world.nextHandle || world.generation[handle] !== idGeneration(id)) return -1;
+  return world.slotOf[handle]!;
 }
 
 export function unitIdAt(world: World, index: number): number {
   // How the engine converts a live index — e.g. from selection — into the id a command must carry.
-  return packId(index, world.generation[index]!);
+  const handle = world.handleOf[index]!;
+
+  return packId(handle, world.generation[handle]!);
+}
+
+export function killUnit(world: World, index: number): void {
+  if (index < 0 || index >= world.count || world.dying[index] === 1) {
+    return;
+  }
+
+  // Marks only; removal happens at tick end so mid-tick iteration order is never
+  // disturbed. Callers today: tests; tomorrow: combat.
+  world.dying[index] = 1;
+  world.pendingDeaths[world.pendingDeathCount] = index;
+  world.pendingDeathCount += 1;
 }
 
 export function clearSelection(world: World): void {
@@ -351,7 +391,59 @@ export function tickWorld(world: World): void {
     }
   }
 
+  applyDeaths(world);
+
   world.tick += 1;
+}
+
+function applyDeaths(world: World): void {
+  const deathCount = world.pendingDeathCount;
+
+  if (deathCount === 0) {
+    return;
+  }
+
+  // Fixed order for determinism. Removing high indices first means a swap can
+  // never move a unit that is itself pending removal.
+  world.pendingDeaths.subarray(0, deathCount).sort();
+
+  for (let deathOffset = deathCount - 1; deathOffset >= 0; deathOffset -= 1) {
+    const i = world.pendingDeaths[deathOffset]!;
+    const last = world.count - 1;
+    const handle = world.handleOf[i]!;
+
+    world.slotOf[handle] = -1;
+    world.generation[handle] = (world.generation[handle]! + 1) & 0xffff;
+    world.freeHandles[world.freeHandleCount] = handle;
+    world.freeHandleCount += 1;
+
+    if (i !== last) {
+      // EVERY future per-unit component (owner, hp, cooldown...) must be added
+      // here. Missing one array is a delayed desync, the worst kind.
+      world.posX[i] = world.posX[last]!;
+      world.posZ[i] = world.posZ[last]!;
+      world.velX[i] = world.velX[last]!;
+      world.velZ[i] = world.velZ[last]!;
+      world.moveTargetX[i] = world.moveTargetX[last]!;
+      world.moveTargetZ[i] = world.moveTargetZ[last]!;
+      world.moving[i] = world.moving[last]!;
+      world.selectable[i] = world.selectable[last]!;
+      world.selected[i] = world.selected[last]!;
+      world.unitField[i] = world.unitField[last] ?? null;
+
+      const movedHandle = world.handleOf[last]!;
+
+      world.handleOf[i] = movedHandle;
+      world.slotOf[movedHandle] = i;
+    }
+
+    world.unitField[last] = null;
+    world.count -= 1;
+    world.dying[i] = 0;
+    world.dying[last] = 0;
+  }
+
+  world.pendingDeathCount = 0;
 }
 
 function applyPendingCommands(world: World): void {

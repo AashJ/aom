@@ -5,6 +5,7 @@ import { createPcg32, nextFloat, nextU32 } from "./math/prng";
 import {
   clearSelection,
   createWorld,
+  killUnit,
   resolveId,
   SEPARATION_RADIUS,
   setSelected,
@@ -273,6 +274,175 @@ describe("packed entity ids", () => {
     // A client that disagrees about a slot's generation would accept/reject
     // different commands — the hash must see that.
     expect(hashWorld(world)).not.toBe(before);
+  });
+});
+
+describe("death and swap-remove", () => {
+  test("killing a unit compacts storage and the moved unit's id survives", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 10, 10, 0, 0);
+    spawnUnit(world, 20, 20, 0, 0);
+    const lastId = spawnUnit(world, 30, 30, 0, 0);
+
+    killUnit(world, 0);
+    tickWorld(world);
+
+    expect(world.count).toBe(2);
+    // The last unit was swapped into the freed slot 0 with its data intact...
+    expect(world.posX[0]).toBe(30);
+    // ...and its OLD packed id still resolves to its NEW dense index. This is
+    // the property the handle indirection exists for.
+    expect(resolveId(world, lastId)).toBe(0);
+
+    // Commands addressed to the moved unit keep working across the swap.
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      type: COMMAND_MOVE,
+      unitIds: [lastId],
+      targetX: 60,
+      targetZ: 30,
+    });
+    tickWorld(world);
+    tickWorld(world);
+    expect(world.moving[0]).toBe(1);
+  });
+
+  test("a dead unit's id is stale and commanding it is a no-op", () => {
+    const world = flatWorld(42);
+    const doomed = spawnUnit(world, 10, 10, 0, 0);
+    spawnUnit(world, 20, 20, 0, 0);
+
+    killUnit(world, 0);
+    tickWorld(world);
+
+    expect(resolveId(world, doomed)).toBe(-1);
+
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      type: COMMAND_MOVE,
+      unitIds: [doomed],
+      targetX: 90,
+      targetZ: 90,
+    });
+
+    const before = hashWorld(world);
+    tickWorld(world);
+    tickWorld(world);
+
+    // The survivor (now at slot 0) must not have been moved by the stale id.
+    expect(world.moving[0]).toBe(0);
+    expect(before).not.toBe(hashWorld(world)); // ticks advance the hash...
+    expect(world.posX[0]).toBe(20); // ...but nobody walked anywhere.
+  });
+
+  test("a recycled handle carries a bumped generation", () => {
+    const world = flatWorld(42);
+    const oldId = spawnUnit(world, 10, 10, 0, 0);
+
+    killUnit(world, 0);
+    tickWorld(world);
+    expect(world.count).toBe(0);
+
+    const newId = spawnUnit(world, 50, 50, 0, 0);
+
+    // Same handle slot, different generation: the old id names a ghost.
+    expect(idIndex(newId)).toBe(idIndex(oldId));
+    expect(idGeneration(newId)).toBe(idGeneration(oldId) + 1);
+    expect(resolveId(world, oldId)).toBe(-1);
+    expect(resolveId(world, newId)).toBe(0);
+  });
+
+  test("several deaths in one tick, including the last slot, leave survivors intact", () => {
+    const world = flatWorld(42);
+    const xs = [10, 20, 30, 40, 50];
+
+    for (const x of xs) {
+      spawnUnit(world, x, 5, 0, 0);
+    }
+
+    // Kill 0, 2, and 4 (the last slot) — descending removal must not trip over
+    // its own swaps. Double-killing 2 must count once.
+    killUnit(world, 0);
+    killUnit(world, 2);
+    killUnit(world, 2);
+    killUnit(world, 4);
+    tickWorld(world);
+
+    expect(world.count).toBe(2);
+
+    const survivors = [world.posX[0], world.posX[1]].sort((a, b) => a! - b!);
+
+    expect(survivors).toEqual([20, 40]);
+  });
+
+  test("scripted deaths keep two worlds hash-identical every tick", () => {
+    const build = (): World => {
+      const world = flatWorld(7);
+      spawnUnits(world, 100);
+      return world;
+    };
+    const a = build();
+    const b = build();
+
+    for (let t = 0; t < 120; t += 1) {
+      if (t === 10) {
+        killUnit(a, 3);
+        killUnit(b, 3);
+        killUnit(a, 97);
+        killUnit(b, 97);
+      }
+
+      if (t === 30) {
+        // Command a unit that will die the same tick the command lands.
+        const idA = unitIdAt(a, 50);
+        const idB = unitIdAt(b, 50);
+
+        enqueueCommand(a, {
+          tick: t + 2,
+          type: COMMAND_MOVE,
+          unitIds: [idA],
+          targetX: 5,
+          targetZ: 5,
+        });
+        enqueueCommand(b, {
+          tick: t + 2,
+          type: COMMAND_MOVE,
+          unitIds: [idB],
+          targetX: 5,
+          targetZ: 5,
+        });
+        killUnit(a, 50);
+        killUnit(b, 50);
+      }
+
+      if (t === 60) {
+        // Respawn after deaths: handle reuse order must agree everywhere.
+        spawnUnit(a, 128, 128, 0, 0);
+        spawnUnit(b, 128, 128, 0, 0);
+      }
+
+      tickWorld(a);
+      tickWorld(b);
+      expect(hashWorld(a)).toBe(hashWorld(b));
+    }
+  });
+
+  test("snapshot ids expose the reorder so the renderer can snap", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 5);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+
+    writeSnapshot(world, prev);
+    killUnit(world, 1);
+    tickWorld(world);
+    writeSnapshot(world, curr);
+
+    // Slot 1 now holds a different unit than it did last tick — exactly the
+    // signal the renderer's interpolate-only-on-id-match guard keys on.
+    expect(curr.count).toBe(4);
+    expect(curr.ids[1]).not.toBe(prev.ids[1]);
+    expect(curr.ids[0]).toBe(prev.ids[0]);
   });
 });
 
