@@ -13,5 +13,7 @@ export function isWebGPUSupported(): boolean {
 
 export { initGPU, type DeviceLostCallback, type GpuContext } from "./gpu/device";
 export { observeCanvasSize, type CanvasResizeCallback } from "./gpu/surface";
-export { createGame, type GameHandle } from "./game";
+export { createGame, type GameHandle, type GameOptions } from "./game";
+export { connectToRelay } from "./net/relay";
+export type { BeginInfo, NetEvent, NetSession } from "./net/relay";
 export type { GameStats, StatsCallback } from "./render/stats";

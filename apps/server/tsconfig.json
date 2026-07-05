@@ -1,0 +1,7 @@
+{
+  "extends": "@aom/config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["bun"]
+  }
+}

@@ -11,6 +11,7 @@ import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
+import type { NetSession } from "./net/relay";
 import { createLoopbackSink } from "./net/sink";
 import { consumeCommandInput, consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
@@ -28,10 +29,18 @@ export interface GameHandle {
   onStats(cb: StatsCallback): () => void;
 }
 
-export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle> {
+export interface GameOptions {
+  session?: NetSession;
+}
+
+export async function createGame(
+  canvas: HTMLCanvasElement,
+  options: GameOptions = {},
+): Promise<GameHandle> {
   let disposed = false;
   let running = false;
   let loop: ReturnType<typeof createFrameLoop>;
+  const session = options.session ?? null;
 
   function handleDeviceLost(): void {
     const wasRunning = running;
@@ -79,12 +88,14 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
       });
   }
 
+  // The lobby is React chrome, the match is the engine: createGame never sees lobby states.
+  const beginInfo = session ? await session.begin : null;
+
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
-  const world = createWorld(1337);
-  // Loopback = single-player; the relay sink replaces this line in M4 step 4.
-  const sink = createLoopbackSink(world);
-  // Init handoff: createWorld(1337) derives the same terrain seed the engine used before,
+  const world = createWorld(beginInfo ? beginInfo.seed : 1337);
+  const sink = session ? session.sink : createLoopbackSink(world);
+  // Init handoff: createWorld(seed) derives terrain from the same seed the sim owns,
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
   spawnUnits(world, 1_000);
@@ -136,8 +147,25 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   const unobserveResize = observeCanvasSize(canvas, gpu.device, recreateDepthTexture);
   recreateDepthTexture();
   const input = attachInput(canvas);
+  let blockedTickCalls = 0;
+  let stallNotified = false;
 
-  function tick(): void {
+  function tick(): boolean {
+    if (session) {
+      if (!session.buffer.has(world.tick)) {
+        blockedTickCalls += 1;
+        if (blockedTickCalls >= 5 && !stallNotified) {
+          // ~250 ms at 20 Hz: the waiting-UI threshold from ARCHITECTURE.md.
+          session.notifyStalled(true);
+          stallNotified = true;
+        }
+
+        return false;
+      }
+
+      session.buffer.applyTo(world, world.tick);
+    }
+
     const tickStart = performance.now();
 
     tickWorld(world);
@@ -153,6 +181,16 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
       statsCollector.frameGauges.tickMsMax,
       performance.now() - tickStart,
     );
+
+    if (session) {
+      blockedTickCalls = 0;
+      if (stallNotified) {
+        session.notifyStalled(false);
+        stallNotified = false;
+      }
+    }
+
+    return true;
   }
 
   function onGpuSample(gpuMs: number): void {
@@ -222,6 +260,37 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
   const statsCollector = createStatsCollector();
   loop = createFrameLoop({ render, sample: statsCollector.sample, tick });
+  let hiddenTickTimer = 0;
+
+  function stopHiddenTicking(): void {
+    if (hiddenTickTimer === 0) {
+      return;
+    }
+
+    window.clearInterval(hiddenTickTimer);
+    hiddenTickTimer = 0;
+  }
+
+  function syncHiddenTicking(): void {
+    if (!session || disposed) {
+      return;
+    }
+
+    if (document.hidden) {
+      if (hiddenTickTimer === 0) {
+        // Hidden tabs get no rAF, which would stall every opponent. This interval keeps
+        // consuming turns and ticking the sim with no rendering; ticks are cheap, frames are not.
+        hiddenTickTimer = window.setInterval(() => tick(), 50);
+      }
+    } else {
+      stopHiddenTicking();
+    }
+  }
+
+  if (session) {
+    document.addEventListener("visibilitychange", syncHiddenTicking);
+    syncHiddenTicking();
+  }
 
   function dispose(): void {
     if (disposed) {
@@ -230,6 +299,10 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
     disposed = true;
     running = false;
+    stopHiddenTicking();
+    if (session) {
+      document.removeEventListener("visibilitychange", syncHiddenTicking);
+    }
     loop.stop();
     unobserveResize();
     input.detach();

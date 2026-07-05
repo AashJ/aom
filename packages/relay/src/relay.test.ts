@@ -11,6 +11,7 @@ import {
 } from "@aom/sim";
 import { createSequencer } from "./sequencer";
 import { addPlayer, createRoom, isHost, removePlayer, startRoom } from "./room";
+import { createTurnBuffer } from "./turn-buffer";
 import type { WireCommand } from "./protocol";
 
 function move(unitIds: number[], targetX: number, targetZ: number): WireCommand {
@@ -80,6 +81,97 @@ describe("room", () => {
     // Started rooms reject both late joins and double starts.
     expect(addPlayer(room, "latecomer")).toBeNull();
     expect(startRoom(room, 20)).toBeNull();
+  });
+});
+
+describe("turn buffer", () => {
+  test("gates on received turns, stamps execution ticks, and drains", () => {
+    const buffer = createTurnBuffer();
+    const world = createWorld(42);
+    world.walkable.fill(1);
+    const id = spawnUnit(world, 10, 10, 0, 0);
+
+    expect(buffer.has(0)).toBe(false);
+    expect(buffer.latestReceived()).toBe(-1);
+
+    buffer.push(0, [{ playerId: 0, command: move([id], 40, 10) }]);
+    expect(buffer.has(0)).toBe(true);
+    expect(buffer.latestReceived()).toBe(0);
+
+    buffer.applyTo(world, 0);
+    // The wire command carried no tick; applyTo stamped tick 0, so the very
+    // first tickWorld call applies it.
+    tickWorld(world);
+    expect(world.moving[id]).toBe(1);
+
+    // Drained: the same turn is gone, and applying it again is a caller bug.
+    expect(buffer.has(0)).toBe(false);
+    expect(() => buffer.applyTo(world, 0)).toThrow();
+  });
+
+  test("a lagging client stalls, catches up, and converges bit-identically", () => {
+    // Client A receives turns immediately; client B receives them 3 turns
+    // late. B must pause (gate closed), then fast-forward, and end up in the
+    // exact same state — lockstep's whole promise under jitter.
+    const seq = createSequencer();
+    const bufA = createTurnBuffer();
+    const bufB = createTurnBuffer();
+    const worldA = createWorld(7);
+    const worldB = createWorld(7);
+    worldA.walkable.fill(1);
+    worldB.walkable.fill(1);
+    const idA = spawnUnit(worldA, 10, 10, 0, 0);
+    spawnUnit(worldB, 10, 10, 0, 0);
+    const delayed: { turn: number; commands: ReturnType<typeof seq.closeTurn>["commands"] }[] = [];
+    let stalledTicks = 0;
+
+    for (let t = 0; t < 120; t += 1) {
+      if (t === 4) {
+        seq.submit(0, [move([idA], 40, 10)]);
+      }
+
+      const turnMsg = seq.closeTurn();
+
+      bufA.push(turnMsg.turn, turnMsg.commands);
+      delayed.push(turnMsg);
+
+      // B's network runs 3 turns behind.
+      if (delayed.length > 3) {
+        const late = delayed.shift()!;
+        bufB.push(late.turn, late.commands);
+      }
+
+      // Each client ticks as far as its buffer allows (frame cap 5).
+      for (let n = 0; n < 5 && bufA.has(worldA.tick); n += 1) {
+        bufA.applyTo(worldA, worldA.tick);
+        tickWorld(worldA);
+      }
+
+      for (let n = 0; n < 5 && bufB.has(worldB.tick); n += 1) {
+        bufB.applyTo(worldB, worldB.tick);
+        tickWorld(worldB);
+      }
+
+      if (worldB.tick < worldA.tick) {
+        stalledTicks += 1;
+      }
+    }
+
+    // B genuinely lagged at some point...
+    expect(stalledTicks).toBeGreaterThan(0);
+
+    // ...then drain B's remaining backlog and require bit-identical convergence.
+    while (delayed.length > 0) {
+      const late = delayed.shift()!;
+      bufB.push(late.turn, late.commands);
+    }
+
+    while (worldB.tick < worldA.tick) {
+      bufB.applyTo(worldB, worldB.tick);
+      tickWorld(worldB);
+    }
+
+    expect(hashWorld(worldB)).toBe(hashWorld(worldA));
   });
 });
 

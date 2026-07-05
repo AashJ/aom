@@ -1,23 +1,63 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  connectToRelay,
   createGame,
   isWebGPUSupported,
   WebGPUUnsupportedError,
+  type BeginInfo,
   type GameHandle,
+  type NetSession,
 } from "@aom/engine";
 import { PerfHud } from "@/components/perf-hud";
 
+const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:3002/ws"; // Dev default; production config arrives with deployment.
+
+type PlayerInfo = BeginInfo["players"][number];
+
+interface NetState {
+  players: PlayerInfo[];
+  selfId: number;
+  begun: boolean;
+  stalled: boolean;
+  closed: boolean;
+}
+
+interface GameSearch {
+  room?: string;
+  name?: string;
+}
+
+const initialNetState: NetState = {
+  players: [],
+  selfId: -1,
+  begun: false,
+  stalled: false,
+  closed: false,
+};
+
 export const Route = createFileRoute("/game")({
+  validateSearch: (search): GameSearch => ({
+    room: typeof search.room === "string" ? search.room : undefined,
+    name: typeof search.name === "string" ? search.name : undefined,
+  }),
   component: GameComponent,
 });
 
 function GameComponent() {
+  const { room, name } = Route.useSearch();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sessionRef = useRef<NetSession | null>(null);
+  const begunSessionRef = useRef<NetSession | null>(null);
   const [error, setError] = useState<"unsupported" | "startup" | null>(null);
   const [game, setGame] = useState<GameHandle | null>(null);
+  const [net, setNet] = useState<NetState>(initialNetState);
 
   useEffect(() => {
+    if (room !== undefined) {
+      return;
+    }
+
     const canvas = canvasRef.current;
 
     if (!canvas) {
@@ -54,16 +94,207 @@ function GameComponent() {
       cancelled = true;
       handle?.dispose();
     };
-  }, []);
+  }, [room]);
+
+  useEffect(() => {
+    if (room === undefined) {
+      sessionRef.current = null;
+      begunSessionRef.current = null;
+      setNet(initialNetState);
+      return;
+    }
+
+    setNet(initialNetState);
+
+    // StrictMode's double-mount means join-leave-rejoin against the server — playerIds are not reused, so dev may show a higher id; harmless, noted.
+    const session = connectToRelay(RELAY_URL, room, name ?? "player");
+    sessionRef.current = session;
+    begunSessionRef.current = null;
+
+    const unsubscribe = session.onEvent((event) => {
+      switch (event.kind) {
+        case "roster":
+          setNet((current) => ({
+            ...current,
+            players: event.players,
+            selfId: event.selfId,
+          }));
+          return;
+
+        case "begun":
+          begunSessionRef.current = session;
+          setNet((current) => ({ ...current, begun: true }));
+          return;
+
+        case "stalled":
+          setNet((current) => ({ ...current, stalled: event.stalled }));
+          return;
+
+        case "closed":
+          setNet((current) => ({ ...current, closed: true }));
+          return;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      session.close();
+
+      if (sessionRef.current === session) {
+        sessionRef.current = null;
+      }
+
+      if (begunSessionRef.current === session) {
+        begunSessionRef.current = null;
+      }
+    };
+  }, [room, name]);
+
+  useEffect(() => {
+    if (room === undefined || !net.begun || begunSessionRef.current !== sessionRef.current) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    if (!isWebGPUSupported()) {
+      setError("unsupported");
+      return;
+    }
+
+    let handle: GameHandle | null = null;
+    let cancelled = false;
+
+    void createGame(canvas, { session: sessionRef.current! })
+      .then((game) => {
+        if (cancelled) {
+          game.dispose();
+          return;
+        }
+
+        handle = game;
+        game.start();
+        setGame(game);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof WebGPUUnsupportedError ? "unsupported" : "startup");
+          console.error(err);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      handle?.dispose();
+    };
+  }, [room, net.begun]);
 
   if (error) {
     return <GameErrorScreen kind={error} />;
+  }
+
+  if (room !== undefined && net.closed && !net.begun) {
+    return (
+      <LobbyScreen
+        room={room}
+        players={net.players}
+        selfId={net.selfId}
+        isHost={sessionRef.current?.isHost() ?? false}
+        onStart={() => sessionRef.current?.startMatch()}
+        closed={net.closed}
+      />
+    );
+  }
+
+  if (room !== undefined && !net.begun) {
+    return (
+      <LobbyScreen
+        room={room}
+        players={net.players}
+        selfId={net.selfId}
+        isHost={sessionRef.current?.isHost() ?? false}
+        onStart={() => sessionRef.current?.startMatch()}
+        closed={net.closed}
+      />
+    );
   }
 
   return (
     <div className="relative h-dvh w-screen">
       <canvas ref={canvasRef} className="block h-full w-full" />
       <PerfHud game={game} />
+      {room !== undefined && net.stalled && <StatusPill text="Waiting for players…" />}
+      {/* The tick gate already froze the sim; the pill just says why. */}
+      {room !== undefined && net.closed && <StatusPill text="Connection lost — match paused" />}
+    </div>
+  );
+}
+
+function LobbyScreen({
+  room,
+  players,
+  selfId,
+  isHost,
+  onStart,
+  closed,
+}: {
+  room: string;
+  players: PlayerInfo[];
+  selfId: number;
+  isHost: boolean;
+  onStart: () => void;
+  closed: boolean;
+}) {
+  const hostId = players.reduce(
+    (lowest, player) => Math.min(lowest, player.id),
+    Number.POSITIVE_INFINITY,
+  );
+
+  return (
+    <main className="flex h-dvh items-center justify-center bg-[#0d121a] p-6 text-slate-100">
+      <section className="w-full max-w-md text-center">
+        <h1 className="text-2xl font-semibold tracking-normal text-balance">Lobby — {room}</h1>
+
+        <ul className="mt-6 divide-y divide-white/10 text-left" role="list">
+          {players.map((player) => (
+            <li key={player.id} className="flex items-center justify-between gap-4 py-3">
+              <div className="min-w-0 truncate text-base text-slate-100 sm:text-sm">
+                {player.name}
+              </div>
+              <div className="shrink-0 text-base text-slate-400 sm:text-sm">
+                {player.id === selfId ? " (you)" : ""}
+                {player.id === hostId ? " (host)" : ""}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {closed ? (
+          <p className="mt-6 text-base text-red-300 sm:text-sm">Connection lost.</p>
+        ) : isHost ? (
+          <button
+            type="button"
+            className="mt-6 rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+            onClick={onStart}
+          >
+            Start
+          </button>
+        ) : (
+          <p className="mt-6 text-base text-slate-300 sm:text-sm">Waiting for the host to start…</p>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function StatusPill({ text }: { text: string }) {
+  return (
+    <div className="pointer-events-none absolute top-4 left-1/2 rounded-full bg-black/60 px-3 py-1 text-sm text-slate-100 -translate-x-1/2">
+      {text}
     </div>
   );
 }

@@ -1,23 +1,20 @@
 {
-  "name": "@aom/engine",
+  "name": "server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "scripts": {
-    "check-types": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "test": "bun test"
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@aom/relay": "workspace:*",
-    "@aom/sim": "workspace:*"
+    "hono": "catalog:"
   },
   "devDependencies": {
     "@aom/config": "workspace:*",
     "@types/bun": "catalog:",
-    "@webgpu/types": "catalog:",
     "typescript": "catalog:"
   }
 }
