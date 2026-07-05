@@ -16,4 +16,7 @@ export { observeCanvasSize, type CanvasResizeCallback } from "./gpu/surface";
 export { createGame, type GameHandle, type GameOptions } from "./game";
 export { connectToRelay } from "./net/relay";
 export type { BeginInfo, NetEvent, NetSession } from "./net/relay";
+// The web app consumes the engine's API surface only — it re-exports the wire
+// types it needs so apps/web never depends on @aom/relay directly.
+export type { PlayerInfo } from "@aom/relay";
 export type { GameStats, StatsCallback } from "./render/stats";

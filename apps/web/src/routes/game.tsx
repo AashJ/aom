@@ -1,25 +1,24 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   connectToRelay,
   createGame,
   isWebGPUSupported,
   WebGPUUnsupportedError,
-  type BeginInfo,
   type GameHandle,
   type NetSession,
+  type PlayerInfo,
 } from "@aom/engine";
 import { PerfHud } from "@/components/perf-hud";
 
 const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:3002/ws"; // Dev default; production config arrives with deployment.
-
-type PlayerInfo = BeginInfo["players"][number];
 
 interface NetState {
   players: PlayerInfo[];
   selfId: number;
   begun: boolean;
   stalled: boolean;
+  desyncTick: number | null;
   closed: boolean;
 }
 
@@ -33,6 +32,7 @@ const initialNetState: NetState = {
   selfId: -1,
   begun: false,
   stalled: false,
+  desyncTick: null,
   closed: false,
 };
 
@@ -46,6 +46,7 @@ export const Route = createFileRoute("/game")({
 
 function GameComponent() {
   const { room, name } = Route.useSearch();
+  const playerName = normalizePlayerName(name);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<NetSession | null>(null);
   const begunSessionRef = useRef<NetSession | null>(null);
@@ -97,7 +98,7 @@ function GameComponent() {
   }, [room]);
 
   useEffect(() => {
-    if (room === undefined) {
+    if (room === undefined || playerName === null) {
       sessionRef.current = null;
       begunSessionRef.current = null;
       setNet(initialNetState);
@@ -107,7 +108,7 @@ function GameComponent() {
     setNet(initialNetState);
 
     // StrictMode's double-mount means join-leave-rejoin against the server — playerIds are not reused, so dev may show a higher id; harmless, noted.
-    const session = connectToRelay(RELAY_URL, room, name ?? "player");
+    const session = connectToRelay(RELAY_URL, room, playerName);
     sessionRef.current = session;
     begunSessionRef.current = null;
 
@@ -130,6 +131,10 @@ function GameComponent() {
           setNet((current) => ({ ...current, stalled: event.stalled }));
           return;
 
+        case "desynced":
+          setNet((current) => ({ ...current, desyncTick: event.tick }));
+          return;
+
         case "closed":
           setNet((current) => ({ ...current, closed: true }));
           return;
@@ -148,7 +153,7 @@ function GameComponent() {
         begunSessionRef.current = null;
       }
     };
-  }, [room, name]);
+  }, [room, playerName]);
 
   useEffect(() => {
     if (room === undefined || !net.begun || begunSessionRef.current !== sessionRef.current) {
@@ -197,6 +202,10 @@ function GameComponent() {
     return <GameErrorScreen kind={error} />;
   }
 
+  if (room !== undefined && playerName === null) {
+    return <JoinRoomScreen room={room} />;
+  }
+
   if (room !== undefined && net.closed && !net.begun) {
     return (
       <LobbyScreen
@@ -227,10 +236,65 @@ function GameComponent() {
     <div className="relative h-dvh w-screen">
       <canvas ref={canvasRef} className="block h-full w-full" />
       <PerfHud game={game} />
-      {room !== undefined && net.stalled && <StatusPill text="Waiting for players…" />}
+      {net.desyncTick !== null && (
+        <StatusPill text={`Desync detected at tick ${net.desyncTick} — match halted`} />
+      )}
+      {room !== undefined && net.desyncTick === null && net.stalled && (
+        <StatusPill text="Waiting for players…" />
+      )}
       {/* The tick gate already froze the sim; the pill just says why. */}
       {room !== undefined && net.closed && <StatusPill text="Connection lost — match paused" />}
     </div>
+  );
+}
+
+function JoinRoomScreen({ room }: { room: string }) {
+  const navigate = useNavigate();
+  const [playerName, setPlayerName] = useState("");
+  const canJoin = normalizePlayerName(playerName) !== null;
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const nextName = normalizePlayerName(playerName);
+
+    if (nextName === null) {
+      return;
+    }
+
+    void navigate({
+      to: "/game",
+      search: {
+        room,
+        name: nextName,
+      },
+    });
+  }
+
+  return (
+    <main className="flex h-dvh items-center justify-center bg-[#0d121a] p-6 text-slate-100">
+      <form className="w-full max-w-sm text-center" onSubmit={handleSubmit}>
+        <h1 className="text-2xl font-semibold tracking-normal text-balance">Join {room}</h1>
+        <label className="mt-6 block text-left text-sm font-medium text-slate-300">
+          Name
+          <input
+            value={playerName}
+            onChange={(event) => setPlayerName(event.target.value)}
+            className="mt-2 h-9 w-full rounded-md border border-white/15 bg-white/5 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus-visible:border-sky-300 focus-visible:ring-2 focus-visible:ring-sky-300/30"
+            maxLength={24}
+            autoComplete="nickname"
+            autoFocus
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={!canJoin}
+          className="mt-4 w-full rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 disabled:pointer-events-none disabled:opacity-50"
+        >
+          Join
+        </button>
+      </form>
+    </main>
   );
 }
 
@@ -314,4 +378,9 @@ function GameErrorScreen({ kind }: { kind: "unsupported" | "startup" }) {
       </section>
     </main>
   );
+}
+
+function normalizePlayerName(name: string | undefined) {
+  const trimmed = name?.trim() ?? "";
+  return trimmed === "" ? null : trimmed;
 }

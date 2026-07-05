@@ -1,6 +1,7 @@
 import {
   createSnapshot,
   createWorld,
+  hashWorld,
   MAX_UNITS,
   spawnUnits,
   tickWorld,
@@ -11,6 +12,7 @@ import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
+import { dumpWorldState } from "./net/dump";
 import type { NetSession } from "./net/relay";
 import { createLoopbackSink } from "./net/sink";
 import { consumeCommandInput, consumeSelectionInput } from "./picking/pick";
@@ -152,6 +154,11 @@ export async function createGame(
 
   function tick(): boolean {
     if (session) {
+      if (session.isDesynced()) {
+        // A desynced match freezes forever — detection, not recovery, per the doc.
+        return false;
+      }
+
       if (!session.buffer.has(world.tick)) {
         blockedTickCalls += 1;
         if (blockedTickCalls >= 5 && !stallNotified) {
@@ -183,6 +190,11 @@ export async function createGame(
     );
 
     if (session) {
+      if (world.tick % beginInfo!.hashIntervalTicks === 0) {
+        // world.tick has already advanced — every client hashes at the same post-tick boundaries.
+        session.reportHash(world.tick, hashWorld(world));
+      }
+
       blockedTickCalls = 0;
       if (stallNotified) {
         session.notifyStalled(false);
@@ -203,6 +215,15 @@ export async function createGame(
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
     consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
+    if (input.state.corruptPending) {
+      input.state.corruptPending = false;
+      if (session) {
+        // A DELIBERATE violation of the command seam — the whole point is to simulate the class of bug the hash exchange exists to catch. Networked only; meaningless in single-player.
+        world.posX[0] = world.posX[0]! + 0.001;
+        console.warn("[dev] corrupted posX[0] to force a desync");
+      }
+    }
+
     if (consumeCommandInput(input.state, world, sink, camera, heights, canvas, markerPos)) {
       markerAgeMs = 0;
     }
@@ -292,6 +313,14 @@ export async function createGame(
     syncHiddenTicking();
   }
 
+  const unsubscribeDesync = session
+    ? session.onEvent((event) => {
+        if (event.kind === "desynced") {
+          dumpWorldState(world, event.tick);
+        }
+      })
+    : null;
+
   function dispose(): void {
     if (disposed) {
       return;
@@ -303,6 +332,7 @@ export async function createGame(
     if (session) {
       document.removeEventListener("visibilitychange", syncHiddenTicking);
     }
+    unsubscribeDesync?.();
     loop.stop();
     unobserveResize();
     input.detach();

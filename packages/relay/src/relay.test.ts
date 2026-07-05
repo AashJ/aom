@@ -11,6 +11,7 @@ import {
 } from "@aom/sim";
 import { createSequencer } from "./sequencer";
 import { addPlayer, createRoom, isHost, removePlayer, startRoom } from "./room";
+import { createHashTracker } from "./hash-tracker";
 import { createTurnBuffer } from "./turn-buffer";
 import type { WireCommand } from "./protocol";
 
@@ -81,6 +82,47 @@ describe("room", () => {
     // Started rooms reject both late joins and double starts.
     expect(addPlayer(room, "latecomer")).toBeNull();
     expect(startRoom(room, 20)).toBeNull();
+  });
+});
+
+describe("hash tracker", () => {
+  test("stays silent while reports are pending or matching", () => {
+    const tracker = createHashTracker();
+
+    // Only one of two players has reported: nothing to compare yet.
+    expect(tracker.report(0, 20, 12345, [0, 1])).toBeNull();
+    // Second report matches: healthy silence, and the tick is drained.
+    expect(tracker.report(1, 20, 12345, [0, 1])).toBeNull();
+
+    // The same tick starts fresh after draining — a late duplicate report
+    // becomes a new pending entry, not a comparison against stale data.
+    expect(tracker.report(0, 20, 99999, [0, 1])).toBeNull();
+  });
+
+  test("mismatching reports produce a desync message naming every report", () => {
+    const tracker = createHashTracker();
+
+    expect(tracker.report(0, 40, 111, [0, 1])).toBeNull();
+
+    const desync = tracker.report(1, 40, 222, [0, 1]);
+
+    expect(desync).toMatchObject({
+      kind: "desync",
+      tick: 40,
+      reports: [
+        { playerId: 0, value: 111 },
+        { playerId: 1, value: 222 },
+      ],
+    });
+  });
+
+  test("resolves against the current roster, not the roster at record time", () => {
+    const tracker = createHashTracker();
+
+    // Player 1 reported before leaving; player 0's later report resolves the
+    // tick against the shrunken roster and the leaver's value is irrelevant.
+    expect(tracker.report(1, 60, 555, [0, 1])).toBeNull();
+    expect(tracker.report(0, 60, 777, [0])).toBeNull();
   });
 });
 

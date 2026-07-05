@@ -13,6 +13,7 @@ export type NetEvent =
   | { kind: "roster"; players: PlayerInfo[]; selfId: number }
   | { kind: "begun" }
   | { kind: "stalled"; stalled: boolean }
+  | { kind: "desynced"; tick: number; reports: { playerId: number; value: number }[] }
   | { kind: "closed" };
 
 export interface BeginInfo {
@@ -28,6 +29,8 @@ export interface NetSession {
   readonly begin: Promise<BeginInfo>;
   isHost(): boolean;
   startMatch(): void;
+  reportHash(tick: number, value: number): void;
+  isDesynced(): boolean;
   onEvent(cb: (e: NetEvent) => void): () => void;
   notifyStalled(stalled: boolean): void;
   close(): void;
@@ -63,6 +66,7 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
   let selfId = -1;
   let begun = false;
   let closed = false;
+  let desynced = false;
   let lastStalled: boolean | null = null;
   let resolveBegin!: (info: BeginInfo) => void;
 
@@ -148,6 +152,12 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
         buffer.push(msg.turn, msg.commands);
         return;
 
+      case "desync":
+        // The game loop checks isDesynced and freezes — all clients receive the same broadcast and freeze at the same gate.
+        desynced = true;
+        emit({ kind: "desynced", tick: msg.tick, reports: msg.reports });
+        return;
+
       case "error":
         console.warn("Relay error:", msg.message);
         return;
@@ -177,6 +187,14 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
 
     startMatch(): void {
       send({ v: PROTOCOL_VERSION, kind: "start" });
+    },
+
+    reportHash(tick: number, value: number): void {
+      send({ v: PROTOCOL_VERSION, kind: "hash", tick, value });
+    },
+
+    isDesynced(): boolean {
+      return desynced;
     },
 
     onEvent(cb: (e: NetEvent) => void): () => void {

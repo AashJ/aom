@@ -3,3 +3,4 @@ export * from "./protocol";
 export * from "./sequencer";
 export * from "./room";
 export * from "./turn-buffer";
+export * from "./hash-tracker";

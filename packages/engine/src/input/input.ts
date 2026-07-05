@@ -32,6 +32,7 @@ export interface InputState {
   commandX: number;
   commandY: number;
   stopPending: boolean;
+  corruptPending: boolean;
   marqueePending: boolean;
   marqueeMinX: number;
   marqueeMinY: number;
@@ -66,6 +67,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     commandX: 0,
     commandY: 0,
     stopPending: false,
+    corruptPending: false,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -148,6 +150,12 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     if (event.code === "KeyH" && !event.repeat) {
       // H = halt; S is taken by WASD pan. A consumed intent, unlike the debugOverlay toggle.
       state.stopPending = true;
+      return;
+    }
+
+    if (event.code === "F9" && !event.repeat) {
+      // Dev diagnostic — forces a desync in a networked match; see game.ts.
+      state.corruptPending = true;
       return;
     }
 

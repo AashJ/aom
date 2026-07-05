@@ -138,9 +138,30 @@ export function handleMessage(
       return;
     }
 
-    case "hash":
-      // M4 step 5
+    case "hash": {
+      const room = rooms.get(ws.data.room);
+      if (!room) {
+        const error: ServerMessage = {
+          v: PROTOCOL_VERSION,
+          kind: "error",
+          message: "room not found",
+        };
+        ws.send(JSON.stringify(error));
+        return;
+      }
+
+      const desync = room.hashTracker.report(
+        ws.data.playerId,
+        msg.tick,
+        msg.value,
+        room.players.map((p) => p.id),
+      );
+      if (desync) {
+        // Broadcast to everyone INCLUDING the reporter: all clients freeze together.
+        server.publish(topic(ws.data.room), JSON.stringify(desync));
+      }
       return;
+    }
   }
 }
 

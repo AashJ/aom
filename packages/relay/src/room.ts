@@ -2,6 +2,7 @@
 // ServerMessages the server should send; the server app stays a thin pipe
 // between sockets and these functions.
 import { PROTOCOL_VERSION, type PlayerInfo, type ServerMessage } from "./protocol";
+import { createHashTracker, type HashTracker } from "./hash-tracker";
 import { createSequencer, type Sequencer } from "./sequencer";
 
 export interface Room {
@@ -11,6 +12,7 @@ export interface Room {
   nextPlayerId: number;
   started: boolean;
   sequencer: Sequencer;
+  hashTracker: HashTracker;
 }
 
 export function createRoom(code: string, seed: number): Room {
@@ -21,6 +23,7 @@ export function createRoom(code: string, seed: number): Room {
     nextPlayerId: 0,
     started: false,
     sequencer: createSequencer(),
+    hashTracker: createHashTracker(),
   };
 }
 
