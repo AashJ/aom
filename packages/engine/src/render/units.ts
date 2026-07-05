@@ -139,10 +139,10 @@ export async function createUnitsRenderer(
     usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
   });
   const instanceBuffer = device.createBuffer({
-    size: maxInstances * 20,
+    size: maxInstances * 24,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const staging = new Float32Array(maxInstances * 5);
+  const staging = new Float32Array(maxInstances * 6);
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -168,7 +168,7 @@ export async function createUnitsRenderer(
           ],
         },
         {
-          arrayStride: 20,
+          arrayStride: 24,
           // stepMode "instance" advances this buffer once per instance, not per vertex;
           // that is the whole trick of instancing.
           stepMode: "instance",
@@ -176,6 +176,7 @@ export async function createUnitsRenderer(
             { format: "float32x3", offset: 0, shaderLocation: 3 },
             { format: "float32", offset: 12, shaderLocation: 4 },
             { format: "float32", offset: 16, shaderLocation: 5 },
+            { format: "float32", offset: 20, shaderLocation: 6 },
           ],
         },
       ],
@@ -238,7 +239,7 @@ export async function createUnitsRenderer(
         // smoothly at arbitrary display refresh rates.
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-        const offset = i * 5;
+        const offset = i * 6;
 
         staging[offset] = x;
         staging[offset + 1] = heightAt(heights, x, z);
@@ -253,9 +254,10 @@ export async function createUnitsRenderer(
           alpha,
           unitIndex: i,
         });
+        staging[offset + 5] = curr.owner[i]!;
       }
 
-      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 5);
+      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 6);
       uniformStaging.set(viewProj);
       // Camera basis from the world-to-view matrix, packed as vec3 + padding each.
       uniformStaging[16] = viewProj[0]!;

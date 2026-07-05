@@ -149,7 +149,7 @@ export function createMinimapRenderer(
     size: 40,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const dotStaging = new Float32Array(MAX_UNITS * 3);
+  const dotStaging = new Float32Array(MAX_UNITS * 4);
   const dotBuffer = device.createBuffer({
     size: dotStaging.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -193,11 +193,12 @@ export function createMinimapRenderer(
       entryPoint: "vs_dot",
       buffers: [
         {
-          arrayStride: 12,
+          arrayStride: 16,
           stepMode: "instance",
           attributes: [
             { format: "float32x2", offset: 0, shaderLocation: 0 },
             { format: "float32", offset: 8, shaderLocation: 1 },
+            { format: "float32", offset: 12, shaderLocation: 2 },
           ],
         },
       ],
@@ -288,17 +289,18 @@ export function createMinimapRenderer(
         const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-        const offset = i * 3;
+        const offset = i * 4;
 
         worldToMinimapUnit(x, z, dotStaging, offset);
         dotStaging[offset] = rectMinX + dotStaging[offset]! * rectWidth;
         dotStaging[offset + 1] = rectMinY + dotStaging[offset + 1]! * rectHeight;
         dotStaging[offset + 2] = curr.selected[i]!;
+        dotStaging[offset + 3] = curr.owner[i]!;
       }
 
       dotUniform[0] = (2.5 * 2) / canvasWidth;
       dotUniform[1] = (2.5 * 2) / canvasHeight;
-      queue.writeBuffer(dotBuffer, 0, dotStaging, 0, curr.count * 3);
+      queue.writeBuffer(dotBuffer, 0, dotStaging, 0, curr.count * 4);
       queue.writeBuffer(dotUniformBuffer, 0, dotUniform);
       pass.setPipeline(dotPipeline);
       pass.setBindGroup(0, dotBindGroup);

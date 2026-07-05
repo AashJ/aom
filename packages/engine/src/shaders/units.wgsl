@@ -13,12 +13,20 @@ struct Uniforms {
 
 const VILLAGER_ATLAS_COLUMNS = 7.0;
 const VILLAGER_ATLAS_ROWS = 1.0;
+// Keep in sync with minimap.wgsl.
+const PLAYER_PALETTE = array<vec3f, 4>(
+  vec3f(0.32, 0.48, 0.85),
+  vec3f(0.82, 0.26, 0.20),
+  vec3f(0.30, 0.68, 0.34),
+  vec3f(0.88, 0.72, 0.25),
+);
 
 struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
   @location(1) part: f32,
   @location(2) selected: f32,
+  @location(3) owner: f32,
 }
 
 fn terrainHeight(worldXZ: vec2f) -> f32 {
@@ -45,6 +53,7 @@ fn vs(
   @location(3) instancePos: vec3f,
   @location(4) selected: f32,
   @location(5) frameIndex: f32,
+  @location(6) owner: f32,
 ) -> VertexOut {
   var world: vec3f;
 
@@ -75,6 +84,7 @@ fn vs(
   out.uv = (vec2f(column, row) + uv) / vec2f(VILLAGER_ATLAS_COLUMNS, VILLAGER_ATLAS_ROWS);
   out.part = part;
   out.selected = selected;
+  out.owner = owner;
   return out;
 }
 
@@ -86,7 +96,8 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   let texel = textureSample(spriteTex, spriteSampler, in.uv);
 
   if (in.part > 0.5) {
-    return vec4f(1.0, 0.85, 0.3, 1.0);
+    // Rings only render when selected, so they stay a selection affordance -- owner-hued, white-lifted.
+    return vec4f(mix(PLAYER_PALETTE[u32(in.owner) % 4u], vec3f(1.0), 0.45), 1.0);
   }
 
   // Alpha-cut below 0.5 so transparent sprite regions never write depth and
@@ -95,7 +106,8 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
     discard;
   }
 
-  var color = texel.rgb;
+  // Multiply-tint keeps the sprite's own shading; 0.45 keeps faces readable while armies stay unmistakable.
+  var color = texel.rgb * mix(vec3f(1.0), PLAYER_PALETTE[u32(in.owner) % 4u], 0.45);
   color = mix(color, vec3f(1.0, 0.85, 0.3), in.selected * 0.35);
   return vec4f(color, texel.a);
 }

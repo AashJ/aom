@@ -11,6 +11,14 @@ struct DotUniforms {
 @group(0) @binding(2) var tex: texture_2d<f32>;
 @group(0) @binding(0) var<uniform> u2: DotUniforms;
 
+// Keep in sync with units.wgsl.
+const PLAYER_PALETTE = array<vec3f, 4>(
+  vec3f(0.32, 0.48, 0.85),
+  vec3f(0.82, 0.26, 0.20),
+  vec3f(0.30, 0.68, 0.34),
+  vec3f(0.88, 0.72, 0.25),
+);
+
 struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
@@ -68,6 +76,7 @@ fn fs_line() -> @location(0) vec4f {
 struct DotOut {
   @builtin(position) position: vec4f,
   @location(0) selected: f32,
+  @location(1) owner: f32,
 }
 
 @vertex
@@ -75,6 +84,7 @@ fn vs_dot(
   @builtin(vertex_index) i: u32,
   @location(0) center: vec2f,
   @location(1) selected: f32,
+  @location(2) owner: f32,
 ) -> DotOut {
   var corners = array<vec2f, 6>(
     vec2f(-1.0, -1.0),
@@ -89,12 +99,14 @@ fn vs_dot(
   var out: DotOut;
   out.position = vec4f(pos, 0.0, 1.0);
   out.selected = selected;
+  out.owner = owner;
   return out;
 }
 
 @fragment
 fn fs_dot(in: DotOut) -> @location(0) vec4f {
-  let base = vec3f(0.9, 0.92, 0.95);
+  // Dots are 2-3 px, pure dark hues vanish on the terrain texture.
+  let base = mix(PLAYER_PALETTE[u32(in.owner) % 4u], vec3f(1.0), 0.25);
   let highlight = vec3f(1.0, 0.85, 0.3);
   return vec4f(mix(base, highlight, in.selected), 1.0);
 }
