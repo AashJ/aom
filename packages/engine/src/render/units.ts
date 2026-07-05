@@ -1,4 +1,5 @@
 import { heightAt, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
+import villagerSpriteUrl from "../assets/villager.png";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
 
@@ -17,29 +18,93 @@ export interface UnitsRenderer {
 const RING_SEGMENTS = 32;
 const RING_INNER = 0.75;
 const RING_OUTER = 1.0;
+const SPRITE_HEIGHT = 2.2;
 
-export function createUnitsRenderer(
+let villagerImage: Promise<ImageBitmap> | undefined;
+
+function loadVillagerImage(): Promise<ImageBitmap> {
+  villagerImage ??= fetch(villagerSpriteUrl)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to load villager sprite: ${response.status}`);
+      }
+
+      return response.blob();
+    })
+    .then((blob) => createImageBitmap(blob));
+
+  return villagerImage;
+}
+
+async function createSpriteTexture(device: GPUDevice): Promise<{
+  sampler: GPUSampler;
+  texture: GPUTexture;
+  width: number;
+  height: number;
+}> {
+  const image = await loadVillagerImage();
+  const texture = device.createTexture({
+    size: [image.width, image.height],
+    format: "rgba8unorm",
+    // copyExternalImageToTexture requires RENDER_ATTACHMENT on the destination
+    // (the browser may blit through a render pass); without it the copy fails
+    // validation and the texture stays zeroed.
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+
+  device.queue.copyExternalImageToTexture(
+    { source: image },
+    { texture },
+    { width: image.width, height: image.height },
+  );
+
+  return {
+    sampler: device.createSampler({
+      magFilter: "linear",
+      minFilter: "linear",
+    }),
+    texture,
+    width: image.width,
+    height: image.height,
+  };
+}
+
+export async function createUnitsRenderer(
   device: GPUDevice,
   format: GPUTextureFormat,
   maxInstances: number,
   heights: Float32Array,
-): UnitsRenderer {
-  const cubeVerts = [
-    // position xyz, normal xyz, part (0 = box, 1 = ring)
-    -0.5, 0, 0.5, 0, 0, 1, 0, 0.5, 0, 0.5, 0, 0, 1, 0, 0.5, 1, 0.5, 0, 0, 1, 0, -0.5, 1, 0.5, 0, 0,
-    1, 0, 0.5, 0, -0.5, 0, 0, -1, 0, -0.5, 0, -0.5, 0, 0, -1, 0, -0.5, 1, -0.5, 0, 0, -1, 0, 0.5, 1,
-    -0.5, 0, 0, -1, 0, -0.5, 0, -0.5, -1, 0, 0, 0, -0.5, 0, 0.5, -1, 0, 0, 0, -0.5, 1, 0.5, -1, 0,
-    0, 0, -0.5, 1, -0.5, -1, 0, 0, 0, 0.5, 0, 0.5, 1, 0, 0, 0, 0.5, 0, -0.5, 1, 0, 0, 0, 0.5, 1,
-    -0.5, 1, 0, 0, 0, 0.5, 1, 0.5, 1, 0, 0, 0, -0.5, 1, 0.5, 0, 1, 0, 0, 0.5, 1, 0.5, 0, 1, 0, 0,
-    0.5, 1, -0.5, 0, 1, 0, 0, -0.5, 1, -0.5, 0, 1, 0, 0, -0.5, 0, -0.5, 0, -1, 0, 0, 0.5, 0, -0.5,
-    0, -1, 0, 0, 0.5, 0, 0.5, 0, -1, 0, 0, -0.5, 0, 0.5, 0, -1, 0, 0,
+): Promise<UnitsRenderer> {
+  const sprite = await createSpriteTexture(device);
+  const spriteWidth = SPRITE_HEIGHT * (sprite.width / sprite.height);
+  const verts = [
+    // local xy, uv, part (0 = sprite, 1 = ring)
+    -spriteWidth * 0.5,
+    0,
+    0,
+    1,
+    0,
+    spriteWidth * 0.5,
+    0,
+    1,
+    1,
+    0,
+    spriteWidth * 0.5,
+    SPRITE_HEIGHT,
+    1,
+    0,
+    0,
+    -spriteWidth * 0.5,
+    SPRITE_HEIGHT,
+    0,
+    0,
+    0,
   ];
-  const verts = [...cubeVerts];
-  const indices = [
-    0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11, 12, 13, 14, 12, 14, 15, 16, 17, 18, 16,
-    18, 19, 20, 21, 22, 20, 22, 23,
-  ];
-  const ringBase = cubeVerts.length / 7;
+  const indices = [0, 1, 2, 0, 2, 3];
+  const ringBase = verts.length / 5;
 
   // The old flat ring quad used the unit-center height; across 0.6 world units of sloped terrain
   // its uphill arc dipped under the ground and depth-failed, so the vertex shader drapes this annulus.
@@ -48,8 +113,8 @@ export function createUnitsRenderer(
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
-    verts.push(cos * RING_INNER, 0, sin * RING_INNER, 0, 1, 0, 1);
-    verts.push(cos * RING_OUTER, 0, sin * RING_OUTER, 0, 1, 0, 1);
+    verts.push(cos * RING_INNER, sin * RING_INNER, 0, 0, 1);
+    verts.push(cos * RING_OUTER, sin * RING_OUTER, 0, 0, 1);
   }
 
   for (let s = 0; s < RING_SEGMENTS; s += 1) {
@@ -61,10 +126,10 @@ export function createUnitsRenderer(
     indices.push(i0, i1, o1, i0, o1, o0);
   }
 
-  const cubeData = new Float32Array(verts);
+  const vertexData = new Float32Array(verts);
   const indexData = new Uint16Array(indices);
-  const cubeBuffer = device.createBuffer({
-    size: cubeData.byteLength,
+  const vertexBuffer = device.createBuffer({
+    size: vertexData.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
   const indexBuffer = device.createBuffer({
@@ -76,8 +141,9 @@ export function createUnitsRenderer(
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
   const staging = new Float32Array(maxInstances * 4);
+  const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
-    size: 64,
+    size: uniformStaging.byteLength,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const heightTexture = device.createTexture({
@@ -92,11 +158,11 @@ export function createUnitsRenderer(
       module,
       buffers: [
         {
-          arrayStride: 28,
+          arrayStride: 20,
           attributes: [
-            { format: "float32x3", offset: 0, shaderLocation: 0 },
-            { format: "float32x3", offset: 12, shaderLocation: 1 },
-            { format: "float32", offset: 24, shaderLocation: 2 },
+            { format: "float32x2", offset: 0, shaderLocation: 0 },
+            { format: "float32x2", offset: 8, shaderLocation: 1 },
+            { format: "float32", offset: 16, shaderLocation: 2 },
           ],
         },
         {
@@ -111,8 +177,27 @@ export function createUnitsRenderer(
         },
       ],
     },
-    fragment: { module, targets: [{ format }] },
-    primitive: { topology: "triangle-list", cullMode: "back" },
+    fragment: {
+      module,
+      targets: [
+        {
+          format,
+          blend: {
+            color: {
+              operation: "add",
+              srcFactor: "src-alpha",
+              dstFactor: "one-minus-src-alpha",
+            },
+            alpha: {
+              operation: "add",
+              srcFactor: "one",
+              dstFactor: "one-minus-src-alpha",
+            },
+          },
+        },
+      ],
+    },
+    primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
   });
   const bindGroup = device.createBindGroup({
@@ -120,10 +205,12 @@ export function createUnitsRenderer(
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } },
       { binding: 1, resource: heightTexture.createView() },
+      { binding: 2, resource: sprite.sampler },
+      { binding: 3, resource: sprite.texture.createView() },
     ],
   });
 
-  device.queue.writeBuffer(cubeBuffer, 0, cubeData);
+  device.queue.writeBuffer(vertexBuffer, 0, vertexData);
   device.queue.writeBuffer(indexBuffer, 0, indexData);
   // r32float is not filterable, but the shader uses textureLoad + manual bilinear, so no sampler
   // and no float32-filterable feature is needed. writeTexture has no 256-byte row alignment
@@ -155,14 +242,22 @@ export function createUnitsRenderer(
       }
 
       queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 4);
-      queue.writeBuffer(uniformBuffer, 0, viewProj);
+      uniformStaging.set(viewProj);
+      // Camera basis from the world-to-view matrix, packed as vec3 + padding each.
+      uniformStaging[16] = viewProj[0]!;
+      uniformStaging[17] = viewProj[4]!;
+      uniformStaging[18] = viewProj[8]!;
+      uniformStaging[20] = viewProj[1]!;
+      uniformStaging[21] = viewProj[5]!;
+      uniformStaging[22] = viewProj[9]!;
+      queue.writeBuffer(uniformBuffer, 0, uniformStaging);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
-      pass.setVertexBuffer(0, cubeBuffer);
+      pass.setVertexBuffer(0, vertexBuffer);
       pass.setVertexBuffer(1, instanceBuffer);
       pass.setIndexBuffer(indexBuffer, "uint16");
-      // The cube and draped ring still ride in one instanced draw; draw-call count does not change.
-      pass.drawIndexed(228, curr.count);
+      // The sprite body and draped ring still ride in one instanced draw.
+      pass.drawIndexed(indexData.length, curr.count);
       return curr.count;
     },
   };

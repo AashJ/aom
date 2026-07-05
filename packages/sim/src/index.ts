@@ -3,6 +3,7 @@
 export * from "./commands";
 export * from "./ecs/world";
 export { clearSelection, SEPARATION_RADIUS, setSelected } from "./ecs/world";
+export { buildFlowField, cellOf, type FlowField } from "./flow";
 export * from "./hash";
 export * from "./snapshot";
 export * from "./math/prng";

@@ -1,0 +1,167 @@
+// Flow fields per ARCHITECTURE.md M3: one field serves every unit ordered to the
+// same goal; built at command time (allocation acceptable there, like commands),
+// never per tick. Integer-cost Dijkstra keeps the build fully deterministic; the
+// only floats are the final normalized directions.
+import { MAP_TILES } from "./terrain";
+
+const CELL_COUNT = MAP_TILES * MAP_TILES;
+const UNVISITED = 0xffffffff;
+// Integer 10/14 approximates the 1/sqrt(2) diagonal ratio: the classic
+// grid-Dijkstra trick keeps the whole search in exact integer math.
+const STRAIGHT_COST = 10;
+const DIAGONAL_COST = 14;
+
+// This order is part of the determinism contract and must not be reordered
+// casually: N, NE, E, SE, S, SW, W, NW.
+const NEIGHBOR_DX = new Int8Array([0, 1, 1, 1, 0, -1, -1, -1]);
+const NEIGHBOR_DZ = new Int8Array([-1, -1, 0, 1, 1, 1, 0, -1]);
+const NEIGHBOR_COST = new Uint8Array([
+  STRAIGHT_COST,
+  DIAGONAL_COST,
+  STRAIGHT_COST,
+  DIAGONAL_COST,
+  STRAIGHT_COST,
+  DIAGONAL_COST,
+  STRAIGHT_COST,
+  DIAGONAL_COST,
+]);
+// Unit-length direction from a relaxed neighbor back toward the cell that
+// relaxed it — only 8 possibilities, so no sqrt runs inside the build loops.
+const INV_SQRT2 = 1 / Math.sqrt(2);
+const TOWARD_PRED_X = new Float32Array(8);
+const TOWARD_PRED_Z = new Float32Array(8);
+for (let i = 0; i < 8; i += 1) {
+  const scale = NEIGHBOR_DX[i]! !== 0 && NEIGHBOR_DZ[i]! !== 0 ? INV_SQRT2 : 1;
+  TOWARD_PRED_X[i] = -NEIGHBOR_DX[i]! * scale;
+  TOWARD_PRED_Z[i] = -NEIGHBOR_DZ[i]! * scale;
+}
+
+// Module-level scratch is safe because builds are synchronous and single-threaded.
+// This module is intentionally non-reentrant.
+// Max accumulated cost is well under 2^16 on this map, but Uint32Array is
+// headroom over cleverness rather than a tight bound.
+const costs = new Uint32Array(CELL_COUNT);
+// Dial's algorithm (bucket queue): edge costs are small integers (10/14), so
+// cells are binned by cost and scanned in ascending order — no heap, no log n.
+// Dijkstra's final cost field is unique regardless of pop order, so the derived
+// direction field is bit-identical to the old binary-heap version's.
+// Worst path cost is <= MAP_TILES * 2 * DIAGONAL_COST = 7168; 8192 is headroom.
+const MAX_BUCKET_COST = 8192;
+const bucketHead = new Int32Array(MAX_BUCKET_COST);
+// Pushes append immutable entry slots (cell, next) instead of linking cells
+// intrusively: a cell re-pushed at a cheaper cost would otherwise corrupt the
+// chain of the bucket it already sits in. Stale entries are skipped by
+// comparing against costs[cell] (lazy deletion). Capacity is 4 pushes per cell,
+// same slack the old heap used.
+const ENTRY_CAPACITY = CELL_COUNT * 4;
+const entryCell = new Int32Array(ENTRY_CAPACITY);
+const entryNext = new Int32Array(ENTRY_CAPACITY);
+let entryCount = 0;
+
+function bucketPush(cost: number, cell: number): void {
+  // Both guards are unreachable on this map's cost bounds; if either ever
+  // fires it fires identically on every client, so determinism holds.
+  if (cost >= MAX_BUCKET_COST || entryCount >= ENTRY_CAPACITY) {
+    return;
+  }
+
+  entryCell[entryCount] = cell;
+  entryNext[entryCount] = bucketHead[cost]!;
+  bucketHead[cost] = entryCount;
+  entryCount += 1;
+}
+
+export interface FlowField {
+  goalCell: number;
+  dirX: Float32Array;
+  dirZ: Float32Array;
+}
+
+export function cellOf(x: number, z: number): number {
+  const tileX = Math.min(MAP_TILES - 1, Math.max(0, Math.floor(x)));
+  const tileZ = Math.min(MAP_TILES - 1, Math.max(0, Math.floor(z)));
+
+  return tileZ * MAP_TILES + tileX;
+}
+
+export function buildFlowField(walkable: Uint8Array, goalCell: number): FlowField {
+  // Command-time allocation, not per-tick.
+  const dirX = new Float32Array(CELL_COUNT);
+  const dirZ = new Float32Array(CELL_COUNT);
+
+  if (walkable[goalCell] !== 1) {
+    // Callers remap unwalkable goals to a walkable cell before calling this;
+    // this check is a defensive guard, not a feature.
+    return { goalCell, dirX, dirZ };
+  }
+
+  costs.fill(UNVISITED);
+  costs[goalCell] = 0;
+  bucketHead.fill(-1);
+  entryCount = 0;
+  bucketPush(0, goalCell);
+
+  // Relaxed costs are always >= the bucket being scanned (monotone), so a
+  // single ascending pass over the buckets visits every live entry.
+  for (let currentCost = 0; currentCost < MAX_BUCKET_COST; currentCost += 1) {
+    let entry = bucketHead[currentCost]!;
+
+    while (entry !== -1) {
+      const cell = entryCell[entry]!;
+      entry = entryNext[entry]!;
+
+      if (currentCost !== costs[cell]) {
+        continue;
+      }
+
+      // MAP_TILES is 256, so decompose the cell id with bit ops instead of
+      // % and floor-divide: measurably faster in this hot loop.
+      const tileX = cell & (MAP_TILES - 1);
+      const tileZ = cell >>> 8;
+
+      for (let i = 0; i < NEIGHBOR_DX.length; i += 1) {
+        const dx = NEIGHBOR_DX[i]!;
+        const dz = NEIGHBOR_DZ[i]!;
+        const neighborX = tileX + dx;
+        const neighborZ = tileZ + dz;
+
+        // Check tile bounds explicitly; otherwise cell 255's naive east neighbor
+        // id (255 + 1 = 256) looks in-bounds but is row 1, column 0.
+        if (neighborX < 0 || neighborX >= MAP_TILES || neighborZ < 0 || neighborZ >= MAP_TILES) {
+          continue;
+        }
+
+        const neighbor = neighborZ * MAP_TILES + neighborX;
+
+        if (walkable[neighbor] !== 1) {
+          continue;
+        }
+
+        if (dx !== 0 && dz !== 0) {
+          const sideA = tileZ * MAP_TILES + neighborX;
+          const sideB = neighborZ * MAP_TILES + tileX;
+
+          // Diagonals require both adjacent orthogonal cells so units cannot cut
+          // corners through cliff edges or diagonal gaps.
+          if (walkable[sideA] !== 1 || walkable[sideB] !== 1) {
+            continue;
+          }
+        }
+
+        const candidateCost = currentCost + NEIGHBOR_COST[i]!;
+
+        if (candidateCost < costs[neighbor]!) {
+          costs[neighbor] = candidateCost;
+          // The relaxation that sets a cell's final cost is its optimal
+          // predecessor, so the last write here IS the direction field —
+          // no separate derivation pass needed.
+          dirX[neighbor] = TOWARD_PRED_X[i]!;
+          dirZ[neighbor] = TOWARD_PRED_Z[i]!;
+          bucketPush(candidateCost, neighbor);
+        }
+      }
+    }
+  }
+
+  return { goalCell, dirX, dirZ };
+}

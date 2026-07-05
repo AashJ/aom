@@ -2,6 +2,7 @@
 // trunc/sign, integer ops, and comparisons. Banned: transcendental Math functions,
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
 import { COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
+import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 
@@ -10,6 +11,9 @@ export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 export const UNIT_SPEED = 3;
+const FIELD_CACHE_SIZE = 8;
+const FINAL_APPROACH_DIST = 2;
+const GOAL_REMAP_RADIUS = 8;
 const GRID_CELL = 2;
 const GRID_DIM = SIM_MAP_SIZE / GRID_CELL;
 const GRID_CELLS = GRID_DIM * GRID_DIM;
@@ -33,13 +37,17 @@ export interface World {
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
-  // Per-tick derived scratch, rebuilt from positions each tick. Excluded from hashWorld
-  // because they're a pure function of hashed state.
+  // Per-tick derived scratch and command-time flow caches. Excluded from hashWorld:
+  // grid/push arrays are rebuilt from positions each tick; unitField/fieldCache are
+  // derived flow-field references for current move targets and walkability.
   cellCount: Uint32Array;
   cellStart: Uint32Array;
   cellUnits: Uint32Array;
   pushX: Float64Array;
   pushZ: Float64Array;
+  unitField: (FlowField | null)[];
+  // Tiny LRU keyed by goalCell; groups share one field, that's the whole point of flow fields.
+  fieldCache: FlowField[];
 }
 
 export function createWorld(seed: number): World {
@@ -72,6 +80,9 @@ export function createWorld(seed: number): World {
     cellUnits: new Uint32Array(MAX_UNITS),
     pushX: new Float64Array(MAX_UNITS),
     pushZ: new Float64Array(MAX_UNITS),
+    // oxlint-disable-next-line unicorn/no-new-array
+    unitField: new Array(MAX_UNITS).fill(null),
+    fieldCache: [],
   };
 }
 
@@ -109,10 +120,21 @@ export function setSelected(world: World, id: number, on: boolean): void {
 
 export function spawnUnits(world: World, count: number): void {
   for (let i = 0; i < count; i += 1) {
-    const x = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
-    const z = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
+    let x = 0;
+    let z = 0;
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      x = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
+      z = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
+
+      if (world.walkable[cellOf(x, z)] === 1) {
+        break;
+      }
+    }
 
     // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
+    // Spawn retry consumes a seed-derived, deterministic number of rng draws; spawn layout
+    // shifts vs. step 2, acceptable before anything persists.
     spawnUnit(world, x, z, 0, 0);
   }
 }
@@ -171,13 +193,38 @@ export function tickWorld(world: World): void {
       const dz = world.moveTargetZ[i]! - z;
       const dist = Math.sqrt(dx * dx + dz * dz);
 
-      if (dist <= step) {
-        pushX = dx;
-        pushZ = dz;
-        world.moving[i] = 0;
+      // Fields quantize to tiles; the last stretch needs the exact line so arrival stays bit-exact.
+      if (dist <= FINAL_APPROACH_DIST) {
+        if (dist <= step) {
+          pushX = dx;
+          pushZ = dz;
+          world.moving[i] = 0;
+        } else {
+          pushX = (dx / dist) * step;
+          pushZ = (dz / dist) * step;
+        }
       } else {
-        pushX = (dx / dist) * step;
-        pushZ = (dz / dist) * step;
+        const field = world.unitField[i] ?? null;
+
+        // Most moving units follow their cached goal field.
+        if (field !== null) {
+          const cell = cellOf(x, z);
+          const fdx = field.dirX[cell]!;
+          const fdz = field.dirZ[cell]!;
+
+          if (fdx !== 0 || fdz !== 0) {
+            pushX = fdx * step;
+            pushZ = fdz * step;
+          } else {
+            // Unreachable pockets or unwalkable starts degrade to M3-step-1 behavior instead of freezing.
+            pushX = (dx / dist) * step;
+            pushZ = (dz / dist) * step;
+          }
+        } else {
+          // Belt-and-suspenders: moving units should have a field, but direct seek remains valid.
+          pushX = (dx / dist) * step;
+          pushZ = (dz / dist) * step;
+        }
       }
     }
 
@@ -249,11 +296,38 @@ export function tickWorld(world: World): void {
 
   // 4. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
-    const x = world.posX[i]! + world.pushX[i]!;
-    const z = world.posZ[i]! + world.pushZ[i]!;
+    const oldX = world.posX[i]!;
+    const oldZ = world.posZ[i]!;
+    const x = oldX + world.pushX[i]!;
+    const z = oldZ + world.pushZ[i]!;
+    const nx = x < 0 ? 0 : x > SIM_MAP_SIZE ? SIM_MAP_SIZE : x;
+    const nz = z < 0 ? 0 : z > SIM_MAP_SIZE ? SIM_MAP_SIZE : z;
+    const curTile = cellOf(oldX, oldZ);
+    const nextTile = cellOf(nx, nz);
 
-    world.posX[i] = x < 0 ? 0 : x > SIM_MAP_SIZE ? SIM_MAP_SIZE : x;
-    world.posZ[i] = z < 0 ? 0 : z > SIM_MAP_SIZE ? SIM_MAP_SIZE : z;
+    // Same-tile moves must stay legal or a unit spawned on rock can never leave.
+    if (world.walkable[nextTile] === 1 || nextTile === curTile) {
+      world.posX[i] = nx;
+      world.posZ[i] = nz;
+      continue;
+    }
+
+    const xSlideTile = cellOf(nx, oldZ);
+
+    // Axis sliding turns head-on wall hits into smooth wall-following; the x-then-z
+    // preference is arbitrary but fixed for determinism.
+    if (world.walkable[xSlideTile] === 1 || xSlideTile === curTile) {
+      world.posX[i] = nx;
+      world.posZ[i] = oldZ;
+      continue;
+    }
+
+    const zSlideTile = cellOf(oldX, nz);
+
+    if (world.walkable[zSlideTile] === 1 || zSlideTile === curTile) {
+      world.posX[i] = oldX;
+      world.posZ[i] = nz;
+    }
   }
 
   world.tick += 1;
@@ -270,13 +344,81 @@ function applyPendingCommands(world: World): void {
 
     // Late commands apply ASAP instead of dropping; deterministic because queue order is fixed.
     if (command.type === COMMAND_MOVE) {
-      for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
-        const id = command.unitIds[unitIndex]!;
+      let targetX = command.targetX;
+      let targetZ = command.targetZ;
+      let goalCell = cellOf(targetX, targetZ);
+      let commandField: FlowField | null = null;
 
-        if (id >= 0 && id < world.count) {
-          world.moveTargetX[id] = command.targetX;
-          world.moveTargetZ[id] = command.targetZ;
-          world.moving[id] = 1;
+      if (world.walkable[goalCell] !== 1) {
+        const goalTileX = goalCell % MAP_TILES;
+        const goalTileZ = Math.floor(goalCell / MAP_TILES);
+        let remappedCell = -1;
+
+        // Fixed scan order is determinism; first hit is not the euclidean-nearest
+        // but is stable and close enough - AoM-style "move to the closest reachable spot".
+        for (let r = 1; r <= GOAL_REMAP_RADIUS && remappedCell === -1; r += 1) {
+          for (let dz = -r; dz <= r && remappedCell === -1; dz += 1) {
+            for (let dx = -r; dx <= r; dx += 1) {
+              if (Math.abs(dx) !== r && Math.abs(dz) !== r) {
+                continue;
+              }
+
+              const tileX = goalTileX + dx;
+              const tileZ = goalTileZ + dz;
+
+              if (tileX < 0 || tileX >= MAP_TILES || tileZ < 0 || tileZ >= MAP_TILES) {
+                continue;
+              }
+
+              const candidate = tileZ * MAP_TILES + tileX;
+
+              if (world.walkable[candidate] === 1) {
+                remappedCell = candidate;
+                targetX = tileX + 0.5;
+                targetZ = tileZ + 0.5;
+                break;
+              }
+            }
+          }
+        }
+
+        if (remappedCell === -1) {
+          // Clicked deep inside a mountain; leave existing orders untouched.
+        } else {
+          goalCell = remappedCell;
+        }
+      }
+
+      if (world.walkable[goalCell] === 1) {
+        for (let cacheIndex = 0; cacheIndex < world.fieldCache.length; cacheIndex += 1) {
+          const field = world.fieldCache[cacheIndex]!;
+
+          if (field.goalCell === goalCell) {
+            commandField = field;
+            world.fieldCache.splice(cacheIndex, 1);
+            world.fieldCache.push(field);
+            break;
+          }
+        }
+
+        if (commandField === null) {
+          commandField = buildFlowField(world.walkable, goalCell);
+          world.fieldCache.push(commandField);
+
+          if (world.fieldCache.length > FIELD_CACHE_SIZE) {
+            world.fieldCache.shift();
+          }
+        }
+
+        for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+          const id = command.unitIds[unitIndex]!;
+
+          if (id >= 0 && id < world.count) {
+            world.moveTargetX[id] = targetX;
+            world.moveTargetZ[id] = targetZ;
+            world.moving[id] = 1;
+            world.unitField[id] = commandField;
+          }
         }
       }
     } else if (command.type === COMMAND_STOP) {
@@ -285,6 +427,7 @@ function applyPendingCommands(world: World): void {
 
         if (id >= 0 && id < world.count) {
           world.moving[id] = 0;
+          world.unitField[id] = null;
         }
       }
     }

@@ -263,7 +263,7 @@ Scope: right-click move orders for selected units, pathfinding around unwalkable
 
 ### Flow fields
 
-- Integration field: Dijkstra/BFS (8-neighbor, diagonal cost √2 as a constant) outward from the goal cell over the walkability grid, `Uint16` costs; then a direction field: per cell, the neighbor-descent direction stored as a normalized `(dx, dz)` pair (`Int8` quantized or two `Float32Array`s — decided at implementation).
+- Integration field: Dijkstra outward from the goal cell over the walkability grid — integer costs (10 straight / 14 diagonal, `Uint32`), Dial's bucket queue instead of a binary heap (edge costs are small integers, so buckets beat log-n; measured ~5× faster). Directions are recorded at relaxation time (the relax that sets a cell's final cost is its optimal predecessor) as normalized `(dx, dz)` `Float32Array` pairs from an 8-entry table — no separate derivation pass. Diagonals require both adjacent orthogonals walkable (no corner cutting).
 - Built on command application, cached keyed by goal cell, small LRU (a handful of fields — groups share). Build budget below; if a 256×256 build can't hit it, the fallback is a coarser field grid (128×128) — noted, only if measured over budget.
 
 ### State hashing (M4 prep at ~zero M3 cost)

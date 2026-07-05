@@ -2,7 +2,8 @@
 // of every determinism test (two worlds, same commands -> equal hashes forever).
 // Excludes selectable/selected: per-client UI state, never part of shared lockstep
 // state (ARCHITECTURE.md M3 decision). Also excludes the grid/push scratch arrays
-// cellCount/cellStart/cellUnits/pushX/pushZ, which are rebuilt from hashed state.
+// cellCount/cellStart/cellUnits/pushX/pushZ and flow caches unitField/fieldCache,
+// which are rebuilt or derived from hashed state (moveTargets + walkable).
 import type { World } from "./ecs/world";
 
 const FNV_OFFSET = 0x811c9dc5;

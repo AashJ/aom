@@ -1,15 +1,19 @@
 struct Uniforms {
   viewProj: mat4x4f,
+  // Camera basis, extracted CPU-side from viewProj rows 0/1. Those rows are the
+  // camera right/up axes scaled by the projection, so normalize before use.
+  right: vec4f,
+  up: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var heightTex: texture_2d<f32>;
-
-const SUN_DIR = vec3f(0.466, 0.828, 0.311);
+@group(0) @binding(2) var spriteSampler: sampler;
+@group(0) @binding(3) var spriteTex: texture_2d<f32>;
 
 struct VertexOut {
   @builtin(position) position: vec4f,
-  @location(0) normal: vec3f,
+  @location(0) uv: vec2f,
   @location(1) part: f32,
   @location(2) selected: f32,
 }
@@ -32,28 +36,31 @@ fn terrainHeight(worldXZ: vec2f) -> f32 {
 
 @vertex
 fn vs(
-  @location(0) position: vec3f,
-  @location(1) normal: vec3f,
+  @location(0) local: vec2f,
+  @location(1) uv: vec2f,
   @location(2) part: f32,
   @location(3) instancePos: vec3f,
   @location(4) selected: f32,
 ) -> VertexOut {
-  let hidden = part * (1.0 - step(0.5, selected));
-  // Hidden ring verts collapse to zero-area triangles, so one draw serves selected
-  // and unselected units without shader branching cost.
-  let local = position * (1.0 - hidden);
-  var world = vec3f(local.x * 0.6, local.y * 1.2, local.z * 0.6) + instancePos;
+  var world: vec3f;
 
   if (part > 0.5) {
-    let ringWorldXZ = instancePos.xz + local.xz * 0.6;
-    // Each ring vertex sits on the terrain under it, not under the unit center; collapsed verts
-    // all sample the unit center, staying degenerate.
-    world = vec3f(ringWorldXZ.x, terrainHeight(ringWorldXZ) + 0.08, ringWorldXZ.y);
+    // Ring verts reuse local.xy as ground-plane XZ offsets. Unselected rings
+    // collapse to the instance origin (zero-area triangles rasterize nothing).
+    let ringOffset = local * step(0.5, selected);
+    let ringXZ = instancePos.xz + ringOffset;
+    world = vec3f(ringXZ.x, terrainHeight(ringXZ) + 0.08, ringXZ.y);
+  } else {
+    // Billboard: span the quad on the camera's right/up axes so the sprite
+    // always faces the view; feet stay anchored at the instance position.
+    let right = normalize(u.right.xyz);
+    let upAxis = normalize(u.up.xyz);
+    world = instancePos + right * local.x + upAxis * local.y;
   }
 
   var out: VertexOut;
   out.position = u.viewProj * vec4f(world, 1.0);
-  out.normal = normal;
+  out.uv = uv;
   out.part = part;
   out.selected = selected;
   return out;
@@ -61,16 +68,22 @@ fn vs(
 
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
+  // Sample before any branching: textureSample uses derivatives, which WGSL
+  // only allows in uniform control flow. Ring fragments sample uv (0,0) and
+  // ignore the result.
+  let texel = textureSample(spriteTex, spriteSampler, in.uv);
+
   if (in.part > 0.5) {
-    // Geometry replaced the discard trick.
     return vec4f(1.0, 0.85, 0.3, 1.0);
   }
 
-  let normal = normalize(in.normal);
-  var color = vec3f(0.30, 0.44, 0.72);
+  // Alpha-cut below 0.5 so transparent sprite regions never write depth and
+  // punch holes in sprites behind them; blending softens the surviving edge.
+  if (texel.a < 0.5) {
+    discard;
+  }
 
-  color = mix(color, vec3f(0.95, 0.9, 0.5), in.selected * 0.6);
-  color *= 0.45 + 0.55 * max(dot(normal, SUN_DIR), 0.0);
-
-  return vec4f(color, 1.0);
+  var color = texel.rgb;
+  color = mix(color, vec3f(1.0, 0.85, 0.3), in.selected * 0.35);
+  return vec4f(color, texel.a);
 }

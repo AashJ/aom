@@ -37,7 +37,21 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     running = false;
 
     void initGPU(canvas, handleDeviceLost)
-      .then((nextGpu) => {
+      .then(async (nextGpu) => {
+        if (disposed) {
+          nextGpu.device.destroy();
+          return;
+        }
+
+        // Units renderer creation is async (sprite decode); the image itself is
+        // cached across device loss, only GPU resources are rebuilt.
+        const nextUnits = await createUnitsRenderer(
+          nextGpu.device,
+          nextGpu.format,
+          MAX_UNITS,
+          heights,
+        );
+
         if (disposed) {
           nextGpu.device.destroy();
           return;
@@ -46,7 +60,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
         terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights, world.walkable);
-        units = createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS, heights);
+        units = nextUnits;
         minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
         gpuTimer = createGpuTimer(nextGpu.device);
         passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
@@ -74,7 +88,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
-  let units = createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
+  let units = await createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;

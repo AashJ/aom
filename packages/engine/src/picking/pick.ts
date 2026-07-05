@@ -14,8 +14,9 @@ import * as vec3 from "../math/vec3";
 import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
 
-const HALF_W = 0.3;
-const UNIT_H = 1.2;
+// Approximates the billboard sprite (2.2 tall, ~1.2 wide) as an upright box.
+const HALF_W = 0.5;
+const UNIT_H = 2.2;
 
 const rayOrigin = vec3.create();
 const rayDir = vec3.create();

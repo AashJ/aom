@@ -4,8 +4,10 @@
 import { heightAt, MAP_TILES } from "@aom/sim";
 import type { Vec3 } from "../math/vec3";
 
-// Conservative bound only used to clip the search range.
-const MAX_TERRAIN_HEIGHT = 24;
+// Conservative bound only used to clip the search range. The shaped generator
+// peaks around 20; keep real headroom so a future amplitude bump cannot
+// silently make clicks miss mountaintops.
+const MAX_TERRAIN_HEIGHT = 32;
 // World units between samples - half a tile; finer than any generator feature.
 const COARSE_STEP = 0.5;
 // 0.5 / 2^8 ~= 2 mm precision.
