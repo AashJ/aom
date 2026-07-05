@@ -19,4 +19,6 @@ export type { BeginInfo, NetEvent, NetSession } from "./net/relay";
 // The web app consumes the engine's API surface only — it re-exports the wire
 // types it needs so apps/web never depends on @aom/relay directly.
 export type { PlayerInfo } from "@aom/relay";
+// The web app reads outcome sentinels through the engine API surface.
+export { MATCH_DRAW } from "@aom/sim";
 export type { GameStats, StatsCallback } from "./render/stats";

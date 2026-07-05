@@ -28,6 +28,7 @@ export interface GameHandle {
   start(): void;
   stop(): void;
   dispose(): void;
+  onMatchEnd(cb: (winner: number) => void): () => void;
   onStats(cb: StatsCallback): () => void;
 }
 
@@ -43,6 +44,8 @@ export async function createGame(
   let running = false;
   let loop: ReturnType<typeof createFrameLoop>;
   const session = options.session ?? null;
+  const matchEndCbs = new Set<(winner: number) => void>();
+  let matchEnded = false;
 
   function handleDeviceLost(): void {
     const wasRunning = running;
@@ -216,32 +219,36 @@ export async function createGame(
     applyCameraTerrain(camera, heights, dtMs);
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
-    consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
-    if (input.state.corruptPending) {
-      input.state.corruptPending = false;
-      if (session) {
-        // A DELIBERATE violation of the command seam — the whole point is to simulate the class of bug the hash exchange exists to catch. Networked only; meaningless in single-player.
-        world.posX[0] = world.posX[0]! + 0.001;
-        console.warn("[dev] corrupted posX[0] to force a desync");
-      }
-    }
 
-    const issued = consumeCommandInput(
-      input.state,
-      world,
-      sink,
-      selfPlayerId,
-      camera,
-      prevSnap,
-      currSnap,
-      alpha,
-      heights,
-      canvas,
-      markerPos,
-    );
-    if (issued !== 0) {
-      markerAgeMs = 0;
-      markerKind = issued;
+    // the war is over — commands die here, but the camera stays live to survey the aftermath; the sim keeps ticking peacefully and identically on every client.
+    if (!matchEnded) {
+      consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
+      if (input.state.corruptPending) {
+        input.state.corruptPending = false;
+        if (session) {
+          // A DELIBERATE violation of the command seam — the whole point is to simulate the class of bug the hash exchange exists to catch. Networked only; meaningless in single-player.
+          world.posX[0] = world.posX[0]! + 0.001;
+          console.warn("[dev] corrupted posX[0] to force a desync");
+        }
+      }
+
+      const issued = consumeCommandInput(
+        input.state,
+        world,
+        sink,
+        selfPlayerId,
+        camera,
+        prevSnap,
+        currSnap,
+        alpha,
+        heights,
+        canvas,
+        markerPos,
+      );
+      if (issued !== 0) {
+        markerAgeMs = 0;
+        markerKind = issued;
+      }
     }
     markerAgeMs += dtMs;
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
@@ -295,6 +302,14 @@ export async function createGame(
     gpuTimer.afterPass(encoder);
     gpu.device.queue.submit([encoder.finish()]);
     gpuTimer.afterSubmit(onGpuSample);
+
+    // the sim decided the outcome ticks ago and hashed it; the engine only announces. Fires once.
+    if (!matchEnded && currSnap.winner !== -1) {
+      matchEnded = true;
+      for (const cb of matchEndCbs) {
+        cb(currSnap.winner);
+      }
+    }
   }
 
   const statsCollector = createStatsCollector();
@@ -360,6 +375,14 @@ export async function createGame(
 
   return {
     dispose,
+    onMatchEnd(cb: (winner: number) => void): () => void {
+      matchEndCbs.add(cb);
+      // React effects may attach after a fast finish.
+      if (matchEnded) {
+        cb(currSnap.winner);
+      }
+      return () => matchEndCbs.delete(cb);
+    },
     onStats: statsCollector.subscribe,
     start(): void {
       if (disposed) {

@@ -4,6 +4,7 @@ import { Button } from "@aom/ui/components/button";
 import { Input } from "@aom/ui/components/input";
 import { Copy } from "lucide-react";
 import {
+  MATCH_DRAW,
   connectToRelay,
   createGame,
   isWebGPUSupported,
@@ -57,6 +58,7 @@ function GameComponent() {
   const begunSessionRef = useRef<NetSession | null>(null);
   const [error, setError] = useState<"unsupported" | "startup" | null>(null);
   const [game, setGame] = useState<GameHandle | null>(null);
+  const [matchWinner, setMatchWinner] = useState<number | null>(null);
   const [net, setNet] = useState<NetState>(initialNetState);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ function GameComponent() {
     }
 
     let handle: GameHandle | null = null;
+    let unsubEnd: (() => void) | null = null;
     let cancelled = false;
 
     void createGame(canvas)
@@ -88,6 +91,7 @@ function GameComponent() {
         handle = game;
         game.start();
         setGame(game);
+        unsubEnd = game.onMatchEnd(setMatchWinner);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -98,6 +102,7 @@ function GameComponent() {
 
     return () => {
       cancelled = true;
+      unsubEnd?.();
       handle?.dispose();
     };
   }, [room]);
@@ -181,6 +186,7 @@ function GameComponent() {
     }
 
     let handle: GameHandle | null = null;
+    let unsubEnd: (() => void) | null = null;
     let cancelled = false;
 
     void createGame(canvas, { session: sessionRef.current! })
@@ -193,6 +199,7 @@ function GameComponent() {
         handle = game;
         game.start();
         setGame(game);
+        unsubEnd = game.onMatchEnd(setMatchWinner);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -203,6 +210,7 @@ function GameComponent() {
 
     return () => {
       cancelled = true;
+      unsubEnd?.();
       handle?.dispose();
     };
   }, [room, net.begun]);
@@ -257,6 +265,10 @@ function GameComponent() {
       )}
       {/* The tick gate already froze the sim; the pill just says why. */}
       {room !== undefined && net.closed && <StatusPill text="Connection lost — match paused" />}
+      {/* single-player self is player 0; solo worlds never declare, so this only shows in real matches... and dev-forced ones. */}
+      {matchWinner !== null && (
+        <MatchEndScreen winner={matchWinner} selfId={room !== undefined ? net.selfId : 0} />
+      )}
     </div>
   );
 }
@@ -411,6 +423,30 @@ function StatusPill({ text }: { text: string }) {
   return (
     <div className="pointer-events-none absolute top-4 left-1/2 rounded-full bg-black/60 px-3 py-1 text-sm text-slate-100 -translate-x-1/2">
       {text}
+    </div>
+  );
+}
+
+function MatchEndScreen({ winner, selfId }: { winner: number; selfId: number }) {
+  const isDraw = winner === MATCH_DRAW;
+  const heading = isDraw ? "Draw" : winner === selfId ? "Victory" : "Defeat";
+  const subtitle = isDraw
+    ? "Mutual annihilation."
+    : winner === selfId
+      ? ""
+      : "Your army has fallen.";
+  const headingClassName = isDraw
+    ? "text-slate-200"
+    : winner === selfId
+      ? "text-amber-300"
+      : "text-red-300";
+
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
+      <div className="text-center">
+        <h1 className={`text-5xl font-semibold ${headingClassName}`}>{heading}</h1>
+        {subtitle !== "" && <p className="mt-3 text-sm text-slate-300">{subtitle}</p>}
+      </div>
     </div>
   );
 }
