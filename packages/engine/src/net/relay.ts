@@ -31,6 +31,7 @@ export interface NetSession {
   startMatch(): void;
   reportHash(tick: number, value: number): void;
   isDesynced(): boolean;
+  pingMs(): number;
   onEvent(cb: (e: NetEvent) => void): () => void;
   notifyStalled(stalled: boolean): void;
   close(): void;
@@ -66,6 +67,9 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
   let selfId = -1;
   let begun = false;
   let closed = false;
+  let pingMs = 0;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
+  let closedIntentionally = false;
   let desynced = false;
   let lastStalled: boolean | null = null;
   let resolveBegin!: (info: BeginInfo) => void;
@@ -100,6 +104,9 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
 
   ws.addEventListener("open", () => {
     send({ v: PROTOCOL_VERSION, kind: "join", room, name });
+    pingInterval = setInterval(() => {
+      send({ v: PROTOCOL_VERSION, kind: "ping", t: performance.now() });
+    }, 2000);
   });
 
   ws.addEventListener("message", (event: MessageEvent) => {
@@ -158,6 +165,10 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
         emit({ kind: "desynced", tick: msg.tick, reports: msg.reports });
         return;
 
+      case "pong":
+        pingMs = Math.round(performance.now() - msg.t);
+        return;
+
       case "error":
         console.warn("Relay error:", msg.message);
         return;
@@ -167,7 +178,16 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
     }
   });
 
-  ws.addEventListener("close", emitClosed);
+  ws.addEventListener("close", () => {
+    if (pingInterval !== null) {
+      clearInterval(pingInterval);
+      pingInterval = null;
+    }
+
+    if (!closedIntentionally) {
+      emitClosed();
+    }
+  });
   ws.addEventListener("error", emitClosed);
 
   return {
@@ -197,6 +217,10 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
       return desynced;
     },
 
+    pingMs(): number {
+      return pingMs;
+    },
+
     onEvent(cb: (e: NetEvent) => void): () => void {
       subscribers.add(cb);
       return () => subscribers.delete(cb);
@@ -212,6 +236,12 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
     },
 
     close(): void {
+      // An unmount is not a failure; the closed event is for the OTHER kind of goodbye.
+      closedIntentionally = true;
+      if (pingInterval !== null) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
       ws.close();
     },
   };

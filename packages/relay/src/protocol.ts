@@ -43,6 +43,12 @@ export type ClientMessage =
       kind: "hash";
       tick: number;
       value: number;
+    }
+  | {
+      v: typeof PROTOCOL_VERSION;
+      kind: "ping";
+      // t is an opaque client timestamp echoed verbatim; the server never interprets it; RTT is computed entirely client-side.
+      t: number;
     };
 
 export type ServerMessage =
@@ -80,6 +86,12 @@ export type ServerMessage =
       kind: "desync";
       tick: number;
       reports: { playerId: number; value: number }[];
+    }
+  | {
+      v: typeof PROTOCOL_VERSION;
+      kind: "pong";
+      // t is an opaque client timestamp echoed verbatim; the server never interprets it; RTT is computed entirely client-side.
+      t: number;
     }
   | {
       v: typeof PROTOCOL_VERSION;

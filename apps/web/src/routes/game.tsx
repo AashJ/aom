@@ -1,5 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Button } from "@aom/ui/components/button";
+import { Input } from "@aom/ui/components/input";
+import { Copy } from "lucide-react";
 import {
   connectToRelay,
   createGame,
@@ -17,6 +20,7 @@ interface NetState {
   players: PlayerInfo[];
   selfId: number;
   begun: boolean;
+  playersAtBegin: number;
   stalled: boolean;
   desyncTick: number | null;
   closed: boolean;
@@ -31,6 +35,7 @@ const initialNetState: NetState = {
   players: [],
   selfId: -1,
   begun: false,
+  playersAtBegin: 0,
   stalled: false,
   desyncTick: null,
   closed: false,
@@ -124,7 +129,11 @@ function GameComponent() {
 
         case "begun":
           begunSessionRef.current = session;
-          setNet((current) => ({ ...current, begun: true }));
+          setNet((current) => ({
+            ...current,
+            begun: true,
+            playersAtBegin: current.players.length,
+          }));
           return;
 
         case "stalled":
@@ -242,6 +251,10 @@ function GameComponent() {
       {room !== undefined && net.desyncTick === null && net.stalled && (
         <StatusPill text="Waiting for players…" />
       )}
+      {/* Lockstep survives a leaver — turns keep flowing and the hash tracker resolves against the live roster; this pill is informational, not an error. */}
+      {net.begun && net.playersAtBegin > 0 && net.players.length < net.playersAtBegin && (
+        <StatusPill text="A player left the match" />
+      )}
       {/* The tick gate already froze the sim; the pill just says why. */}
       {room !== undefined && net.closed && <StatusPill text="Connection lost — match paused" />}
     </div>
@@ -277,7 +290,7 @@ function JoinRoomScreen({ room }: { room: string }) {
         <h1 className="text-2xl font-semibold tracking-normal text-balance">Join {room}</h1>
         <label className="mt-6 block text-left text-sm font-medium text-slate-300">
           Name
-          <input
+          <Input
             value={playerName}
             onChange={(event) => setPlayerName(event.target.value)}
             className="mt-2 h-9 w-full rounded-md border border-white/15 bg-white/5 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus-visible:border-sky-300 focus-visible:ring-2 focus-visible:ring-sky-300/30"
@@ -286,13 +299,14 @@ function JoinRoomScreen({ room }: { room: string }) {
             autoFocus
           />
         </label>
-        <button
+        <Button
           type="submit"
           disabled={!canJoin}
+          size="lg"
           className="mt-4 w-full rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 disabled:pointer-events-none disabled:opacity-50"
         >
           Join
-        </button>
+        </Button>
       </form>
     </main>
   );
@@ -317,6 +331,17 @@ function LobbyScreen({
     (lowest, player) => Math.min(lowest, player.id),
     Number.POSITIVE_INFINITY,
   );
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function handleCopyInvite() {
+    try {
+      await navigator.clipboard.writeText(createInviteUrl(room));
+      setCopyState("copied");
+    } catch (err) {
+      console.error(err);
+      setCopyState("failed");
+    }
+  }
 
   return (
     <main className="flex h-dvh items-center justify-center bg-[#0d121a] p-6 text-slate-100">
@@ -339,16 +364,43 @@ function LobbyScreen({
 
         {closed ? (
           <p className="mt-6 text-base text-red-300 sm:text-sm">Connection lost.</p>
-        ) : isHost ? (
-          <button
-            type="button"
-            className="mt-6 rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
-            onClick={onStart}
-          >
-            Start
-          </button>
         ) : (
-          <p className="mt-6 text-base text-slate-300 sm:text-sm">Waiting for the host to start…</p>
+          <>
+            <div className="mt-6 flex flex-col items-stretch justify-center gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="rounded-md border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 outline-none hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+                onClick={handleCopyInvite}
+              >
+                <Copy className="size-4" aria-hidden="true" />
+                Copy Invite Link
+              </Button>
+              {isHost && (
+                <Button
+                  type="button"
+                  size="lg"
+                  className="rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+                  onClick={onStart}
+                >
+                  Start
+                </Button>
+              )}
+            </div>
+
+            {copyState !== "idle" && (
+              <p className="mt-3 text-base text-slate-300 sm:text-sm">
+                {copyState === "copied" ? "Invite copied." : "Copy failed."}
+              </p>
+            )}
+
+            {!isHost && (
+              <p className="mt-6 text-base text-slate-300 sm:text-sm">
+                Waiting for the host to start…
+              </p>
+            )}
+          </>
         )}
       </section>
     </main>
@@ -383,4 +435,14 @@ function GameErrorScreen({ kind }: { kind: "unsupported" | "startup" }) {
 function normalizePlayerName(name: string | undefined) {
   const trimmed = name?.trim() ?? "";
   return trimmed === "" ? null : trimmed;
+}
+
+function createInviteUrl(room: string) {
+  const path = `/game?room=${encodeURIComponent(room)}`;
+
+  if (typeof window === "undefined") {
+    return path;
+  }
+
+  return new URL(path, window.location.origin).toString();
 }

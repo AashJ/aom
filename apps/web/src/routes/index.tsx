@@ -1,9 +1,9 @@
-import { buttonVariants } from "@aom/ui/components/button";
+import { Button, buttonVariants } from "@aom/ui/components/button";
 import { Input } from "@aom/ui/components/input";
 import { cn } from "@aom/ui/lib/utils";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, Share2, Swords } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { RefreshCw, Swords } from "lucide-react";
+import { type FormEvent, useState } from "react";
 
 export const Route = createFileRoute("/")({
   component: HomeComponent,
@@ -13,8 +13,6 @@ function HomeComponent() {
   const navigate = useNavigate();
   const [playerName, setPlayerName] = useState("Aash");
   const [roomCode, setRoomCode] = useState(() => createRoomCode());
-  const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
-  const inviteUrl = useMemo(() => createInviteUrl(roomCode), [roomCode]);
   const normalizedName = normalizePlayerName(playerName) ?? "Player";
 
   function handleStartMultiplayer(event: FormEvent<HTMLFormElement>) {
@@ -29,35 +27,8 @@ function HomeComponent() {
     });
   }
 
-  async function handleShareInvite() {
-    const shareData = {
-      title: "AoM Online duel",
-      text: `Join room ${roomCode}`,
-      url: inviteUrl,
-    };
-
-    try {
-      if (navigator.share !== undefined && navigator.canShare?.(shareData) !== false) {
-        await navigator.share(shareData);
-        setShareState("shared");
-        return;
-      }
-
-      await navigator.clipboard.writeText(inviteUrl);
-      setShareState("copied");
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        return;
-      }
-
-      console.error(err);
-      setShareState("failed");
-    }
-  }
-
   function handleRefreshRoomCode() {
     setRoomCode(createRoomCode());
-    setShareState("idle");
   }
 
   return (
@@ -129,14 +100,18 @@ function HomeComponent() {
                     >
                       Room
                     </label>
-                    <button
+                    <Button
                       type="button"
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-display text-xs font-medium text-[#f7d46b] outline-none hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b]"
+                      variant="ghost"
+                      size="xs"
+                      className="rounded-full font-display text-[#f7d46b] hover:bg-white/10 hover:text-[#f7d46b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b]"
                       onClick={handleRefreshRoomCode}
+                      aria-label="Generate new room code"
+                      title="New room"
                     >
                       <RefreshCw className="size-3.5" aria-hidden="true" />
                       New
-                    </button>
+                    </Button>
                   </div>
                   <Input
                     id="multiplayer-room"
@@ -146,35 +121,15 @@ function HomeComponent() {
                   />
                 </div>
 
-                <div className="grid grid-cols-[1fr_auto] gap-2 pt-1">
-                  <button
-                    type="submit"
-                    className={cn(
-                      buttonVariants({ variant: "default", size: "lg" }),
-                      "mythic-menu-button h-8 rounded-full border-2 border-[#d8bb5a] px-3 font-display text-base font-medium hover:mythic-menu-button-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b] sm:h-7 sm:text-sm",
-                    )}
-                  >
-                    <Swords className="size-4" aria-hidden="true" />
-                    Multiplayer
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      buttonVariants({ variant: "secondary", size: "lg" }),
-                      "h-8 rounded-full border-2 border-[#d8bb5a] bg-[#0b1247]/90 px-3 font-display text-base font-medium text-[#f7d46b] hover:bg-[#18206b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b] sm:h-7 sm:text-sm",
-                    )}
-                    onClick={handleShareInvite}
-                  >
-                    <Share2 className="size-4" aria-hidden="true" />
-                    Share
-                  </button>
-                </div>
-
-                <div className="min-h-4 truncate text-center font-display text-xs text-[#f3e6bc]/80">
-                  {shareState === "copied" && "Invite copied"}
-                  {shareState === "shared" && "Invite shared"}
-                  {shareState === "failed" && "Share unavailable"}
-                </div>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="lg"
+                  className="mythic-menu-button h-8 rounded-full border-2 border-[#d8bb5a] px-3 font-display text-base font-medium text-[#f7d46b] hover:mythic-menu-button-hover hover:text-[#f7d46b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b] sm:h-7 sm:text-sm"
+                >
+                  <Swords className="size-4" aria-hidden="true" />
+                  Multiplayer
+                </Button>
               </form>
             </div>
           </div>
@@ -205,16 +160,6 @@ function createRoomCode() {
   }
 
   return code;
-}
-
-function createInviteUrl(roomCode: string) {
-  const path = `/game?room=${encodeURIComponent(roomCode)}`;
-
-  if (typeof window === "undefined") {
-    return path;
-  }
-
-  return new URL(path, window.location.origin).toString();
 }
 
 function normalizePlayerName(name: string) {

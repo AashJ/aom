@@ -3,6 +3,7 @@ export interface GameStats {
   frameMsAvg: number;
   frameMsP99: number;
   gpuMs: number;
+  pingMs: number;
   tickMsMax: number;
   heapMB: number;
   drawCalls: number;
@@ -25,6 +26,7 @@ interface PerformanceWithMemory extends Performance {
 export function createStatsCollector(): {
   frameGauges: {
     gpuMs: number;
+    pingMs: number;
     tickMsMax: number;
     drawCalls: number;
     instances: number;
@@ -41,6 +43,7 @@ export function createStatsCollector(): {
     frameMsAvg: 0,
     frameMsP99: 0,
     gpuMs: 0,
+    pingMs: 0,
     tickMsMax: 0,
     heapMB: 0,
     drawCalls: 0,
@@ -53,6 +56,7 @@ export function createStatsCollector(): {
   // a single tick and a last-value gauge would hide exactly those spikes.
   const frameGauges = {
     gpuMs: 0,
+    pingMs: 0,
     tickMsMax: 0,
     drawCalls: 0,
     instances: 0,
@@ -95,6 +99,7 @@ export function createStatsCollector(): {
     stats.frameMsAvg = total / sampleCount;
     stats.frameMsP99 = scratch[Math.min(sampleCount - 1, Math.floor(sampleCount * 0.99))] ?? 0;
     stats.gpuMs = frameGauges.gpuMs;
+    stats.pingMs = frameGauges.pingMs;
     stats.tickMsMax = frameGauges.tickMsMax;
     stats.drawCalls = frameGauges.drawCalls;
     stats.instances = frameGauges.instances;

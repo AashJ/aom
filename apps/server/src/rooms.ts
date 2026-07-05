@@ -49,6 +49,11 @@ export function handleMessage(
   }
 
   switch (msg.kind) {
+    case "ping": {
+      ws.send(JSON.stringify({ v: PROTOCOL_VERSION, kind: "pong", t: msg.t }));
+      return;
+    }
+
     case "join": {
       let room = rooms.get(msg.room);
       if (!room) {

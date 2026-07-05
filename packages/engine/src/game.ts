@@ -273,6 +273,7 @@ export async function createGame(
     statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
+    statsCollector.frameGauges.pingMs = session ? session.pingMs() : 0;
     pass.end();
     gpuTimer.afterPass(encoder);
     gpu.device.queue.submit([encoder.finish()]);
