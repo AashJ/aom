@@ -6,8 +6,11 @@ export {
   FOOD,
   LEASH_FACTOR,
   RESOURCE_COUNT,
+  TYPE_BARRACKS,
   TYPE_BERRY,
+  TYPE_HOUSE,
   TYPE_MILITIA,
+  TYPE_TOWN_CENTER,
   TYPE_TREE,
   TYPE_VILLAGER,
   UNIT_TYPES,
@@ -16,7 +19,9 @@ export {
 } from "./ecs/types";
 export * from "./ecs/world";
 export {
+  canPlaceBuilding,
   clearSelection,
+  flushFlowFields,
   killUnit,
   MATCH_DRAW,
   MAX_PLAYERS,
@@ -25,6 +30,7 @@ export {
   resolveId,
   SEPARATION_RADIUS,
   setSelected,
+  spawnBuilding,
   spawnResourceNodes,
   unitIdAt,
 } from "./ecs/world";

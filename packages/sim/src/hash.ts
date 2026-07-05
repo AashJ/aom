@@ -29,7 +29,7 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
-  // heights/walkable are static after creation and seed-derived; rehashing constants buys nothing.
+  // heights are static after creation and seed-derived; rehashing constants buys nothing.
   const arrays = [
     world.posX,
     world.posZ,
@@ -78,6 +78,16 @@ export function hashWorld(world: World): number {
   // Stockpiles are shared economy state; a one-unit disagreement means different affordability outcomes later.
   for (let i = 0; i < world.stockpiles.length; i += 1) {
     word = world.stockpiles[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // walkability is dynamic state as of M6-2: buildings stamp it. It is technically
+  // derivable from hashed entity state, but hashing it surfaces a stamping desync
+  // at the edit tick instead of ticks later when pathing diverges - the free-handle-stack
+  // argument again.
+  for (let i = 0; i < world.walkable.length; i += 1) {
+    word = world.walkable[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

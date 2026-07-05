@@ -9,6 +9,17 @@ export interface UnitTypeStats {
   attackCooldownTicks: number;
   isStatic: boolean;
   resource: number;
+  // Melee reach measures to the target's surface, not center; without this, a chaser stops
+  // at a big building's unwalkable footprint edge, outside attack range, and orbits forever.
+  bodyRadius: number;
+  // Tiles per side, square; 0 = no footprint.
+  footprint: number;
+  // Consumed by M6-3/4/5/6; the building table is completed in one pass here.
+  costFood: number;
+  costWood: number;
+  buildTicks: number;
+  popBonus: number;
+  isDropsite: boolean;
 }
 
 // Resources are table rows, not subsystems; gold/favor are future rows.
@@ -20,6 +31,9 @@ export const TYPE_VILLAGER = 0;
 export const TYPE_MILITIA = 1;
 export const TYPE_TREE = 2;
 export const TYPE_BERRY = 3;
+export const TYPE_TOWN_CENTER = 4;
+export const TYPE_HOUSE = 5;
+export const TYPE_BARRACKS = 6;
 
 export const UNIT_TYPES: readonly UnitTypeStats[] = [
   {
@@ -30,6 +44,13 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     attackCooldownTicks: 20,
     isStatic: false,
     resource: -1,
+    bodyRadius: 0.3,
+    footprint: 0,
+    costFood: 0,
+    costWood: 0,
+    buildTicks: 0,
+    popBonus: 0,
+    isDropsite: false,
   },
   {
     // Differentiation is a future balance pass.
@@ -40,6 +61,13 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     attackCooldownTicks: 20,
     isStatic: false,
     resource: -1,
+    bodyRadius: 0.3,
+    footprint: 0,
+    costFood: 0,
+    costWood: 0,
+    buildTicks: 0,
+    popBonus: 0,
+    isDropsite: false,
   },
   {
     // HP is the remaining stock; depletion is death, and swap-remove already handles it.
@@ -50,6 +78,13 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     attackCooldownTicks: 0,
     isStatic: true,
     resource: WOOD,
+    bodyRadius: 0.5,
+    footprint: 0,
+    costFood: 0,
+    costWood: 0,
+    buildTicks: 0,
+    popBonus: 0,
+    isDropsite: false,
   },
   {
     maxHp: 100,
@@ -59,6 +94,61 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     attackCooldownTicks: 0,
     isStatic: true,
     resource: FOOD,
+    bodyRadius: 0.5,
+    footprint: 0,
+    costFood: 0,
+    costWood: 0,
+    buildTicks: 0,
+    popBonus: 0,
+    isDropsite: false,
+  },
+  {
+    maxHp: 2400,
+    attackDamage: 0,
+    attackRange: 0,
+    aggroRange: 0,
+    attackCooldownTicks: 0,
+    isStatic: true,
+    resource: -1,
+    bodyRadius: 2.9,
+    footprint: 4,
+    costFood: 0,
+    costWood: 300,
+    buildTicks: 300,
+    popBonus: 15,
+    isDropsite: true,
+  },
+  {
+    maxHp: 600,
+    attackDamage: 0,
+    attackRange: 0,
+    aggroRange: 0,
+    attackCooldownTicks: 0,
+    isStatic: true,
+    resource: -1,
+    bodyRadius: 1.5,
+    footprint: 2,
+    costFood: 0,
+    costWood: 60,
+    buildTicks: 120,
+    popBonus: 10,
+    isDropsite: false,
+  },
+  {
+    maxHp: 1200,
+    attackDamage: 0,
+    attackRange: 0,
+    aggroRange: 0,
+    attackCooldownTicks: 0,
+    isStatic: true,
+    resource: -1,
+    bodyRadius: 2.2,
+    footprint: 3,
+    costFood: 0,
+    costWood: 120,
+    buildTicks: 200,
+    popBonus: 0,
+    isDropsite: false,
   },
 ];
 

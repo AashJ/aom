@@ -11,6 +11,7 @@ import {
   LEASH_FACTOR,
   RESOURCE_COUNT,
   TYPE_BERRY,
+  TYPE_TOWN_CENTER,
   TYPE_TREE,
   UNIT_TYPES,
   WOOD,
@@ -47,6 +48,15 @@ const START_CORNERS = [
   [216, 40],
   [40, 216],
 ] as const;
+const MAX_TARGET_BODY_RADIUS = (() => {
+  let maxRadius = 0;
+
+  for (let type = 0; type < UNIT_TYPES.length; type += 1) {
+    maxRadius = Math.max(maxRadius, UNIT_TYPES[type]!.bodyRadius);
+  }
+
+  return maxRadius;
+})();
 
 export interface World {
   tick: number;
@@ -198,6 +208,61 @@ export function spawnUnit(
   return packId(handle, world.generation[handle]!);
 }
 
+export function flushFlowFields(world: World): void {
+  // Fields are derived from walkability; any walkability edit invalidates every cached path.
+  // Units mid-move fall back to direct seek until their next field fetch: graceful, deterministic.
+  world.fieldCache.length = 0;
+  world.unitField.fill(null);
+}
+
+export function canPlaceBuilding(
+  world: World,
+  tileX: number,
+  tileZ: number,
+  type: number,
+): boolean {
+  const footprint = UNIT_TYPES[type]!.footprint;
+
+  // walkable doubles as the occupancy grid: mountains, other buildings, and map edges all reject
+  // placement through one check. Units standing in the footprint are not checked; M6-4 decides
+  // that policy.
+  for (let z = tileZ; z < tileZ + footprint; z += 1) {
+    for (let x = tileX; x < tileX + footprint; x += 1) {
+      if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) {
+        return false;
+      }
+
+      if (world.walkable[z * MAP_TILES + x] !== 1) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+export function spawnBuilding(
+  world: World,
+  tileX: number,
+  tileZ: number,
+  owner: number,
+  type: number,
+): number {
+  const footprint = UNIT_TYPES[type]!.footprint;
+  const id = spawnUnit(world, tileX + footprint / 2, tileZ + footprint / 2, 0, 0, owner, type);
+
+  // Buildings enter complete in M6-2; construction states arrive with M6-5.
+  for (let z = tileZ; z < tileZ + footprint; z += 1) {
+    for (let x = tileX; x < tileX + footprint; x += 1) {
+      world.walkable[z * MAP_TILES + x] = 0;
+    }
+  }
+
+  flushFlowFields(world);
+
+  return id;
+}
+
 export function resolveId(world: World, id: number): number {
   const handle = idIndex(id);
 
@@ -276,6 +341,10 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
     const owner = ownerIds[ownerIndex]!;
     const [centerX, centerZ] = START_CORNERS[ownerIndex]!;
     const unitsForOwner = baseCount + (ownerIndex < extraCount ? 1 : 0);
+
+    // Placed before units so the walkable-resample naturally keeps the army off the footprint;
+    // deterministic order is preserved.
+    spawnBuilding(world, centerX - 2, centerZ - 2, owner, TYPE_TOWN_CENTER);
 
     for (let i = 0; i < unitsForOwner; i += 1) {
       let x = 0;
@@ -458,8 +527,12 @@ export function tickWorld(world: World): void {
         const dx = world.posX[target]! - world.posX[i]!;
         const dz = world.posZ[target]! - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
-        const attackRangeSq = stats.attackRange * stats.attackRange;
+        const surfaceAttackRange =
+          stats.attackRange + UNIT_TYPES[world.unitType[target]!]!.bodyRadius;
+        const attackRangeSq = surfaceAttackRange * surfaceAttackRange;
 
+        // Range checks use target surface reach; large footprints are unwalkable, so center-range
+        // melee would stop outside valid strike distance and orbit.
         if (distSq <= attackRangeSq) {
           world.moving[i] = 0;
           world.unitField[i] = null;
@@ -498,8 +571,8 @@ export function tickWorld(world: World): void {
 
       const x = world.posX[i]!;
       const z = world.posZ[i]!;
-      const aggroRangeSq = stats.aggroRange * stats.aggroRange;
-      const searchRadius = Math.ceil(stats.aggroRange / GRID_CELL);
+      const aggroSearchRange = stats.aggroRange + MAX_TARGET_BODY_RADIUS;
+      const searchRadius = Math.ceil(aggroSearchRange / GRID_CELL);
       const rawCellX = Math.floor(x / GRID_CELL);
       const rawCellZ = Math.floor(z / GRID_CELL);
       const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
@@ -509,7 +582,7 @@ export function tickWorld(world: World): void {
       const minCellZ = cellZ > searchRadius ? cellZ - searchRadius : 0;
       const maxCellZ = cellZ < GRID_DIM - 1 - searchRadius ? cellZ + searchRadius : GRID_DIM - 1;
       let bestIndex = -1;
-      let bestDistSq = aggroRangeSq;
+      let bestDistSq = aggroSearchRange * aggroSearchRange;
 
       for (let neighborCellZ = minCellZ; neighborCellZ <= maxCellZ; neighborCellZ += 1) {
         for (let neighborCellX = minCellX; neighborCellX <= maxCellX; neighborCellX += 1) {
@@ -528,8 +601,10 @@ export function tickWorld(world: World): void {
             const dx = world.posX[j]! - x;
             const dz = world.posZ[j]! - z;
             const distSq = dx * dx + dz * dz;
+            const surfaceAggroRange = stats.aggroRange + UNIT_TYPES[world.unitType[j]!]!.bodyRadius;
 
-            if (distSq > aggroRangeSq) {
+            // A large building's edge can be inside aggro range while its center is not.
+            if (distSq > surfaceAggroRange * surfaceAggroRange) {
               continue;
             }
 
@@ -773,6 +848,8 @@ function applyDeaths(world: World): void {
     return;
   }
 
+  let restoredFootprint = false;
+
   // Fixed order for determinism. Removing high indices first means a swap can
   // never move a unit that is itself pending removal.
   world.pendingDeaths.subarray(0, deathCount).sort();
@@ -781,6 +858,22 @@ function applyDeaths(world: World): void {
     const i = world.pendingDeaths[deathOffset]!;
     const last = world.count - 1;
     const handle = world.handleOf[i]!;
+    const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
+
+    if (footprint > 0) {
+      // Exact because building centers are constructed from integer origin tiles.
+      const tileX = Math.round(world.posX[i]! - footprint / 2);
+      const tileZ = Math.round(world.posZ[i]! - footprint / 2);
+
+      // Rubble does not obstruct: destroyed buildings unblock immediately.
+      for (let z = tileZ; z < tileZ + footprint; z += 1) {
+        for (let x = tileX; x < tileX + footprint; x += 1) {
+          world.walkable[z * MAP_TILES + x] = 1;
+        }
+      }
+
+      restoredFootprint = true;
+    }
 
     world.slotOf[handle] = -1;
     world.generation[handle] = (world.generation[handle]! + 1) & 0xffff;
@@ -820,6 +913,11 @@ function applyDeaths(world: World): void {
   }
 
   world.pendingDeathCount = 0;
+
+  if (restoredFootprint) {
+    // One invalidation per death batch, not per building.
+    flushFlowFields(world);
+  }
 }
 
 function applyPendingCommands(world: World): void {

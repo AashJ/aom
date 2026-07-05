@@ -6,12 +6,15 @@ import {
   LEASH_FACTOR,
   RESOURCE_COUNT,
   TYPE_BERRY,
+  TYPE_HOUSE,
+  TYPE_TOWN_CENTER,
   TYPE_TREE,
   UNIT_TYPES,
   WOOD,
 } from "./ecs/types";
 import { createPcg32, nextFloat, nextU32 } from "./math/prng";
 import {
+  canPlaceBuilding,
   clearSelection,
   createWorld,
   killUnit,
@@ -19,6 +22,7 @@ import {
   NEUTRAL_OWNER,
   NO_TARGET,
   resolveId,
+  spawnBuilding,
   spawnResourceNodes,
   SEPARATION_RADIUS,
   setSelected,
@@ -372,12 +376,21 @@ describe("ownership", () => {
     expect(hashWorld(a)).toBe(hashWorld(b));
 
     // Owners are the ACTUAL ids from the roster (non-contiguous is normal).
-    let owner3 = 0;
-    let owner8 = 0;
+    // As of M6-2 each owner also gets a pre-placed Town Center.
+    let owner3Villagers = 0;
+    let owner8Villagers = 0;
+    let owner3TCs = 0;
+    let owner8TCs = 0;
 
     for (let i = 0; i < a.count; i += 1) {
-      if (a.owner[i] === 3) owner3 += 1;
-      if (a.owner[i] === 8) owner8 += 1;
+      if (a.unitType[i] === TYPE_TOWN_CENTER) {
+        if (a.owner[i] === 3) owner3TCs += 1;
+        if (a.owner[i] === 8) owner8TCs += 1;
+        continue;
+      }
+
+      if (a.owner[i] === 3) owner3Villagers += 1;
+      if (a.owner[i] === 8) owner8Villagers += 1;
 
       // Clusters sit in opposite corners: owner 3 near (40,40), owner 8 near
       // (216,216) — generous radius to absorb walkable resampling.
@@ -391,8 +404,10 @@ describe("ownership", () => {
       }
     }
 
-    expect(owner3).toBe(50);
-    expect(owner8).toBe(50);
+    expect(owner3Villagers).toBe(50);
+    expect(owner8Villagers).toBe(50);
+    expect(owner3TCs).toBe(1);
+    expect(owner8TCs).toBe(1);
   });
 
   test("owner survives the death swap and reaches the snapshot", () => {
@@ -571,6 +586,7 @@ describe("death and swap-remove", () => {
 
   test("snapshot ids expose the reorder so the renderer can snap", () => {
     const world = flatWorld(42);
+    // spawnUnits also pre-places a Town Center (index 0), so 6 entities total.
     spawnUnits(world, 5);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
@@ -582,7 +598,7 @@ describe("death and swap-remove", () => {
 
     // Slot 1 now holds a different unit than it did last tick — exactly the
     // signal the renderer's interpolate-only-on-id-match guard keys on.
-    expect(curr.count).toBe(4);
+    expect(curr.count).toBe(5);
     expect(curr.ids[1]).not.toBe(prev.ids[1]);
     expect(curr.ids[0]).toBe(prev.ids[0]);
   });
@@ -719,6 +735,124 @@ describe("resources and nodes", () => {
     const before = hashWorld(world);
     world.stockpiles[3 * RESOURCE_COUNT + WOOD] = world.stockpiles[3 * RESOURCE_COUNT + WOOD]! + 1;
     expect(hashWorld(world)).not.toBe(before);
+  });
+});
+
+describe("buildings and walkability", () => {
+  const tcStats = UNIT_TYPES[TYPE_TOWN_CENTER]!;
+
+  test("spawned buildings stamp their footprint and death restores it", () => {
+    const world = flatWorld(42);
+    const id = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
+
+    // All 16 footprint tiles unwalkable; the tile just outside is untouched.
+    for (let z = 100; z < 104; z += 1) {
+      for (let x = 100; x < 104; x += 1) {
+        expect(world.walkable[z * MAP_TILES + x]).toBe(0);
+      }
+    }
+
+    expect(world.walkable[100 * MAP_TILES + 99]).toBe(1);
+    expect(world.posX[0]).toBe(102);
+
+    killUnit(world, 0);
+    tickWorld(world);
+
+    // Rubble does not obstruct: every tile walkable again, id stale.
+    for (let z = 100; z < 104; z += 1) {
+      for (let x = 100; x < 104; x += 1) {
+        expect(world.walkable[z * MAP_TILES + x]).toBe(1);
+      }
+    }
+
+    expect(resolveId(world, id)).toBe(-1);
+  });
+
+  test("canPlaceBuilding rejects overlap, mountains, and map edges", () => {
+    const world = flatWorld(42);
+    spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
+
+    expect(canPlaceBuilding(world, 100, 100, TYPE_HOUSE)).toBe(false); // overlap
+    expect(canPlaceBuilding(world, 103, 103, TYPE_HOUSE)).toBe(false); // corner overlap
+    expect(canPlaceBuilding(world, 104, 104, TYPE_HOUSE)).toBe(true); // adjacent is fine
+    expect(canPlaceBuilding(world, 255, 255, TYPE_HOUSE)).toBe(false); // off the map edge
+
+    world.walkable[50 * MAP_TILES + 50] = 0; // a mountain tile
+    expect(canPlaceBuilding(world, 49, 49, TYPE_HOUSE)).toBe(false);
+  });
+
+  test("units route around a building instead of walking through it", () => {
+    const world = flatWorld(42);
+    spawnBuilding(world, 126, 126, 0, TYPE_TOWN_CENTER);
+    const walker = spawnUnit(world, 120, 128, 0, 0, 0);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [walker],
+      targetX: 136,
+      targetZ: 128,
+    });
+
+    for (let t = 0; t < 300; t += 1) {
+      tickWorld(world);
+
+      // At no tick may the walker stand inside the footprint.
+      const tx = Math.floor(world.posX[1]!);
+      const tz = Math.floor(world.posZ[1]!);
+      const inFootprint = tx >= 126 && tx < 130 && tz >= 126 && tz < 130;
+
+      expect(inFootprint).toBe(false);
+    }
+
+    expect(Math.hypot(world.posX[1]! - 136, world.posZ[1]! - 128)).toBeLessThan(2);
+  });
+
+  test("melee reaches a building's surface despite its footprint", () => {
+    const world = flatWorld(42);
+    // Enemy TC and a soldier ordered to raze it: without the body-radius fix
+    // the soldier stops at the unwalkable footprint edge, outside its 1.2
+    // reach of the CENTER, and orbits forever.
+    const tc = spawnBuilding(world, 100, 100, 1, TYPE_TOWN_CENTER);
+    const soldier = spawnUnit(world, 90, 102, 0, 0, 0);
+    world.contested = true;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [soldier],
+      targetId: tc,
+    });
+
+    for (let t = 0; t < 200; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.hp[0]!).toBeLessThan(tcStats.maxHp);
+  });
+
+  test("building death mid-run keeps two worlds hash-identical", () => {
+    const build = (): World => {
+      const world = flatWorld(7);
+      spawnUnits(world, 50, [0, 1]);
+      return world;
+    };
+    const a = build();
+    const b = build();
+
+    for (let t = 0; t < 200; t += 1) {
+      if (t === 40) {
+        // Demolish owner 0's TC on both worlds (index 0 — spawned first).
+        killUnit(a, 0);
+        killUnit(b, 0);
+      }
+
+      tickWorld(a);
+      tickWorld(b);
+      expect(hashWorld(a)).toBe(hashWorld(b));
+    }
   });
 });
 
@@ -916,9 +1050,21 @@ describe("combat", () => {
   });
 
   test("a 500v500 war stays hash-identical and someone wins", () => {
+    // Armies are spawned raw (no spawnUnits) so no Town Centers exist: this
+    // test pins combat determinism at scale, and annihilation-with-buildings
+    // has its own coverage. Standing TCs would correctly keep winner at -1.
     const build = (): World => {
       const world = flatWorld(1337);
-      spawnUnits(world, 1000, [0, 1]);
+
+      for (let i = 0; i < 500; i += 1) {
+        spawnUnit(world, 20 + (i % 25), 20 + Math.floor(i / 25), 0, 0, 0);
+      }
+
+      for (let i = 0; i < 500; i += 1) {
+        spawnUnit(world, 210 + (i % 25), 210 + Math.floor(i / 25), 0, 0, 1);
+      }
+
+      world.contested = true;
       return world;
     };
     const a = build();
