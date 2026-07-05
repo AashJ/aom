@@ -1,18 +1,29 @@
 // Determinism rules: allowed math is + - * /, Math.sqrt/fround/abs/min/max/floor/ceil/
 // trunc/sign, integer ops, and comparisons. Banned: transcendental Math functions,
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
-import { COMMAND_ATTACK, COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
+import {
+  COMMAND_ATTACK,
+  COMMAND_GATHER,
+  COMMAND_MOVE,
+  COMMAND_STOP,
+  type Command,
+} from "../commands";
 import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 import { idGeneration, idIndex, packId } from "./id";
 import {
   FOOD,
+  CARRY_CAPACITY,
+  GATHER_COOLDOWN_TICKS,
+  GATHER_PER_STRIKE,
   LEASH_FACTOR,
+  NODE_RETARGET_RADIUS,
   RESOURCE_COUNT,
   TYPE_BERRY,
   TYPE_TOWN_CENTER,
   TYPE_TREE,
+  TYPE_VILLAGER,
   UNIT_TYPES,
   WOOD,
 } from "./types";
@@ -29,6 +40,9 @@ export const UNIT_SPEED = 3;
 // Packed id 0 is VALID (handle 0, gen 0), so the no-target sentinel must be an
 // impossible handle. 0xffff exceeds MAX_UNITS.
 export const NO_TARGET = 0xffffffff;
+export const MODE_IDLE = 0;
+export const MODE_GATHERING = 1;
+export const MODE_RETURNING = 2;
 // world.winner values: -1 = match ongoing, >= 0 = that player id won,
 // MATCH_DRAW = everyone is dead (mutual annihilation).
 export const MATCH_DRAW = -2;
@@ -80,6 +94,14 @@ export interface World {
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
+  mode: Uint8Array;
+  carried: Uint16Array;
+  carriedResource: Uint8Array;
+  gatherNode: Uint32Array;
+  // Last known position of the assigned node; returning villagers go back here to prospect
+  // when the node died behind their back.
+  gatherPosX: Float64Array;
+  gatherPosZ: Float64Array;
   // Indexed by stable HANDLE, not dense slot. Per-dense-slot generations cannot
   // survive swap-remove: the moved unit's dense index changes, and its outstanding
   // ids must stay valid while it lives. Before any death, handle === dense index,
@@ -142,6 +164,12 @@ export function createWorld(seed: number): World {
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
+    mode: new Uint8Array(MAX_UNITS),
+    carried: new Uint16Array(MAX_UNITS),
+    carriedResource: new Uint8Array(MAX_UNITS),
+    gatherNode: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    gatherPosX: new Float64Array(MAX_UNITS),
+    gatherPosZ: new Float64Array(MAX_UNITS),
     generation: new Uint16Array(MAX_UNITS),
     slotOf,
     handleOf: new Uint32Array(MAX_UNITS),
@@ -200,6 +228,12 @@ export function spawnUnit(
   world.attackCooldown[index] = 0;
   world.attackTarget[index] = NO_TARGET;
   world.attackOrdered[index] = 0;
+  world.mode[index] = MODE_IDLE;
+  world.carried[index] = 0;
+  world.carriedResource[index] = 0;
+  world.gatherNode[index] = NO_TARGET;
+  world.gatherPosX[index] = 0;
+  world.gatherPosZ[index] = 0;
   world.selectable[index] = 1;
   world.selected[index] = 0;
   world.count += 1;
@@ -213,6 +247,38 @@ export function flushFlowFields(world: World): void {
   // Units mid-move fall back to direct seek until their next field fetch: graceful, deterministic.
   world.fieldCache.length = 0;
   world.unitField.fill(null);
+}
+
+function assignFieldGoal(world: World, index: number, targetX: number, targetZ: number): void {
+  // MOVE keeps its walkable-goal remap before calling this. Chase targets are live entities whose
+  // positions are definitionally reachable-adjacent, so remapping does not belong here.
+  const goalCell = cellOf(targetX, targetZ);
+  let fieldForGoal: FlowField | null = null;
+
+  for (let cacheIndex = 0; cacheIndex < world.fieldCache.length; cacheIndex += 1) {
+    const field = world.fieldCache[cacheIndex]!;
+
+    if (field.goalCell === goalCell) {
+      fieldForGoal = field;
+      world.fieldCache.splice(cacheIndex, 1);
+      world.fieldCache.push(field);
+      break;
+    }
+  }
+
+  if (fieldForGoal === null) {
+    fieldForGoal = buildFlowField(world.walkable, goalCell);
+    world.fieldCache.push(fieldForGoal);
+
+    if (world.fieldCache.length > FIELD_CACHE_SIZE) {
+      world.fieldCache.shift();
+    }
+  }
+
+  world.unitField[index] = fieldForGoal;
+  world.moveTargetX[index] = targetX;
+  world.moveTargetZ[index] = targetZ;
+  world.moving[index] = 1;
 }
 
 export function canPlaceBuilding(
@@ -370,8 +436,70 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
   }
 }
 
+// A resource node needs standing room: its own tile AND all eight neighbors
+// walkable. A node on (or ringed by) rock is permanently ungatherable — workers
+// grind against the boundary forever. Placement skips such spots.
+function isNodeSpotOpen(world: World, x: number, z: number): boolean {
+  const tx = Math.floor(x);
+  const tz = Math.floor(z);
+
+  if (tx < 1 || tx >= MAP_TILES - 1 || tz < 1 || tz >= MAP_TILES - 1) {
+    return false;
+  }
+
+  for (let dz = -1; dz <= 1; dz += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      if (world.walkable[(tz + dz) * MAP_TILES + (tx + dx)] !== 1) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+// Local standing room (isNodeSpotOpen) is not enough: value-noise mountains form
+// walkable POCKETS sealed off from the spawns, and a node inside one is passable
+// 3x3 but globally unreachable — workers commute to it forever. Reachability is
+// checked against a flow field built from each spawn corner at placement time.
+function reachableIn(field: FlowField, x: number, z: number): boolean {
+  const cell = cellOf(x, z);
+
+  return cell === field.goalCell || field.dirX[cell] !== 0 || field.dirZ[cell] !== 0;
+}
+
+// Deterministic spiral for a walkable cell near a corner (the corner itself sits
+// under the pre-placed Town Center footprint).
+function walkableCellNear(world: World, x: number, z: number): number {
+  for (let r = 0; r < 12; r += 1) {
+    for (let dz = -r; dz <= r; dz += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
+
+        const tx = Math.floor(x) + dx;
+        const tz = Math.floor(z) + dz;
+
+        if (
+          tx >= 0 &&
+          tx < MAP_TILES &&
+          tz >= 0 &&
+          tz < MAP_TILES &&
+          world.walkable[tz * MAP_TILES + tx] === 1
+        ) {
+          return tz * MAP_TILES + tx;
+        }
+      }
+    }
+  }
+
+  return cellOf(x, z);
+}
+
 export function spawnResourceNodes(world: World): void {
   // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
+  // Reachability fields from both spawn corners (TCs already stamped — walkability is final).
+  const fieldA = buildFlowField(world.walkable, walkableCellNear(world, 46, 46));
+  const fieldB = buildFlowField(world.walkable, walkableCellNear(world, 210, 210));
   for (let cluster = 0; cluster < 6; cluster += 1) {
     let centerX = 0;
     let centerZ = 0;
@@ -391,41 +519,32 @@ export function spawnResourceNodes(world: World): void {
     }
 
     const treeCount = 8 + Math.floor(nextFloat(world.rng) * 8);
-    const treeX = new Float64Array(treeCount);
-    const treeZ = new Float64Array(treeCount);
 
     for (let tree = 0; tree < treeCount; tree += 1) {
-      let x = 0;
-      let z = 0;
+      let placed = false;
 
-      for (let attempt = 0; attempt < 20; attempt += 1) {
+      for (let attempt = 0; attempt < 20 && !placed; attempt += 1) {
         const rawX = centerX - 10 + nextFloat(world.rng) * 20;
         const rawZ = centerZ - 10 + nextFloat(world.rng) * 20;
+        const x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+        const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
+        const mirrorX = SIM_MAP_SIZE - x;
+        const mirrorZ = SIM_MAP_SIZE - z;
 
-        x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
-        z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
-
-        if (world.walkable[cellOf(x, z)] === 1) {
-          break;
+        // Terrain is NOT symmetric: a fine spot can have an on-rock mirror.
+        // Place the pair only when BOTH ends are gatherable; skipping the pair
+        // (not just one end) is what keeps the halves fair.
+        if (
+          isNodeSpotOpen(world, x, z) &&
+          isNodeSpotOpen(world, mirrorX, mirrorZ) &&
+          reachableIn(fieldA, x, z) &&
+          reachableIn(fieldB, mirrorX, mirrorZ)
+        ) {
+          spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+          spawnUnit(world, mirrorX, mirrorZ, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+          placed = true;
         }
       }
-
-      treeX[tree] = x;
-      treeZ[tree] = z;
-      spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
-    }
-
-    // Point symmetry = equal resources per corner by construction.
-    for (let tree = 0; tree < treeCount; tree += 1) {
-      spawnUnit(
-        world,
-        SIM_MAP_SIZE - treeX[tree]!,
-        SIM_MAP_SIZE - treeZ[tree]!,
-        0,
-        0,
-        NEUTRAL_OWNER,
-        TYPE_TREE,
-      );
     }
   }
 
@@ -444,22 +563,22 @@ export function spawnResourceNodes(world: World): void {
 
     for (let bush = 0; bush < berryOffsets.length; bush += 1) {
       const [offsetX, offsetZ] = berryOffsets[bush]!;
-      let x = 0;
-      let z = 0;
+      let placed = false;
 
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        const rawX = cornerX + dirX * offsetX + (nextFloat(world.rng) * 6 - 3);
-        const rawZ = cornerZ + dirZ * offsetZ + (nextFloat(world.rng) * 6 - 3);
+      // Jitter widens with each failed attempt so a rocky patch pushes the
+      // bush to nearby open ground instead of silently accepting rock.
+      for (let attempt = 0; attempt < 20 && !placed; attempt += 1) {
+        const jitter = 3 + attempt * 0.75;
+        const rawX = cornerX + dirX * offsetX + (nextFloat(world.rng) * 2 - 1) * jitter;
+        const rawZ = cornerZ + dirZ * offsetZ + (nextFloat(world.rng) * 2 - 1) * jitter;
+        const x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+        const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
 
-        x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
-        z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
-
-        if (world.walkable[cellOf(x, z)] === 1) {
-          break;
+        if (isNodeSpotOpen(world, x, z) && reachableIn(cornerIndex === 0 ? fieldA : fieldB, x, z)) {
+          spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
+          placed = true;
         }
       }
-
-      spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
     }
   }
 }
@@ -527,8 +646,8 @@ export function tickWorld(world: World): void {
         const dx = world.posX[target]! - world.posX[i]!;
         const dz = world.posZ[target]! - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
-        const surfaceAttackRange =
-          stats.attackRange + UNIT_TYPES[world.unitType[target]!]!.bodyRadius;
+        const targetStats = UNIT_TYPES[world.unitType[target]!]!;
+        const surfaceAttackRange = stats.attackRange + targetStats.bodyRadius;
         const attackRangeSq = surfaceAttackRange * surfaceAttackRange;
 
         // Range checks use target surface reach; large footprints are unwalkable, so center-range
@@ -546,12 +665,26 @@ export function tickWorld(world: World): void {
           const leashRangeSq = leashRange * leashRange;
 
           if (world.attackOrdered[i] === 1 || distSq <= leashRangeSq) {
-            world.moveTargetX[i] = world.posX[target]!;
-            world.moveTargetZ[i] = world.posZ[target]!;
-            world.moving[i] = 1;
-            // Chase rides the existing seek/separation/walkable machinery: one movement
-            // system, no parallel path.
-            world.unitField[i] = null;
+            const targetX = world.posX[target]!;
+            const targetZ = world.posZ[target]!;
+
+            // STATIC targets - nodes and buildings - have goal cells that never move, so every
+            // worker/attacker heading there shares one cached field. UNIT targets keep direct
+            // seek: they move every tick, straight-line pursuit self-corrects, and per-tick
+            // field builds would churn the tiny LRU.
+            if (targetStats.isStatic) {
+              const targetGoalCell = cellOf(targetX, targetZ);
+
+              // Avoid re-running the cache lookup every tick for an unchanged static goal.
+              if (world.unitField[i]?.goalCell !== targetGoalCell) {
+                assignFieldGoal(world, i, targetX, targetZ);
+              }
+            } else {
+              world.moveTargetX[i] = targetX;
+              world.moveTargetZ[i] = targetZ;
+              world.moving[i] = 1;
+              world.unitField[i] = null;
+            }
           } else {
             world.attackTarget[i] = NO_TARGET;
             world.attackOrdered[i] = 0;
@@ -562,7 +695,12 @@ export function tickWorld(world: World): void {
       }
     }
 
-    if (world.attackTarget[i] === NO_TARGET && world.moving[i] === 0) {
+    if (
+      world.attackTarget[i] === NO_TARGET &&
+      world.moving[i] === 0 &&
+      world.mode[i] === MODE_IDLE
+    ) {
+      // Villagers in economy modes keep working under fire; defense is the player's job in M6.
       // Classic RTS trick: 4x cheaper scans for a worst-case 200 ms reaction,
       // imperceptible and deterministic.
       if ((i + world.tick) % 4 !== 0) {
@@ -628,7 +766,382 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 4. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
+  // 4. Economy reads the same fresh grid as combat and writes moveTarget/moving for
+  // movement to consume - the third costume for chase/strike.
+  const villagerReach = UNIT_TYPES[TYPE_VILLAGER]!.attackRange;
+  const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
+
+  for (let i = 0; i < world.count; i += 1) {
+    if (world.mode[i] === MODE_IDLE) {
+      continue;
+    }
+
+    if (world.dying[i] === 1 || world.hp[i] === 0 || world.unitType[i] !== TYPE_VILLAGER) {
+      continue;
+    }
+
+    if (world.mode[i] === MODE_GATHERING) {
+      if (world.carried[i]! >= CARRY_CAPACITY) {
+        let bestDropsite = -1;
+        let bestDropsiteDistSq = Number.POSITIVE_INFINITY;
+
+        for (let j = 0; j < world.count; j += 1) {
+          const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
+
+          if (
+            !dropsiteStats.isDropsite ||
+            world.owner[j] !== world.owner[i] ||
+            world.dying[j] === 1 ||
+            world.hp[j] === 0
+          ) {
+            continue;
+          }
+
+          const dx = world.posX[j]! - world.posX[i]!;
+          const dz = world.posZ[j]! - world.posZ[i]!;
+          const distSq = dx * dx + dz * dz;
+
+          if (
+            bestDropsite === -1 ||
+            distSq < bestDropsiteDistSq ||
+            (distSq === bestDropsiteDistSq && j < bestDropsite)
+          ) {
+            bestDropsite = j;
+            bestDropsiteDistSq = distSq;
+          }
+        }
+
+        if (bestDropsite >= 0) {
+          const dropsiteX = world.posX[bestDropsite]!;
+          const dropsiteZ = world.posZ[bestDropsite]!;
+          const dropsiteGoalCell = cellOf(dropsiteX, dropsiteZ);
+
+          if (world.unitField[i]?.goalCell !== dropsiteGoalCell) {
+            assignFieldGoal(world, i, dropsiteX, dropsiteZ);
+          }
+
+          world.mode[i] = MODE_RETURNING;
+        } else {
+          world.mode[i] = MODE_IDLE;
+          world.gatherNode[i] = NO_TARGET;
+          world.gatherPosX[i] = 0;
+          world.gatherPosZ[i] = 0;
+          world.moving[i] = 0;
+          world.unitField[i] = null;
+        }
+
+        continue;
+      }
+
+      let target = resolveId(world, world.gatherNode[i]!);
+
+      if (
+        target < 0 ||
+        world.dying[target] === 1 ||
+        world.hp[target] === 0 ||
+        UNIT_TYPES[world.unitType[target]!]!.resource < 0
+      ) {
+        const searchX = world.posX[i]!;
+        const searchZ = world.posZ[i]!;
+        const requiredResource = world.carried[i]! > 0 ? world.carriedResource[i]! : -1;
+        const searchRadius = Math.ceil(NODE_RETARGET_RADIUS / GRID_CELL);
+        const rawCellX = Math.floor(searchX / GRID_CELL);
+        const rawCellZ = Math.floor(searchZ / GRID_CELL);
+        const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
+        const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+        const minCellX = cellX > searchRadius ? cellX - searchRadius : 0;
+        const maxCellX = cellX < GRID_DIM - 1 - searchRadius ? cellX + searchRadius : GRID_DIM - 1;
+        const minCellZ = cellZ > searchRadius ? cellZ - searchRadius : 0;
+        const maxCellZ = cellZ < GRID_DIM - 1 - searchRadius ? cellZ + searchRadius : GRID_DIM - 1;
+        let bestNode = -1;
+        let bestNodeDistSq = retargetRangeSq;
+
+        // The depleted node's resource row may be gone; loaded workers keep their
+        // carried resource, while empty workers accept any nearby resource node.
+        for (let neighborCellZ = minCellZ; neighborCellZ <= maxCellZ; neighborCellZ += 1) {
+          for (let neighborCellX = minCellX; neighborCellX <= maxCellX; neighborCellX += 1) {
+            const cell = neighborCellX + GRID_DIM * neighborCellZ;
+            const start = world.cellStart[cell]!;
+            const end = world.cellStart[cell + 1]!;
+
+            for (let unitOffset = start; unitOffset < end; unitOffset += 1) {
+              const j = world.cellUnits[unitOffset]!;
+              const candidateStats = UNIT_TYPES[world.unitType[j]!]!;
+
+              if (
+                candidateStats.resource < 0 ||
+                world.dying[j] === 1 ||
+                world.hp[j] === 0 ||
+                (requiredResource >= 0 && candidateStats.resource !== requiredResource)
+              ) {
+                continue;
+              }
+
+              const dx = world.posX[j]! - searchX;
+              const dz = world.posZ[j]! - searchZ;
+              const distSq = dx * dx + dz * dz;
+
+              if (distSq > retargetRangeSq) {
+                continue;
+              }
+
+              // Grid buckets are fixed order; equality keeps the lower dense-index tiebreak.
+              if (
+                bestNode === -1 ||
+                distSq < bestNodeDistSq ||
+                (distSq === bestNodeDistSq && j < bestNode)
+              ) {
+                bestNode = j;
+                bestNodeDistSq = distSq;
+              }
+            }
+          }
+        }
+
+        if (bestNode >= 0) {
+          world.gatherNode[i] = unitIdAt(world, bestNode);
+          world.gatherPosX[i] = world.posX[bestNode]!;
+          world.gatherPosZ[i] = world.posZ[bestNode]!;
+          target = bestNode;
+        } else {
+          if (world.carried[i]! > 0) {
+            let bestDropsite = -1;
+            let bestDropsiteDistSq = Number.POSITIVE_INFINITY;
+
+            for (let j = 0; j < world.count; j += 1) {
+              const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
+
+              if (
+                !dropsiteStats.isDropsite ||
+                world.owner[j] !== world.owner[i] ||
+                world.dying[j] === 1 ||
+                world.hp[j] === 0
+              ) {
+                continue;
+              }
+
+              const dx = world.posX[j]! - world.posX[i]!;
+              const dz = world.posZ[j]! - world.posZ[i]!;
+              const distSq = dx * dx + dz * dz;
+
+              if (
+                bestDropsite === -1 ||
+                distSq < bestDropsiteDistSq ||
+                (distSq === bestDropsiteDistSq && j < bestDropsite)
+              ) {
+                bestDropsite = j;
+                bestDropsiteDistSq = distSq;
+              }
+            }
+
+            if (bestDropsite >= 0) {
+              const dropsiteX = world.posX[bestDropsite]!;
+              const dropsiteZ = world.posZ[bestDropsite]!;
+              const dropsiteGoalCell = cellOf(dropsiteX, dropsiteZ);
+
+              if (world.unitField[i]?.goalCell !== dropsiteGoalCell) {
+                assignFieldGoal(world, i, dropsiteX, dropsiteZ);
+              }
+
+              world.mode[i] = MODE_RETURNING;
+            } else {
+              world.mode[i] = MODE_IDLE;
+              world.gatherNode[i] = NO_TARGET;
+              world.gatherPosX[i] = 0;
+              world.gatherPosZ[i] = 0;
+              world.moving[i] = 0;
+              world.unitField[i] = null;
+            }
+          } else {
+            const prospectDx = world.gatherPosX[i]! - world.posX[i]!;
+            const prospectDz = world.gatherPosZ[i]! - world.posZ[i]!;
+            const prospectThreshold = NODE_RETARGET_RADIUS * 0.5;
+
+            if (
+              prospectDx * prospectDx + prospectDz * prospectDz >
+              prospectThreshold * prospectThreshold
+            ) {
+              const prospectGoalCell = cellOf(world.gatherPosX[i]!, world.gatherPosZ[i]!);
+
+              world.gatherNode[i] = NO_TARGET;
+              // En route to prospect: this scan re-runs each tick as they travel and adopts
+              // the first node that comes into radius.
+              if (world.unitField[i]?.goalCell !== prospectGoalCell) {
+                assignFieldGoal(world, i, world.gatherPosX[i]!, world.gatherPosZ[i]!);
+              }
+            } else {
+              world.mode[i] = MODE_IDLE;
+              world.gatherNode[i] = NO_TARGET;
+              world.gatherPosX[i] = 0;
+              world.gatherPosZ[i] = 0;
+              world.moving[i] = 0;
+              world.unitField[i] = null;
+            }
+          }
+
+          continue;
+        }
+      }
+
+      const nodeStats = UNIT_TYPES[world.unitType[target]!]!;
+      const dx = world.posX[target]! - world.posX[i]!;
+      const dz = world.posZ[target]! - world.posZ[i]!;
+      const distSq = dx * dx + dz * dz;
+      const reach = villagerReach + nodeStats.bodyRadius;
+
+      if (distSq <= reach * reach) {
+        world.moving[i] = 0;
+        world.unitField[i] = null;
+
+        if (world.attackCooldown[i] === 0) {
+          const take = Math.min(
+            GATHER_PER_STRIKE,
+            world.hp[target]!,
+            CARRY_CAPACITY - world.carried[i]!,
+          );
+
+          world.hp[target] = world.hp[target]! - take;
+          if (world.hp[target] === 0) {
+            killUnit(world, target);
+          }
+
+          world.carried[i] = world.carried[i]! + take;
+          world.carriedResource[i] = nodeStats.resource;
+          world.gatherPosX[i] = world.posX[target]!;
+          world.gatherPosZ[i] = world.posZ[target]!;
+          // The shared cooldown is correct: a villager cannot chop and fight in the same breath.
+          world.attackCooldown[i] = GATHER_COOLDOWN_TICKS;
+        }
+      } else {
+        const targetX = world.posX[target]!;
+        const targetZ = world.posZ[target]!;
+        const targetGoalCell = cellOf(targetX, targetZ);
+
+        // Resource nodes are STATIC targets: their goal cells do not move, so workers can
+        // share cached fields instead of direct-seeking through terrain.
+        if (world.unitField[i]?.goalCell !== targetGoalCell) {
+          assignFieldGoal(world, i, targetX, targetZ);
+        }
+      }
+    } else if (world.mode[i] === MODE_RETURNING) {
+      let depositDropsite = -1;
+
+      // Dropsites are buildings and few; scanning them every returning tick keeps arrival
+      // deterministic without adding a per-tick-per-unit broadphase.
+      for (let j = 0; j < world.count; j += 1) {
+        const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
+
+        if (
+          !dropsiteStats.isDropsite ||
+          world.owner[j] !== world.owner[i] ||
+          world.dying[j] === 1 ||
+          world.hp[j] === 0
+        ) {
+          continue;
+        }
+
+        const dx = world.posX[j]! - world.posX[i]!;
+        const dz = world.posZ[j]! - world.posZ[i]!;
+        const distSq = dx * dx + dz * dz;
+        const reach = villagerReach + dropsiteStats.bodyRadius;
+
+        if (distSq <= reach * reach) {
+          depositDropsite = j;
+          break;
+        }
+      }
+
+      if (depositDropsite >= 0) {
+        const owner = world.owner[i]!;
+        const resource = world.carriedResource[i]!;
+
+        world.stockpiles[owner * RESOURCE_COUNT + resource] =
+          world.stockpiles[owner * RESOURCE_COUNT + resource]! + world.carried[i]!;
+        world.carried[i] = 0;
+
+        const target = resolveId(world, world.gatherNode[i]!);
+
+        if (
+          target >= 0 &&
+          world.dying[target] === 0 &&
+          world.hp[target]! > 0 &&
+          UNIT_TYPES[world.unitType[target]!]!.resource >= 0
+        ) {
+          const targetX = world.posX[target]!;
+          const targetZ = world.posZ[target]!;
+          const targetGoalCell = cellOf(targetX, targetZ);
+
+          world.mode[i] = MODE_GATHERING;
+          world.gatherPosX[i] = targetX;
+          world.gatherPosZ[i] = targetZ;
+
+          if (world.unitField[i]?.goalCell !== targetGoalCell) {
+            assignFieldGoal(world, i, targetX, targetZ);
+          }
+        } else {
+          // Deposit-then-return-to-patch: keep prospect memory so the dead-node handling
+          // walks back from the dropsite instead of clocking out at the town center.
+          world.mode[i] = MODE_GATHERING;
+          world.gatherNode[i] = NO_TARGET;
+          world.moving[i] = 0;
+          world.unitField[i] = null;
+        }
+
+        continue;
+      }
+
+      if (world.moving[i] === 0) {
+        let bestDropsite = -1;
+        let bestDropsiteDistSq = Number.POSITIVE_INFINITY;
+
+        for (let j = 0; j < world.count; j += 1) {
+          const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
+
+          if (
+            !dropsiteStats.isDropsite ||
+            world.owner[j] !== world.owner[i] ||
+            world.dying[j] === 1 ||
+            world.hp[j] === 0
+          ) {
+            continue;
+          }
+
+          const dx = world.posX[j]! - world.posX[i]!;
+          const dz = world.posZ[j]! - world.posZ[i]!;
+          const distSq = dx * dx + dz * dz;
+
+          if (
+            bestDropsite === -1 ||
+            distSq < bestDropsiteDistSq ||
+            (distSq === bestDropsiteDistSq && j < bestDropsite)
+          ) {
+            bestDropsite = j;
+            bestDropsiteDistSq = distSq;
+          }
+        }
+
+        if (bestDropsite >= 0) {
+          const dropsiteX = world.posX[bestDropsite]!;
+          const dropsiteZ = world.posZ[bestDropsite]!;
+          const dropsiteGoalCell = cellOf(dropsiteX, dropsiteZ);
+
+          if (world.unitField[i]?.goalCell !== dropsiteGoalCell) {
+            assignFieldGoal(world, i, dropsiteX, dropsiteZ);
+          }
+        } else {
+          // A player with no dropsites has bigger problems; the villager stands carrying.
+          world.mode[i] = MODE_IDLE;
+          world.gatherNode[i] = NO_TARGET;
+          world.gatherPosX[i] = 0;
+          world.gatherPosZ[i] = 0;
+          world.moving[i] = 0;
+          world.unitField[i] = null;
+        }
+      }
+    }
+  }
+
+  // 5. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
   const step = UNIT_SPEED * TICK_S;
 
   for (let i = 0; i < world.count; i += 1) {
@@ -753,7 +1266,7 @@ export function tickWorld(world: World): void {
     world.pushZ[i] = pushZ + separationZ;
   }
 
-  // 5. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
+  // 6. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
     if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
       // Mobile units flowed around static sources during compute; the source itself never moves.
@@ -896,6 +1409,12 @@ function applyDeaths(world: World): void {
       world.attackCooldown[i] = world.attackCooldown[last]!;
       world.attackTarget[i] = world.attackTarget[last]!;
       world.attackOrdered[i] = world.attackOrdered[last]!;
+      world.mode[i] = world.mode[last]!;
+      world.carried[i] = world.carried[last]!;
+      world.carriedResource[i] = world.carriedResource[last]!;
+      world.gatherNode[i] = world.gatherNode[last]!;
+      world.gatherPosX[i] = world.gatherPosX[last]!;
+      world.gatherPosZ[i] = world.gatherPosZ[last]!;
       world.selectable[i] = world.selectable[last]!;
       world.selected[i] = world.selected[last]!;
       world.unitField[i] = world.unitField[last] ?? null;
@@ -934,7 +1453,6 @@ function applyPendingCommands(world: World): void {
       let targetX = command.targetX;
       let targetZ = command.targetZ;
       let goalCell = cellOf(targetX, targetZ);
-      let commandField: FlowField | null = null;
 
       if (world.walkable[goalCell] !== 1) {
         const goalTileX = goalCell % MAP_TILES;
@@ -977,26 +1495,6 @@ function applyPendingCommands(world: World): void {
       }
 
       if (world.walkable[goalCell] === 1) {
-        for (let cacheIndex = 0; cacheIndex < world.fieldCache.length; cacheIndex += 1) {
-          const field = world.fieldCache[cacheIndex]!;
-
-          if (field.goalCell === goalCell) {
-            commandField = field;
-            world.fieldCache.splice(cacheIndex, 1);
-            world.fieldCache.push(field);
-            break;
-          }
-        }
-
-        if (commandField === null) {
-          commandField = buildFlowField(world.walkable, goalCell);
-          world.fieldCache.push(commandField);
-
-          if (world.fieldCache.length > FIELD_CACHE_SIZE) {
-            world.fieldCache.shift();
-          }
-        }
-
         for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
           const id = command.unitIds[unitIndex]!;
           const index = resolveId(world, id);
@@ -1005,12 +1503,14 @@ function applyPendingCommands(world: World): void {
           // THE ownership validation - one place, every client, deterministic. The relay stays
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
+          // Carried resources persist across interrupts: a hauler keeps the load.
+          world.mode[index] = MODE_IDLE;
+          world.gatherNode[index] = NO_TARGET;
+          world.gatherPosX[index] = 0;
+          world.gatherPosZ[index] = 0;
           world.attackTarget[index] = NO_TARGET;
           world.attackOrdered[index] = 0;
-          world.moveTargetX[index] = targetX;
-          world.moveTargetZ[index] = targetZ;
-          world.moving[index] = 1;
-          world.unitField[index] = commandField;
+          assignFieldGoal(world, index, targetX, targetZ);
         }
       }
     } else if (command.type === COMMAND_STOP) {
@@ -1022,6 +1522,11 @@ function applyPendingCommands(world: World): void {
         // THE ownership validation - one place, every client, deterministic. The relay stays
         // dumb; forged or mis-addressed commands die here identically everywhere.
         if (world.owner[index] !== command.issuer) continue;
+        // Carried resources persist across interrupts: a hauler keeps the load.
+        world.mode[index] = MODE_IDLE;
+        world.gatherNode[index] = NO_TARGET;
+        world.gatherPosX[index] = 0;
+        world.gatherPosZ[index] = 0;
         world.attackTarget[index] = NO_TARGET;
         world.attackOrdered[index] = 0;
         world.moving[index] = 0;
@@ -1030,7 +1535,6 @@ function applyPendingCommands(world: World): void {
     } else if (command.type === COMMAND_ATTACK) {
       const target = resolveId(world, command.targetId);
 
-      // Gather is the verb for nodes - future step M6-3.
       if (
         target >= 0 &&
         world.owner[target] !== NEUTRAL_OWNER &&
@@ -1044,8 +1548,42 @@ function applyPendingCommands(world: World): void {
           // THE ownership validation - one place, every client, deterministic. The relay stays
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
+          // Carried resources persist across interrupts: a hauler keeps the load.
+          world.mode[index] = MODE_IDLE;
+          world.gatherNode[index] = NO_TARGET;
+          world.gatherPosX[index] = 0;
+          world.gatherPosZ[index] = 0;
           world.attackTarget[index] = command.targetId;
           world.attackOrdered[index] = 1;
+          world.moving[index] = 0;
+          world.unitField[index] = null;
+        }
+      }
+    } else if (command.type === COMMAND_GATHER) {
+      const target = resolveId(world, command.targetId);
+
+      if (
+        target >= 0 &&
+        world.dying[target] === 0 &&
+        world.hp[target]! > 0 &&
+        UNIT_TYPES[world.unitType[target]!]!.resource >= 0
+      ) {
+        for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+          const id = command.unitIds[unitIndex]!;
+          const index = resolveId(world, id);
+
+          if (index < 0) continue;
+          // THE ownership validation - one place, every client, deterministic. The relay stays
+          // dumb; forged or mis-addressed commands die here identically everywhere.
+          if (world.owner[index] !== command.issuer) continue;
+          // Militia in a mixed selection are silently skipped, not treated as an error.
+          if (world.unitType[index] !== TYPE_VILLAGER) continue;
+          world.mode[index] = MODE_GATHERING;
+          world.gatherNode[index] = command.targetId;
+          world.gatherPosX[index] = world.posX[target]!;
+          world.gatherPosZ[index] = world.posZ[target]!;
+          world.attackTarget[index] = NO_TARGET;
+          world.attackOrdered[index] = 0;
           world.moving[index] = 0;
           world.unitField[index] = null;
         }

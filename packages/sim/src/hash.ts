@@ -138,6 +138,54 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // The whole economy state machine is shared state.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.mode[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.carried[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.carriedResource[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.gatherNode[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  const gatherPosArrays = [world.gatherPosX, world.gatherPosZ];
+
+  for (let arrayIndex = 0; arrayIndex < gatherPosArrays.length; arrayIndex += 1) {
+    const values = gatherPosArrays[arrayIndex]!;
+    const view = new DataView(
+      values.buffer,
+      values.byteOffset,
+      world.count * Float64Array.BYTES_PER_ELEMENT,
+    );
+
+    for (let i = 0; i < world.count; i += 1) {
+      const byteOffset = i * Float64Array.BYTES_PER_ELEMENT;
+
+      word = view.getUint32(byteOffset, true);
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+
+      word = view.getUint32(byteOffset + Uint32Array.BYTES_PER_ELEMENT, true);
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+  }
+
   // The free-handle stack decides which handle the NEXT spawn gets. Without it, a
   // divergence in death bookkeeping could hide until a later spawn surfaces it —
   // fold it so desyncs are detected at the tick they happen, not ticks later.

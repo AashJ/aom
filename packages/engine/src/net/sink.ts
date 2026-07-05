@@ -4,7 +4,14 @@
 // touching callers. Per-verb methods instead of a generic submit(command): call sites stay
 // fully typed and the sink builds the Command object, which is exactly the shape a wire
 // encoder wants anyway.
-import { COMMAND_ATTACK, COMMAND_MOVE, COMMAND_STOP, enqueueCommand, type World } from "@aom/sim";
+import {
+  COMMAND_ATTACK,
+  COMMAND_GATHER,
+  COMMAND_MOVE,
+  COMMAND_STOP,
+  enqueueCommand,
+  type World,
+} from "@aom/sim";
 
 // 200 ms at 20 Hz — the genre-native order-acknowledgement delay; in multiplayer this is
 // the window a command needs to reach every player before its execution tick. Single-player
@@ -15,6 +22,7 @@ export interface CommandSink {
   submitMove(unitIds: number[], targetX: number, targetZ: number): void;
   submitStop(unitIds: number[]): void;
   submitAttack(unitIds: number[], targetId: number): void;
+  submitGather(unitIds: number[], targetId: number): void;
 }
 
 export function createLoopbackSink(world: World): CommandSink {
@@ -45,6 +53,16 @@ export function createLoopbackSink(world: World): CommandSink {
         // Single-player is player 0 and owns everything spawned by default.
         issuer: 0,
         type: COMMAND_ATTACK,
+        unitIds,
+        targetId,
+      });
+    },
+    submitGather(unitIds: number[], targetId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        // Single-player is player 0 and owns everything spawned by default.
+        issuer: 0,
+        type: COMMAND_GATHER,
         unitIds,
         targetId,
       });

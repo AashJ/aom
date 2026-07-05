@@ -27,6 +27,13 @@ export const FOOD = 0;
 export const WOOD = 1;
 export const RESOURCE_COUNT = 2;
 
+// Balance-pass placeholders: 0.5 s per unit, 5 s to fill at 20 Hz.
+export const CARRY_CAPACITY = 10;
+export const GATHER_PER_STRIKE = 1;
+export const GATHER_COOLDOWN_TICKS = 10;
+// A depleted node hands workers to a nearby node so a forest is one worksite, not thirty orders.
+export const NODE_RETARGET_RADIUS = 14;
+
 export const TYPE_VILLAGER = 0;
 export const TYPE_MILITIA = 1;
 export const TYPE_TREE = 2;

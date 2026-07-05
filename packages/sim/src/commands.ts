@@ -6,6 +6,7 @@ import type { World } from "./ecs/world";
 export const COMMAND_MOVE = 0;
 export const COMMAND_STOP = 1;
 export const COMMAND_ATTACK = 2;
+export const COMMAND_GATHER = 3;
 
 export interface MoveCommand {
   tick: number;
@@ -43,7 +44,19 @@ export interface AttackCommand {
   targetId: number;
 }
 
-export type Command = MoveCommand | StopCommand | AttackCommand;
+export interface GatherCommand {
+  tick: number;
+  // The playerId whose authority the command carries. Stamped by the loopback sink (0)
+  // or by the turn buffer from the server-assigned PlayerCommand.playerId - never by
+  // the wire. Validation happens at application: units not owned by the issuer are
+  // silently skipped.
+  issuer: number;
+  type: typeof COMMAND_GATHER;
+  unitIds: number[];
+  targetId: number;
+}
+
+export type Command = MoveCommand | StopCommand | AttackCommand | GatherCommand;
 
 export function enqueueCommand(world: World, command: Command): void {
   // Command handling is deliberately NOT zero-allocation: it runs at human click rate, not

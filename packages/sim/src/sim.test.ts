@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { COMMAND_ATTACK, COMMAND_MOVE, COMMAND_STOP, enqueueCommand } from "./commands";
+import {
+  COMMAND_ATTACK,
+  COMMAND_GATHER,
+  COMMAND_MOVE,
+  COMMAND_STOP,
+  enqueueCommand,
+} from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
 import {
   FOOD,
@@ -7,6 +13,7 @@ import {
   RESOURCE_COUNT,
   TYPE_BERRY,
   TYPE_HOUSE,
+  TYPE_MILITIA,
   TYPE_TOWN_CENTER,
   TYPE_TREE,
   UNIT_TYPES,
@@ -652,7 +659,11 @@ describe("resources and nodes", () => {
     }
 
     expect(trees).toBeGreaterThan(50);
-    expect(berries).toBe(10);
+    // Placement may SKIP nodes whose spot is rocky or unreachable (sealed
+    // walkable pockets exist in this terrain) — an exact count would pin the
+    // map, not the rule. Most of both patches must survive placement.
+    expect(berries).toBeGreaterThanOrEqual(8);
+    expect(berries).toBeLessThanOrEqual(10);
   });
 
   test("armies ignore neutral nodes and nodes never fight or move", () => {
@@ -853,6 +864,241 @@ describe("buildings and walkability", () => {
       tickWorld(b);
       expect(hashWorld(a)).toBe(hashWorld(b));
     }
+  });
+});
+
+describe("gathering", () => {
+  // A world with one TC (dropsite), one villager, and one tree, all close
+  // enough that round trips complete in tens of ticks.
+  function gatherWorld(): { world: World; villager: number; tree: number } {
+    const world = flatWorld(42);
+    spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
+    const villager = spawnUnit(world, 106, 102, 0, 0, 0);
+    const tree = spawnUnit(world, 112, 102, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+    return { world, villager, tree };
+  }
+
+  test("the full loop: chop, haul, deposit, return", () => {
+    const { world, villager, tree } = gatherWorld();
+    const woodBefore = world.stockpiles[WOOD]!;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [villager],
+      targetId: tree,
+    });
+
+    // One full carry (10 wood at 1 per 10 ticks) plus two short walks: give
+    // it 400 ticks and require at least one deposit to have landed.
+    for (let t = 0; t < 400; t += 1) {
+      tickWorld(world);
+    }
+
+    const wood = world.stockpiles[WOOD]!;
+
+    expect(wood).toBeGreaterThan(woodBefore);
+    // The tree paid for it.
+    expect(world.hp[2]!).toBeLessThan(UNIT_TYPES[TYPE_TREE]!.maxHp);
+    // And the villager went BACK to work after depositing.
+    expect(world.mode[1]).not.toBe(0);
+  });
+
+  test("a depleted node hands the villager to a neighbor", () => {
+    const { world, villager } = gatherWorld();
+    // Drain the first tree to nearly empty so it depletes mid-session, with
+    // a second tree just inside the retarget radius.
+    world.hp[2] = 3;
+    const neighbor = spawnUnit(world, 114, 104, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [villager],
+      targetId: unitIdAt(world, 2),
+    });
+
+    for (let t = 0; t < 300; t += 1) {
+      tickWorld(world);
+    }
+
+    // First tree gone; the neighbor is being chopped now.
+    expect(world.count).toBe(3);
+    expect(resolveId(world, neighbor)).toBeGreaterThanOrEqual(0);
+    expect(world.hp[resolveId(world, neighbor)]!).toBeLessThan(UNIT_TYPES[TYPE_TREE]!.maxHp);
+  });
+
+  test("militia in a mixed selection are silently skipped", () => {
+    const { world, tree } = gatherWorld();
+    const militia = spawnUnit(world, 104, 104, 0, 0, 0, TYPE_MILITIA);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [militia],
+      targetId: tree,
+    });
+
+    for (let t = 0; t < 50; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.mode[3]).toBe(0);
+    expect(world.hp[2]).toBe(UNIT_TYPES[TYPE_TREE]!.maxHp);
+  });
+
+  test("a move order interrupts gathering but the load survives", () => {
+    const { world, villager, tree } = gatherWorld();
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [villager],
+      targetId: tree,
+    });
+
+    // Chop for a while, then yank the villager away mid-carry.
+    for (let t = 0; t < 120; t += 1) {
+      tickWorld(world);
+    }
+
+    const carriedMid = world.carried[1]!;
+
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [villager],
+      targetX: 90,
+      targetZ: 90,
+    });
+    tickWorld(world);
+    tickWorld(world);
+
+    expect(world.mode[1]).toBe(0);
+    // One more strike may legally land between our sample and the order
+    // taking effect; the property is that the load SURVIVES, not its exact size.
+    expect(world.carried[1]!).toBeGreaterThanOrEqual(carriedMid);
+    expect(world.carried[1]!).toBeGreaterThan(0);
+  });
+
+  test("a mob on one bush strip-mines the whole patch on real terrain", () => {
+    // Regression for the mob-gather bug cluster (found by playtest): nodes on
+    // rock, nodes in sealed walkable pockets, straight-line chases stalling on
+    // mountains, and returners retargeting from the dropsite instead of the
+    // patch. The assertion is the end state: the patch gets FULLY consumed.
+    const world = createWorld(1337);
+
+    spawnUnits(world, 60, [0, 1]);
+    spawnResourceNodes(world);
+
+    const villagers: number[] = [];
+    let firstBush = -1;
+    let patchStock = 0;
+
+    for (let i = 0; i < world.count; i += 1) {
+      if (world.unitType[i] === TYPE_BERRY && world.posX[i]! < 128) {
+        if (firstBush < 0) firstBush = i;
+        patchStock += world.hp[i]!;
+      }
+
+      if (world.unitType[i] === 0 && world.owner[i] === 0) {
+        villagers.push(unitIdAt(world, i));
+      }
+    }
+
+    const foodBefore = world.stockpiles[FOOD]!;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: villagers,
+      targetId: unitIdAt(world, firstBush),
+    });
+
+    for (let t = 0; t < 2500; t += 1) {
+      tickWorld(world);
+    }
+
+    // Every reachable berry in the patch ends up in the stockpile.
+    expect(world.stockpiles[FOOD]! - foodBefore).toBe(patchStock);
+
+    let bushesLeft = 0;
+
+    for (let i = 0; i < world.count; i += 1) {
+      if (world.unitType[i] === TYPE_BERRY && world.posX[i]! < 128) bushesLeft += 1;
+    }
+
+    expect(bushesLeft).toBe(0);
+  });
+
+  test("two gathering worlds stay hash-identical", () => {
+    const build = (): World => {
+      const world = flatWorld(7);
+      spawnUnits(world, 20, [0, 1]);
+      spawnResourceNodes(world);
+      return world;
+    };
+    const a = build();
+    const b = build();
+
+    // Both players set villagers gathering the nearest trees on both worlds.
+    const orderGather = (world: World): void => {
+      for (const issuer of [0, 1]) {
+        let firstVillager = -1;
+        let nearestTree = -1;
+        let best = Infinity;
+
+        for (let i = 0; i < world.count; i += 1) {
+          if (world.owner[i] === issuer && world.unitType[i] === 0 && firstVillager < 0) {
+            firstVillager = i;
+          }
+        }
+
+        for (let i = 0; i < world.count; i += 1) {
+          if (world.unitType[i] === TYPE_TREE && firstVillager >= 0) {
+            const d = Math.hypot(
+              world.posX[i]! - world.posX[firstVillager]!,
+              world.posZ[i]! - world.posZ[firstVillager]!,
+            );
+
+            if (d < best) {
+              best = d;
+              nearestTree = i;
+            }
+          }
+        }
+
+        if (firstVillager >= 0 && nearestTree >= 0) {
+          enqueueCommand(world, {
+            tick: 2,
+            issuer,
+            type: COMMAND_GATHER,
+            unitIds: [unitIdAt(world, firstVillager)],
+            targetId: unitIdAt(world, nearestTree),
+          });
+        }
+      }
+    };
+
+    orderGather(a);
+    orderGather(b);
+
+    // Forests spawn >= 45 units from the corners (the fairness rule), so a
+    // single round trip is ~700 ticks of mostly walking. Give it two.
+    for (let t = 0; t < 1600; t += 1) {
+      tickWorld(a);
+      tickWorld(b);
+      expect(hashWorld(a)).toBe(hashWorld(b));
+    }
+
+    // The economy actually ran: deposits beyond the 200 starting wood.
+    expect(a.stockpiles[WOOD]! + a.stockpiles[RESOURCE_COUNT + WOOD]!).toBeGreaterThan(200);
   });
 });
 
