@@ -1,15 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { COMMAND_ATTACK, COMMAND_MOVE, COMMAND_STOP, enqueueCommand } from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
-import { LEASH_FACTOR, UNIT_TYPES } from "./ecs/types";
+import {
+  FOOD,
+  LEASH_FACTOR,
+  RESOURCE_COUNT,
+  TYPE_BERRY,
+  TYPE_TREE,
+  UNIT_TYPES,
+  WOOD,
+} from "./ecs/types";
 import { createPcg32, nextFloat, nextU32 } from "./math/prng";
 import {
   clearSelection,
   createWorld,
   killUnit,
   MATCH_DRAW,
+  NEUTRAL_OWNER,
   NO_TARGET,
   resolveId,
+  spawnResourceNodes,
   SEPARATION_RADIUS,
   setSelected,
   SIM_MAP_SIZE,
@@ -575,6 +585,140 @@ describe("death and swap-remove", () => {
     expect(curr.count).toBe(4);
     expect(curr.ids[1]).not.toBe(prev.ids[1]);
     expect(curr.ids[0]).toBe(prev.ids[0]);
+  });
+});
+
+describe("resources and nodes", () => {
+  test("node placement is seeded, mirrored, and identical across worlds", () => {
+    const a = createWorld(1337);
+    const b = createWorld(1337);
+
+    spawnUnits(a, 10, [0, 1]);
+    spawnUnits(b, 10, [0, 1]);
+    spawnResourceNodes(a);
+    spawnResourceNodes(b);
+
+    expect(hashWorld(a)).toBe(hashWorld(b));
+
+    let trees = 0;
+    let berries = 0;
+
+    for (let i = 0; i < a.count; i += 1) {
+      if (a.unitType[i] === TYPE_TREE) {
+        trees += 1;
+        expect(a.owner[i]).toBe(NEUTRAL_OWNER);
+
+        // Point-symmetric fairness: every tree has a mirror tree. Verify by
+        // checking a sampled tree's reflection exists within float tolerance.
+        if (trees === 1) {
+          const mx = 256 - a.posX[i]!;
+          const mz = 256 - a.posZ[i]!;
+          let found = false;
+
+          for (let j = 0; j < a.count; j += 1) {
+            if (
+              a.unitType[j] === TYPE_TREE &&
+              Math.abs(a.posX[j]! - mx) < 0.001 &&
+              Math.abs(a.posZ[j]! - mz) < 0.001
+            ) {
+              found = true;
+              break;
+            }
+          }
+
+          expect(found).toBe(true);
+        }
+      }
+
+      if (a.unitType[i] === TYPE_BERRY) {
+        berries += 1;
+      }
+    }
+
+    expect(trees).toBeGreaterThan(50);
+    expect(berries).toBe(10);
+  });
+
+  test("armies ignore neutral nodes and nodes never fight or move", () => {
+    const world = flatWorld(42);
+    // A soldier parked right next to a tree, inside what would be aggro range.
+    spawnUnit(world, 100, 100, 0, 0, 0);
+    const treeId = spawnUnit(world, 101, 100, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+    world.contested = true;
+
+    for (let t = 0; t < 100; t += 1) {
+      tickWorld(world);
+    }
+
+    // No auto-acquire against neutrals; the tree took no damage and never moved.
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+    expect(world.hp[1]).toBe(UNIT_TYPES[TYPE_TREE]!.maxHp);
+    expect(world.posX[1]).toBe(101);
+
+    // An explicit attack order on a node is a silent no-op (Gather is the verb).
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [unitIdAt(world, 0)],
+      targetId: treeId,
+    });
+    tickWorld(world);
+    tickWorld(world);
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+  });
+
+  test("statics are separation sources but never get pushed", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 100, 100, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+    // A unit ordered to walk THROUGH the tree must flow around it.
+    const walker = spawnUnit(world, 96, 100, 0, 0, 0);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [walker],
+      targetX: 104,
+      targetZ: 100,
+    });
+
+    for (let t = 0; t < 120; t += 1) {
+      tickWorld(world);
+    }
+
+    // The tree held its ground exactly; the walker arrived anyway.
+    expect(world.posX[0]).toBe(100);
+    expect(world.posZ[0]).toBe(100);
+    expect(Math.hypot(world.posX[1]! - 104, world.posZ[1]! - 100)).toBeLessThan(1.5);
+  });
+
+  test("a forest cannot deny victory or force a draw", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 100, 100, 0, 0, 0);
+    spawnUnit(world, 100.5, 100, 0, 0, 1);
+    spawnUnit(world, 200, 200, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+    world.contested = true;
+
+    for (let t = 0; t < 400 && world.winner === -1; t += 1) {
+      tickWorld(world);
+    }
+
+    // One army annihilated the other; the surviving TREE must not have kept
+    // the match "ongoing" (or turned a decisive win into anything else).
+    expect(world.winner).toBe(world.owner[0]!);
+  });
+
+  test("stockpiles start seeded per owner and live in the hash", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 10, [3, 8]);
+
+    expect(world.stockpiles[3 * RESOURCE_COUNT + FOOD]).toBe(100);
+    expect(world.stockpiles[8 * RESOURCE_COUNT + WOOD]).toBe(100);
+
+    const before = hashWorld(world);
+    world.stockpiles[3 * RESOURCE_COUNT + WOOD] = world.stockpiles[3 * RESOURCE_COUNT + WOOD]! + 1;
+    expect(hashWorld(world)).not.toBe(before);
   });
 });
 

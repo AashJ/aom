@@ -22,6 +22,8 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     selected: new Uint8Array(xs.length),
     owner: new Uint8Array(xs.length),
     hp: new Uint16Array(xs.length),
+    unitType: new Uint8Array(xs.length),
+    stockpiles: new Uint32Array(512),
     winner: -1,
   };
 }

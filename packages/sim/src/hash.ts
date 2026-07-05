@@ -75,6 +75,13 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // Stockpiles are shared economy state; a one-unit disagreement means different affordability outcomes later.
+  for (let i = 0; i < world.stockpiles.length; i += 1) {
+    word = world.stockpiles[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   for (let i = 0; i < world.count; i += 1) {
     word = world.unitType[i]!;
     h ^= word;

@@ -6,12 +6,24 @@ import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 import { idGeneration, idIndex, packId } from "./id";
-import { LEASH_FACTOR, UNIT_TYPES } from "./types";
+import {
+  FOOD,
+  LEASH_FACTOR,
+  RESOURCE_COUNT,
+  TYPE_BERRY,
+  TYPE_TREE,
+  UNIT_TYPES,
+  WOOD,
+} from "./types";
 
 export const TICK_HZ = 20;
 export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
+// Players use real ids < 256, but stockpiles index by actual id; a 256-wide
+// array is 2 KB, cheaper than an id-to-slot map.
+export const NEUTRAL_OWNER = 255;
+export const MAX_PLAYERS = 8;
 export const UNIT_SPEED = 3;
 // Packed id 0 is VALID (handle 0, gen 0), so the no-target sentinel must be an
 // impossible handle. 0xffff exceeds MAX_UNITS.
@@ -52,6 +64,7 @@ export interface World {
   // Actual player ids, which are NOT guaranteed contiguous - lobby churn skips numbers;
   // 255 owners is plenty.
   owner: Uint8Array;
+  stockpiles: Uint32Array;
   unitType: Uint8Array;
   hp: Uint16Array;
   attackCooldown: Uint16Array;
@@ -113,6 +126,7 @@ export function createWorld(seed: number): World {
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
     owner: new Uint8Array(MAX_UNITS),
+    stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     unitType: new Uint8Array(MAX_UNITS),
     hp: new Uint16Array(MAX_UNITS),
     attackCooldown: new Uint16Array(MAX_UNITS),
@@ -151,6 +165,7 @@ export function spawnUnit(
   vx: number,
   vz: number,
   owner = 0,
+  type = 0,
 ): number {
   if (world.count >= MAX_UNITS) {
     throw new RangeError("World unit capacity exceeded.");
@@ -170,8 +185,8 @@ export function spawnUnit(
   world.moveTargetZ[index] = 0;
   world.moving[index] = 0;
   world.owner[index] = owner;
-  world.unitType[index] = 0;
-  world.hp[index] = UNIT_TYPES[0]!.maxHp;
+  world.unitType[index] = type;
+  world.hp[index] = UNIT_TYPES[type]!.maxHp;
   world.attackCooldown[index] = 0;
   world.attackTarget[index] = NO_TARGET;
   world.attackOrdered[index] = 0;
@@ -234,6 +249,26 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
     return;
   }
 
+  // Placement affordability lands in M6-4; 100/100 is a balance-pass placeholder.
+  for (let ownerIndex = 0; ownerIndex < ownerCount; ownerIndex += 1) {
+    const owner = ownerIds[ownerIndex]!;
+    let alreadyCredited = false;
+
+    for (let previousIndex = 0; previousIndex < ownerIndex; previousIndex += 1) {
+      if (ownerIds[previousIndex] === owner) {
+        alreadyCredited = true;
+        break;
+      }
+    }
+
+    if (alreadyCredited) {
+      continue;
+    }
+
+    world.stockpiles[owner * RESOURCE_COUNT + FOOD] = 100;
+    world.stockpiles[owner * RESOURCE_COUNT + WOOD] = 100;
+  }
+
   const baseCount = Math.floor(count / ownerCount);
   const extraCount = count % ownerCount;
 
@@ -262,6 +297,100 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
       // Spawn retry consumes a seed-derived, deterministic number of rng draws; spawn layout
       // shifts vs. step 2, acceptable before anything persists.
       spawnUnit(world, x, z, 0, 0, owner);
+    }
+  }
+}
+
+export function spawnResourceNodes(world: World): void {
+  // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
+  for (let cluster = 0; cluster < 6; cluster += 1) {
+    let centerX = 0;
+    let centerZ = 0;
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      centerX = 30 + nextFloat(world.rng) * 196;
+      centerZ = 30 + nextFloat(world.rng) * 196;
+
+      const dxA = centerX - 40;
+      const dzA = centerZ - 40;
+      const dxB = centerX - 216;
+      const dzB = centerZ - 216;
+
+      if (dxA * dxA + dzA * dzA >= 45 * 45 && dxB * dxB + dzB * dzB >= 45 * 45) {
+        break;
+      }
+    }
+
+    const treeCount = 8 + Math.floor(nextFloat(world.rng) * 8);
+    const treeX = new Float64Array(treeCount);
+    const treeZ = new Float64Array(treeCount);
+
+    for (let tree = 0; tree < treeCount; tree += 1) {
+      let x = 0;
+      let z = 0;
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const rawX = centerX - 10 + nextFloat(world.rng) * 20;
+        const rawZ = centerZ - 10 + nextFloat(world.rng) * 20;
+
+        x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+        z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
+
+        if (world.walkable[cellOf(x, z)] === 1) {
+          break;
+        }
+      }
+
+      treeX[tree] = x;
+      treeZ[tree] = z;
+      spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+    }
+
+    // Point symmetry = equal resources per corner by construction.
+    for (let tree = 0; tree < treeCount; tree += 1) {
+      spawnUnit(
+        world,
+        SIM_MAP_SIZE - treeX[tree]!,
+        SIM_MAP_SIZE - treeZ[tree]!,
+        0,
+        0,
+        NEUTRAL_OWNER,
+        TYPE_TREE,
+      );
+    }
+  }
+
+  const berryOffsets = [
+    [16, 16],
+    [18, 13],
+    [13, 18],
+    [20, 16],
+    [16, 20],
+  ] as const;
+
+  for (let cornerIndex = 0; cornerIndex < 2; cornerIndex += 1) {
+    const [cornerX, cornerZ] = START_CORNERS[cornerIndex]!;
+    const dirX = cornerX < SIM_MAP_SIZE * 0.5 ? 1 : -1;
+    const dirZ = cornerZ < SIM_MAP_SIZE * 0.5 ? 1 : -1;
+
+    for (let bush = 0; bush < berryOffsets.length; bush += 1) {
+      const [offsetX, offsetZ] = berryOffsets[bush]!;
+      let x = 0;
+      let z = 0;
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const rawX = cornerX + dirX * offsetX + (nextFloat(world.rng) * 6 - 3);
+        const rawZ = cornerZ + dirZ * offsetZ + (nextFloat(world.rng) * 6 - 3);
+
+        x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+        z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
+
+        if (world.walkable[cellOf(x, z)] === 1) {
+          break;
+        }
+      }
+
+      spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
     }
   }
 }
@@ -307,6 +436,11 @@ export function tickWorld(world: World): void {
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
+
+    if (stats.isStatic) {
+      // Trees don't fight; static rows never auto-acquire or strike.
+      continue;
+    }
 
     if (world.attackCooldown[i]! > 0) {
       world.attackCooldown[i] = world.attackCooldown[i]! - 1;
@@ -386,7 +520,8 @@ export function tickWorld(world: World): void {
           for (let unitOffset = start; unitOffset < end; unitOffset += 1) {
             const j = world.cellUnits[unitOffset]!;
 
-            if (j === i || world.owner[j] === world.owner[i]) {
+            // Nobody auto-fights a tree.
+            if (j === i || world.owner[j] === world.owner[i] || world.owner[j] === NEUTRAL_OWNER) {
               continue;
             }
 
@@ -426,6 +561,13 @@ export function tickWorld(world: World): void {
     const z = world.posZ[i]!;
     let pushX = 0;
     let pushZ = 0;
+
+    if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
+      // Static nodes stay in the grid as separation sources, but never accumulate pushes.
+      world.pushX[i] = 0;
+      world.pushZ[i] = 0;
+      continue;
+    }
 
     if (world.moving[i] === 0) {
       pushX = 0;
@@ -538,6 +680,11 @@ export function tickWorld(world: World): void {
 
   // 5. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
+    if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
+      // Mobile units flowed around static sources during compute; the source itself never moves.
+      continue;
+    }
+
     const oldX = world.posX[i]!;
     const oldZ = world.posZ[i]!;
     const x = oldX + world.pushX[i]!;
@@ -576,24 +723,33 @@ export function tickWorld(world: World): void {
 
   // Annihilation, in-sim, hashed: the UI reads it, never computes it.
   if (world.contested && world.winner === -1) {
-    if (world.count === 0) {
+    // Neutral forests must not prevent victory or count as armies in a draw.
+    let liveArmies = 0;
+    let liveOwner = -1;
+    let singleOwner = true;
+
+    for (let i = 0; i < world.count; i += 1) {
+      const owner = world.owner[i]!;
+
+      if (owner === NEUTRAL_OWNER) {
+        continue;
+      }
+
+      liveArmies += 1;
+
+      if (liveOwner === -1) {
+        liveOwner = owner;
+      } else if (owner !== liveOwner) {
+        singleOwner = false;
+      }
+    }
+
+    if (liveArmies === 0) {
       // Mutual annihilation is a real outcome: symmetric duels genuinely
       // double-KO on synchronized cooldowns. A draw, not an eternal stalemate.
       world.winner = MATCH_DRAW;
-    } else {
-      const owner = world.owner[0]!;
-      let singleOwner = true;
-
-      for (let i = 1; i < world.count; i += 1) {
-        if (world.owner[i] !== owner) {
-          singleOwner = false;
-          break;
-        }
-      }
-
-      if (singleOwner) {
-        world.winner = owner;
-      }
+    } else if (singleOwner) {
+      world.winner = liveOwner;
     }
   }
 
@@ -776,7 +932,12 @@ function applyPendingCommands(world: World): void {
     } else if (command.type === COMMAND_ATTACK) {
       const target = resolveId(world, command.targetId);
 
-      if (target >= 0 && world.owner[target] !== command.issuer) {
+      // Gather is the verb for nodes - future step M6-3.
+      if (
+        target >= 0 &&
+        world.owner[target] !== NEUTRAL_OWNER &&
+        world.owner[target] !== command.issuer
+      ) {
         for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
           const id = command.unitIds[unitIndex]!;
           const index = resolveId(world, id);

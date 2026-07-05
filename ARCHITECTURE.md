@@ -11,7 +11,9 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 
 **Milestone 4 (feature-complete; two-machine exit run pending):** lockstep netcode — two browsers, one deterministic world. The command queue, tick stamping, and `hashWorld` were built as this milestone's seams; M4 added transport and pacing around them. The sim itself changed zero lines of gameplay logic. See its section below.
 
-**Milestone 5 (current focus):** players & combat — the first game. Ownership, command validation, damage, death, and a winner. Chosen over the old "fog + economy" sketch because both of those _require_ ownership and entity lifecycle, and combat is the smallest increment that makes the sandbox a playable 1v1. See its section below.
+**Milestone 5 (feature-complete; networked exit run pending):** players & combat — the first game. Ownership, command validation, damage, death, and a winner. Chosen over the old "fog + economy" sketch because both of those _require_ ownership and entity lifecycle, and combat is the smallest increment that makes the sandbox a playable 1v1. See its section below.
+
+**Milestone 6 (current focus):** economy & buildings — the full loop. Gather → stockpile → build → train → fight. The design bet: nearly everything reuses M5 machinery (resource nodes are entities, gathering and construction are the strike seam with different effects, the unit-type table becomes the content spine). See its section below.
 
 ---
 
@@ -443,9 +445,72 @@ Scope: units belong to players; you command only your own; right-click an enemy 
 
 ---
 
+## Milestone 6 — economy & buildings: the full loop
+
+Scope: villagers gather food and wood into per-player stockpiles; players place and villager-construct buildings; buildings train units against costs and a population cap; the economy feeds the war. No gold/favor, no farms, no market, no rally points, no fog. After M6, a match is a real RTS: boom, build, fight. The scoping bet that keeps four subsystems to one milestone: **everything is the M5 machinery wearing new clothes** — a tree is an entity that never moves; chopping it is the strike seam transferring stock instead of subtracting hp; construction is strikes that ADD progress; the `UNIT_TYPES` table built for archers is where trees, town centers, and barracks become rows.
+
+### Decisions
+
+| Decision          | Choice                                                                        | Rationale                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Resource model    | **Table-driven; food + wood ship in M6, gold/favor parked**                   | Each resource is a row (constants), not a subsystem. Two resources already force real tradeoffs (units cost food, buildings cost wood); more rows are content, addable without code. Stockpiles are integer `Uint32Array(players × resources)` — no float questions, hashed like everything else.                                                                                          |
+| Resource nodes    | **Entities, owner = NEUTRAL (255), hp = remaining stock**                     | Trees and berry bushes join the SoA as unit-type rows that never move. Free rides: picking, marquee inspection, snapshot, minimap dots, instanced rendering, deterministic map placement from the seed, and even destruction (a depleted node is a death — swap-remove already works). Chopping a tree IS attacking it: the gather verb reuses acquire/chase/strike wholesale.             |
+| Gathering         | **Carry + dropoff, not a passive faucet**                                     | Villagers carry up to a capacity, walk to the nearest own dropsite, deposit, and return to their node. The walk is the point: economic geography (where your dropsites sit relative to resources) is the actual RTS decision this milestone exists to create. State machine rides existing components plus a mode byte and a remembered node id.                                           |
+| Buildings         | **Entities with a tile footprint stamped into walkability**                   | Placement marks the footprint tiles unwalkable and FLUSHES the flow-field cache + in-flight unit field refs (fields are derived from walkability; a stale cache is a delayed desync). Buildings have hp — combat destroys them with zero new code. Town Center (dropsite, trains villagers, one pre-placed per player), House (+pop cap), Barracks (trains militia). Three types, no more. |
+| Construction      | **Villager-built: strikes that add progress**                                 | Placement deducts cost and spawns the building at 0 progress; villagers ordered onto it convert strike ticks into build progress (the strike seam's third costume). Auto-complete timers were considered and rejected — builder allocation is a real economic decision, and the machinery is already paid for.                                                                             |
+| Production        | **Single-slot timer per building; no queues in M6**                           | `Train { buildingId, unitType }` validates cost + pop cap, deducts, sets a countdown; the unit spawns adjacent on completion. Queues, rally points, and cancel-refunds are UX depth for later — single-slot keeps the components flat (`trainType`, `trainRemaining`) and the determinism surface small.                                                                                   |
+| Population cap    | **Pop = owned units; cap = base + per-house bonus; enforced at Train**        | Computed by scan at command validation (command-rate, cheap). The classic macro rhythm — army size gated by house count — for two typed arrays and one loop.                                                                                                                                                                                                                               |
+| Win condition     | **Annihilation now counts units AND buildings**                               | A player with a standing production building can fight back. Neutral entities (nodes) never count. `MATCH_DRAW` semantics unchanged.                                                                                                                                                                                                                                                       |
+| Economy on screen | **Stockpiles/pop ride the snapshot; HUD via the existing 4 Hz stats channel** | The sim owns the numbers; the engine latches them into GameStats gauges; React renders a top resource bar the way the perf HUD works — zero per-frame React.                                                                                                                                                                                                                               |
+
+### Sim additions
+
+- `RESOURCES` table (food, wood) + `stockpiles: Uint32Array` on World (hashed). `UNIT_TYPES` grows rows: tree, berry bush, town center, house, barracks — with per-row cost, buildTicks, trainType info, footprint, popBonus, gatherYield as applicable. `NEUTRAL_OWNER = 255`.
+- Components: `mode: Uint8Array` (idle/moving/fighting/gathering/returning/building — one byte, the villager state machine), `carried: Uint16Array` + `carriedType: Uint8Array`, `gatherNode: Uint32Array` (packed id — the remembered node for the return trip), `buildProgress: Uint16Array`, `trainType/trainRemaining`. All join the applyDeaths copy list (the checklist comment earns its keep again) and the hash.
+- Commands: `Gather { unitIds, targetId }`, `Build { unitIds, targetId }`, `Place { typeId, tileX, tileZ }`, `Train { buildingId, unitType }`. All validated (ownership, affordability, footprint legality) in command application — one place, deterministic, as always.
+- Map generation: forests (tree clusters) and berry patches placed from the seed at world creation, mirrored fairly for both spawn corners. Trees do NOT block walkability in M6 (soft separation only; forests-as-walls parked).
+- Walkability edits: building placement/destruction stamps tiles and flushes the field cache — the ONLY runtime walkability mutations; both are command-driven, so every client edits identically.
+
+### Engine/web changes
+
+- Right-click vocabulary by cursor target: resource node → Gather; own under-construction building → Build; enemy → Attack; ground → Move. Marker hue per verb.
+- Snapshot gains `unitType` (the renderer finally needs it: per-type sprites/atlas rows — trees, buildings, and units draw from the same instanced pipeline, art permitting) and `buildProgress` (scaffolding tint), plus stockpiles/pop for the HUD.
+- Building placement UI: React build bar (appears when a villager or production building is selected); placement enters a ghost mode — engine renders the footprint preview tinted valid/invalid — click issues Place. First real game chrome beyond overlays.
+- **Content dependency, flagged honestly:** tree/bush/TC/house/barracks sprites are needed (same atlas pipeline as the villager). Placeholder tinted quads until the art exists — the milestone does not block on it.
+
+### Performance budgets (adds)
+
+| Metric                                                     | Budget                                                            |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| Sim tick: 1k units + ~500 nodes/buildings, economy running | < 0.5 ms (the standing budget holds)                              |
+| Walkability edit (place/destroy building)                  | field-cache flush + rebuild-on-demand; spike < 2 ms, command-rate |
+| Full-loop determinism suite (gather→build→train→fight)     | green in CI, identical winner                                     |
+
+### Milestone 6 — sequential build order
+
+1. **Resources, stockpiles, nodes.** RESOURCES table, stockpiles on World/hash/snapshot, node type rows, seeded forest/berry placement, NEUTRAL owner, resource HUD bar (placeholder node art). _Verify: identical node layout from the same seed on two worlds; stockpile visible; nodes pickable._
+2. **Town Centers + building plumbing.** Building type rows, footprint stamping + field-cache flush, one TC pre-placed per player at spawn. _Verify: pathing routes around the TC; determinism with walkability edits._
+3. **Gathering.** Gather command + villager state machine (chase→strike→carry→dropoff→return). _Verify: right-click a tree, stockpile climbs; the full round-trip loops unattended; determinism test with mixed gather/combat._
+4. **Placement.** Place command, cost validation, ghost preview UI, build bar chrome. _Verify: affordable house placement on legal tiles only; ghost tints invalid on occupied/unwalkable/unaffordable._
+5. **Construction.** Build verb: villager strikes add progress; completion activates the building (house pop bonus counts). _Verify: multiple villagers build faster; determinism._
+6. **Production + pop cap.** Train command, single-slot countdown, adjacent spawn, pop enforcement, train buttons in the build bar. _Verify: TC trains villagers, barracks trains militia, cap blocks at limit, costs deduct._
+7. **Loop closure + polish.** Win condition counts buildings, carry indicator, marker hues, constants balance pass. _Verify: a full networked match — boom, build an army, win by annihilation — hash-silent throughout._
+
+**Exit criteria:** two players on two machines play a complete economic match — gather to ~30 villagers, expand with houses, train armies from barracks, fight to annihilation — hash-verified every second with zero desyncs, tick under budget with the full economy running.
+
+### M6 open questions (parked, on purpose)
+
+- Farms (renewable food) and the gold/favor resources — rows in existing tables when wanted.
+- Production queues, rally points, cancel-refunds, repair — UX depth on the single-slot skeleton.
+- Forests as movement blockers (walkability stamping exists; applying it to trees is a choice about map feel).
+- Garrison, gates, walls — the buildings-as-walkability system supports them structurally; each is its own design pass.
+- Where the build-bar UI system goes long-term (`@aom/ui` shadcn components vs. bespoke game chrome).
+
+---
+
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question; the villager sprite atlas landed early and keeps serving) → M6 economy & buildings: gathering, stockpiles, placement, production (right-click vocabulary grows) → M7 fog of war (compute shader; acquisition + minimap + rendering all consult it) → matchmaking/persistence in `apps/server`, and onward.
+M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question; the villager sprite atlas landed early and keeps serving — M6's building/node art extends the same atlas) → M7 fog of war (compute shader; acquisition + minimap + rendering all consult it) → ranged units + deterministic projectiles → matchmaking/persistence in `apps/server`, and onward.
 
 ## Open questions (parked, on purpose)
 

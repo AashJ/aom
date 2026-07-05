@@ -3,6 +3,7 @@ import {
   createWorld,
   hashWorld,
   MAX_UNITS,
+  spawnResourceNodes,
   spawnUnits,
   tickWorld,
   writeSnapshot,
@@ -105,6 +106,7 @@ export async function createGame(
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
   spawnUnits(world, 1_000, beginInfo ? beginInfo.players.map((p) => p.id) : [0]);
+  spawnResourceNodes(world); // Fixed call order after armies - rng stream and handle ids must match on every client.
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
   const markerPos = new Float32Array(2);
