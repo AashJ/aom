@@ -6,7 +6,7 @@ import {
   tickWorld,
   writeSnapshot,
 } from "@aom/sim";
-import { createCamera, smoothCamera, updateMatrices } from "./camera/camera";
+import { applyCameraTerrain, createCamera, smoothCamera, updateMatrices } from "./camera/camera";
 import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
@@ -146,6 +146,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
 
   function render(alpha: number, dtMs: number): void {
     applyInput(input.state, camera, dtMs / 1000, canvas);
+    applyCameraTerrain(camera, heights, dtMs);
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
     consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
