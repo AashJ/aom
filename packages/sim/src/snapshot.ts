@@ -8,6 +8,7 @@ export interface RenderSnapshot {
   posX: Float32Array;
   posZ: Float32Array;
   selected: Uint8Array;
+  owner: Uint8Array;
 }
 
 export function createSnapshot(capacity: number): RenderSnapshot {
@@ -18,6 +19,7 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     posX: new Float32Array(capacity),
     posZ: new Float32Array(capacity),
     selected: new Uint8Array(capacity),
+    owner: new Uint8Array(capacity),
   };
 }
 
@@ -35,5 +37,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
     out.posZ[i] = world.posZ[i]!;
     // Copies selected, not selectable; selectable only means the unit may be selected.
     out.selected[i] = world.selected[i]!;
+    // Renderer tints by owner in the next chunk.
+    out.owner[i] = world.owner[i]!;
   }
 }

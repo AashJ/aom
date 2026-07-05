@@ -63,6 +63,13 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // Owner is shared gameplay state; a disagreement means different validation outcomes.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.owner[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // Handle wiring determines which commands resolve — clients must agree on it exactly.
   for (let i = 0; i < world.count; i += 1) {
     word = world.handleOf[i]!;

@@ -34,8 +34,8 @@ export function createTurnBuffer(): TurnBuffer {
       }
 
       for (const pc of commands) {
-        // The execution tick is stamped HERE, from the turn number: wire commands are tickless by design.
-        enqueueCommand(world, { ...pc.command, tick });
+        // Authority enters the sim HERE, from the server-stamped broadcast.
+        enqueueCommand(world, { ...pc.command, tick, issuer: pc.playerId });
       }
 
       // Drained turns do not accumulate.

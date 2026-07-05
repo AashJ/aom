@@ -21,6 +21,13 @@ const GRID_CELLS = GRID_DIM * GRID_DIM;
 export const SEPARATION_RADIUS = 0.8;
 // Slightly under the 0.15 move step so movers still make net progress through a crowd.
 const SEPARATION_MAX_STEP = 0.12;
+// Opposite corners for 1v1, the classic RTS start.
+const START_CORNERS = [
+  [40, 40],
+  [216, 216],
+  [216, 40],
+  [40, 216],
+] as const;
 
 export interface World {
   tick: number;
@@ -35,6 +42,9 @@ export interface World {
   moveTargetX: Float64Array;
   moveTargetZ: Float64Array;
   moving: Uint8Array;
+  // Actual player ids, which are NOT guaranteed contiguous - lobby churn skips numbers;
+  // 255 owners is plenty.
+  owner: Uint8Array;
   // Indexed by stable HANDLE, not dense slot. Per-dense-slot generations cannot
   // survive swap-remove: the moved unit's dense index changes, and its outstanding
   // ids must stay valid while it lives. Before any death, handle === dense index,
@@ -88,6 +98,7 @@ export function createWorld(seed: number): World {
     moveTargetX: new Float64Array(MAX_UNITS),
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
+    owner: new Uint8Array(MAX_UNITS),
     generation: new Uint16Array(MAX_UNITS),
     slotOf,
     handleOf: new Uint32Array(MAX_UNITS),
@@ -112,7 +123,14 @@ export function createWorld(seed: number): World {
   };
 }
 
-export function spawnUnit(world: World, x: number, z: number, vx: number, vz: number): number {
+export function spawnUnit(
+  world: World,
+  x: number,
+  z: number,
+  vx: number,
+  vz: number,
+  owner = 0,
+): number {
   if (world.count >= MAX_UNITS) {
     throw new RangeError("World unit capacity exceeded.");
   }
@@ -130,6 +148,7 @@ export function spawnUnit(world: World, x: number, z: number, vx: number, vz: nu
   world.moveTargetX[index] = 0;
   world.moveTargetZ[index] = 0;
   world.moving[index] = 0;
+  world.owner[index] = owner;
   world.selectable[index] = 1;
   world.selected[index] = 0;
   world.count += 1;
@@ -179,24 +198,42 @@ export function setSelected(world: World, id: number, on: boolean): void {
   world.selected[id] = on ? 1 : 0;
 }
 
-export function spawnUnits(world: World, count: number): void {
-  for (let i = 0; i < count; i += 1) {
-    let x = 0;
-    let z = 0;
+export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]): void {
+  const ownerCount = ownerIds.length;
 
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      x = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
-      z = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
+  if (ownerCount === 0) {
+    return;
+  }
 
-      if (world.walkable[cellOf(x, z)] === 1) {
-        break;
+  const baseCount = Math.floor(count / ownerCount);
+  const extraCount = count % ownerCount;
+
+  for (let ownerIndex = 0; ownerIndex < ownerCount; ownerIndex += 1) {
+    const owner = ownerIds[ownerIndex]!;
+    const [centerX, centerZ] = START_CORNERS[ownerIndex]!;
+    const unitsForOwner = baseCount + (ownerIndex < extraCount ? 1 : 0);
+
+    for (let i = 0; i < unitsForOwner; i += 1) {
+      let x = 0;
+      let z = 0;
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const rawX = centerX - 28 + nextFloat(world.rng) * 56;
+        const rawZ = centerZ - 28 + nextFloat(world.rng) * 56;
+
+        x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+        z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
+
+        if (world.walkable[cellOf(x, z)] === 1) {
+          break;
+        }
       }
-    }
 
-    // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
-    // Spawn retry consumes a seed-derived, deterministic number of rng draws; spawn layout
-    // shifts vs. step 2, acceptable before anything persists.
-    spawnUnit(world, x, z, 0, 0);
+      // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
+      // Spawn retry consumes a seed-derived, deterministic number of rng draws; spawn layout
+      // shifts vs. step 2, acceptable before anything persists.
+      spawnUnit(world, x, z, 0, 0, owner);
+    }
   }
 }
 
@@ -427,6 +464,7 @@ function applyDeaths(world: World): void {
       world.moveTargetX[i] = world.moveTargetX[last]!;
       world.moveTargetZ[i] = world.moveTargetZ[last]!;
       world.moving[i] = world.moving[last]!;
+      world.owner[i] = world.owner[last]!;
       world.selectable[i] = world.selectable[last]!;
       world.selected[i] = world.selected[last]!;
       world.unitField[i] = world.unitField[last] ?? null;
@@ -528,6 +566,9 @@ function applyPendingCommands(world: World): void {
           const index = resolveId(world, id);
 
           if (index < 0) continue;
+          // THE ownership validation - one place, every client, deterministic. The relay stays
+          // dumb; forged or mis-addressed commands die here identically everywhere.
+          if (world.owner[index] !== command.issuer) continue;
           world.moveTargetX[index] = targetX;
           world.moveTargetZ[index] = targetZ;
           world.moving[index] = 1;
@@ -540,6 +581,9 @@ function applyPendingCommands(world: World): void {
         const index = resolveId(world, id);
 
         if (index < 0) continue;
+        // THE ownership validation - one place, every client, deterministic. The relay stays
+        // dumb; forged or mis-addressed commands die here identically everywhere.
+        if (world.owner[index] !== command.issuer) continue;
         world.moving[index] = 0;
         world.unitField[index] = null;
       }

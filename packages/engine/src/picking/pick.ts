@@ -136,6 +136,7 @@ export function consumeCommandInput(
   input: InputState,
   world: World,
   sink: CommandSink,
+  selfPlayerId: number,
   camera: Camera,
   heights: Float32Array,
   canvas: HTMLCanvasElement,
@@ -147,7 +148,9 @@ export function consumeCommandInput(
 
     // Allocation is fine at keypress rate; commands are serializable-by-construction plain data.
     for (let i = 0; i < world.count; i += 1) {
-      if (world.selected[i] === 1) {
+      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
+      // stays the authority. Selecting enemies stays allowed for inspection.
+      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
         // Commands carry packed ids from here on.
         unitIds.push(unitIdAt(world, i));
       }
@@ -184,7 +187,9 @@ export function consumeCommandInput(
 
   // Allocation is fine at click rate; commands are serializable-by-construction plain data.
   for (let i = 0; i < world.count; i += 1) {
-    if (world.selected[i] === 1) {
+    // Lean commands - don't ship unitIds the sim will reject; the sim's validation
+    // stays the authority. Selecting enemies stays allowed for inspection.
+    if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
       // Commands carry packed ids from here on.
       unitIds.push(unitIdAt(world, i));
     }

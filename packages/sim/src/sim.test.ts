@@ -230,7 +230,14 @@ describe("packed entity ids", () => {
     world.generation[0] = 3;
 
     // The old id must order nobody around...
-    enqueueCommand(world, { tick: 1, type: COMMAND_MOVE, unitIds: [id], targetX: 40, targetZ: 10 });
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [id],
+      targetX: 40,
+      targetZ: 10,
+    });
 
     for (let t = 0; t < 10; t += 1) {
       tickWorld(world);
@@ -242,6 +249,7 @@ describe("packed entity ids", () => {
     // ...while the current-generation id works normally.
     enqueueCommand(world, {
       tick: world.tick + 1,
+      issuer: 0,
       type: COMMAND_MOVE,
       unitIds: [unitIdAt(world, 0)],
       targetX: 40,
@@ -277,6 +285,123 @@ describe("packed entity ids", () => {
   });
 });
 
+describe("ownership", () => {
+  test("commands only move units the issuer owns", () => {
+    const world = flatWorld(42);
+    const mine = spawnUnit(world, 10, 10, 0, 0, 0);
+    const theirs = spawnUnit(world, 20, 20, 0, 0, 1);
+
+    // One command addressing BOTH armies: the sim must slice it to the
+    // issuer's units — the forged half dies identically on every client.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [mine, theirs],
+      targetX: 60,
+      targetZ: 60,
+    });
+
+    for (let t = 0; t < 10; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.moving[0]).toBe(1);
+    expect(world.posZ[1]).toBe(20);
+    expect(world.moving[1]).toBe(0);
+  });
+
+  test("stop obeys the same validation", () => {
+    const world = flatWorld(42);
+    const mine = spawnUnit(world, 10, 10, 0, 0, 0);
+    const theirs = spawnUnit(world, 20, 20, 0, 0, 1);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [mine],
+      targetX: 60,
+      targetZ: 10,
+    });
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 1,
+      type: COMMAND_MOVE,
+      unitIds: [theirs],
+      targetX: 60,
+      targetZ: 20,
+    });
+    tickWorld(world);
+    tickWorld(world);
+
+    // Player 0 tries to halt player 1's unit: no-op; their own halt works.
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      issuer: 0,
+      type: COMMAND_STOP,
+      unitIds: [theirs, mine],
+    });
+    tickWorld(world);
+    tickWorld(world);
+
+    expect(world.moving[0]).toBe(0);
+    expect(world.moving[1]).toBe(1);
+  });
+
+  test("corner spawns split armies deterministically by owner list", () => {
+    const a = flatWorld(7);
+    const b = flatWorld(7);
+
+    spawnUnits(a, 100, [3, 8]);
+    spawnUnits(b, 100, [3, 8]);
+
+    expect(hashWorld(a)).toBe(hashWorld(b));
+
+    // Owners are the ACTUAL ids from the roster (non-contiguous is normal).
+    let owner3 = 0;
+    let owner8 = 0;
+
+    for (let i = 0; i < a.count; i += 1) {
+      if (a.owner[i] === 3) owner3 += 1;
+      if (a.owner[i] === 8) owner8 += 1;
+
+      // Clusters sit in opposite corners: owner 3 near (40,40), owner 8 near
+      // (216,216) — generous radius to absorb walkable resampling.
+      const x = a.posX[i]!;
+      const z = a.posZ[i]!;
+
+      if (a.owner[i] === 3) {
+        expect(Math.hypot(x - 40, z - 40)).toBeLessThan(60);
+      } else {
+        expect(Math.hypot(x - 216, z - 216)).toBeLessThan(60);
+      }
+    }
+
+    expect(owner3).toBe(50);
+    expect(owner8).toBe(50);
+  });
+
+  test("owner survives the death swap and reaches the snapshot", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 10, 10, 0, 0, 0);
+    spawnUnit(world, 20, 20, 0, 0, 1);
+    spawnUnit(world, 30, 30, 0, 0, 2);
+
+    killUnit(world, 0);
+    tickWorld(world);
+
+    // The last unit (owner 2) swapped into slot 0 with its owner intact —
+    // the applyDeaths copy-list checklist in action.
+    expect(world.owner[0]).toBe(2);
+
+    const snapshot = createSnapshot(8);
+    writeSnapshot(world, snapshot);
+    expect(snapshot.owner[0]).toBe(2);
+    expect(snapshot.owner[1]).toBe(1);
+  });
+});
+
 describe("death and swap-remove", () => {
   test("killing a unit compacts storage and the moved unit's id survives", () => {
     const world = flatWorld(42);
@@ -297,6 +422,7 @@ describe("death and swap-remove", () => {
     // Commands addressed to the moved unit keep working across the swap.
     enqueueCommand(world, {
       tick: world.tick + 1,
+      issuer: 0,
       type: COMMAND_MOVE,
       unitIds: [lastId],
       targetX: 60,
@@ -319,6 +445,7 @@ describe("death and swap-remove", () => {
 
     enqueueCommand(world, {
       tick: world.tick + 1,
+      issuer: 0,
       type: COMMAND_MOVE,
       unitIds: [doomed],
       targetX: 90,
@@ -399,6 +526,7 @@ describe("death and swap-remove", () => {
 
         enqueueCommand(a, {
           tick: t + 2,
+          issuer: 0,
           type: COMMAND_MOVE,
           unitIds: [idA],
           targetX: 5,
@@ -406,6 +534,7 @@ describe("death and swap-remove", () => {
         });
         enqueueCommand(b, {
           tick: t + 2,
+          issuer: 0,
           type: COMMAND_MOVE,
           unitIds: [idB],
           targetX: 5,
@@ -451,7 +580,14 @@ describe("commands and separation", () => {
     const world = flatWorld(42);
     const id = spawnUnit(world, 10, 10, 0, 0);
 
-    enqueueCommand(world, { tick: 1, type: COMMAND_MOVE, unitIds: [id], targetX: 20, targetZ: 10 });
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [id],
+      targetX: 20,
+      targetZ: 10,
+    });
 
     for (let tick = 0; tick < 80; tick += 1) {
       tickWorld(world);
@@ -488,6 +624,7 @@ describe("commands and separation", () => {
     // slack for crowd jostling without masking a unit that never arrives.
     enqueueCommand(world, {
       tick: 1,
+      issuer: 0,
       type: COMMAND_MOVE,
       unitIds: ids,
       targetX: 100,
@@ -520,6 +657,7 @@ describe("commands and separation", () => {
 
     enqueueCommand(world, {
       tick: 1,
+      issuer: 0,
       type: COMMAND_MOVE,
       unitIds: [mover],
       targetX: 106,
@@ -569,6 +707,7 @@ describe("commands and separation", () => {
 
       enqueueCommand(world, {
         tick: 3,
+        issuer: 0,
         type: COMMAND_MOVE,
         unitIds: ids,
         targetX: 200,
@@ -576,11 +715,13 @@ describe("commands and separation", () => {
       });
       enqueueCommand(world, {
         tick: 30,
+        issuer: 0,
         type: COMMAND_STOP,
         unitIds: ids.slice(0, 50),
       });
       enqueueCommand(world, {
         tick: 50,
+        issuer: 0,
         type: COMMAND_MOVE,
         unitIds: ids.slice(0, 50),
         targetX: 60,
@@ -612,6 +753,7 @@ describe("commands and separation", () => {
 
     enqueueCommand(world, {
       tick: 1,
+      issuer: 0,
       type: COMMAND_MOVE,
       unitIds: [3],
       targetX: 50,

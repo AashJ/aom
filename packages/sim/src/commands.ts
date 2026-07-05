@@ -8,6 +8,11 @@ export const COMMAND_STOP = 1;
 
 export interface MoveCommand {
   tick: number;
+  // The playerId whose authority the command carries. Stamped by the loopback sink (0)
+  // or by the turn buffer from the server-assigned PlayerCommand.playerId - never by
+  // the wire. Validation happens at application: units not owned by the issuer are
+  // silently skipped.
+  issuer: number;
   type: typeof COMMAND_MOVE;
   unitIds: number[];
   targetX: number;
@@ -16,6 +21,11 @@ export interface MoveCommand {
 
 export interface StopCommand {
   tick: number;
+  // The playerId whose authority the command carries. Stamped by the loopback sink (0)
+  // or by the turn buffer from the server-assigned PlayerCommand.playerId - never by
+  // the wire. Validation happens at application: units not owned by the issuer are
+  // silently skipped.
+  issuer: number;
   type: typeof COMMAND_STOP;
   unitIds: number[];
 }

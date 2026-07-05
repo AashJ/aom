@@ -8,9 +8,9 @@ export const PROTOCOL_VERSION = 1;
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
-// Commands cross the wire WITHOUT ticks: execution time is the turn number the
-// sequencer assigns; no client-chosen execution time is ever trusted.
-export type WireCommand = DistributiveOmit<Command, "tick">;
+// The wire carries NEITHER execution time NOR authority - the sequencer assigns the turn,
+// the server assigns the playerId; clients assert nothing about either.
+export type WireCommand = DistributiveOmit<Command, "tick" | "issuer">;
 
 export interface PlayerInfo {
   id: number;

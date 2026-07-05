@@ -97,10 +97,11 @@ export async function createGame(
   const camera = createCamera();
   const world = createWorld(beginInfo ? beginInfo.seed : 1337);
   const sink = session ? session.sink : createLoopbackSink(world);
+  const selfPlayerId = beginInfo ? beginInfo.selfId : 0;
   // Init handoff: createWorld(seed) derives terrain from the same seed the sim owns,
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
-  spawnUnits(world, 1_000);
+  spawnUnits(world, 1_000, beginInfo ? beginInfo.players.map((p) => p.id) : [0]);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
   const markerPos = new Float32Array(2);
@@ -224,7 +225,18 @@ export async function createGame(
       }
     }
 
-    if (consumeCommandInput(input.state, world, sink, camera, heights, canvas, markerPos)) {
+    if (
+      consumeCommandInput(
+        input.state,
+        world,
+        sink,
+        selfPlayerId,
+        camera,
+        heights,
+        canvas,
+        markerPos,
+      )
+    ) {
       markerAgeMs = 0;
     }
     markerAgeMs += dtMs;

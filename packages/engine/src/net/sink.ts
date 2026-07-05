@@ -21,6 +21,8 @@ export function createLoopbackSink(world: World): CommandSink {
     submitMove(unitIds: number[], targetX: number, targetZ: number): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
+        // Single-player is player 0 and owns everything spawned by default.
+        issuer: 0,
         type: COMMAND_MOVE,
         unitIds,
         targetX,
@@ -30,6 +32,8 @@ export function createLoopbackSink(world: World): CommandSink {
     submitStop(unitIds: number[]): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
+        // Single-player is player 0 and owns everything spawned by default.
+        issuer: 0,
         type: COMMAND_STOP,
         unitIds,
       });

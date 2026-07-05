@@ -20,6 +20,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     posX: new Float32Array(xs),
     posZ: new Float32Array(zs),
     selected: new Uint8Array(xs.length),
+    owner: new Uint8Array(xs.length),
   };
 }
 

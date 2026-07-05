@@ -274,7 +274,7 @@ describe("fake-relay lockstep integration", () => {
       // applies them through the same public seam the game uses.
       for (const world of [worldA, worldB]) {
         for (const pc of commands) {
-          enqueueCommand(world, { ...pc.command, tick: turn });
+          enqueueCommand(world, { ...pc.command, tick: turn, issuer: 0 });
         }
       }
 
