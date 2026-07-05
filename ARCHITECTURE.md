@@ -336,8 +336,8 @@ Dependency directions: `@aom/relay` → `@aom/sim` (Command types only); `@aom/e
 ### Protocol (client ⇄ server, shapes defined in `@aom/relay`)
 
 - `join { room, name }` → `joined { playerId, players[] }` (room = shareable code; first joiner is host).
-- `start { }` (host) → `begin { seed, players[], inputDelayTicks, hashIntervalTicks }` — everyone constructs `createWorld(seed)` and spawns identically; the lobby is the only place state is agreed on.
-- `commands { turn, cmds[] }` up; `turn { turn, byPlayer: { playerId: cmds[] } }` down — broadcast every 50 ms even when empty (an empty turn is the "you may advance" token).
+- `start { }` (host) → `begin { seed, players[], hashIntervalTicks }` — everyone constructs `createWorld(seed)` and spawns identically; the lobby is the only place state is agreed on.
+- `commands { commands: WireCommand[] }` up — **tickless**: wire commands carry no execution time; the sequencer buckets them into the next open turn, and turn N executes at tick N (no client-chosen timing is ever trusted). `turn { turn, commands: PlayerCommand[] }` down — broadcast every 50 ms even when empty (an empty turn is the "you may advance" token). The fixed input delay of step 1's loopback sink is the single-player emulation of this pipeline's natural latency.
 - `hash { tick, value }` up at the agreed interval; `desync { tick, players[] }` down when reports disagree.
 - Commands gain `playerId` (stamped server-side, not trusted from the client). Within a turn, application order is (playerId, arrival order) — deterministic on every client because the sequencer's output IS the order.
 

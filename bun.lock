@@ -82,6 +82,18 @@
         "typescript": "catalog:",
       },
     },
+    "packages/relay": {
+      "name": "@aom/relay",
+      "version": "0.0.0",
+      "dependencies": {
+        "@aom/sim": "workspace:*",
+      },
+      "devDependencies": {
+        "@aom/config": "workspace:*",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/sim": {
       "name": "@aom/sim",
       "version": "0.0.0",
@@ -142,6 +154,8 @@
     "@aom/engine": ["@aom/engine@workspace:packages/engine"],
 
     "@aom/env": ["@aom/env@workspace:packages/env"],
+
+    "@aom/relay": ["@aom/relay@workspace:packages/relay"],
 
     "@aom/sim": ["@aom/sim@workspace:packages/sim"],
 

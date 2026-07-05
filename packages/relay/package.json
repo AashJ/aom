@@ -1,0 +1,21 @@
+{
+  "name": "@aom/relay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@aom/sim": "workspace:*"
+  },
+  "devDependencies": {
+    "@aom/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
