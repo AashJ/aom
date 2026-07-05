@@ -11,8 +11,7 @@ struct Uniforms {
 @group(0) @binding(2) var spriteSampler: sampler;
 @group(0) @binding(3) var spriteTex: texture_2d<f32>;
 
-const VILLAGER_ATLAS_COLUMNS = 7.0;
-const VILLAGER_ATLAS_ROWS = 1.0;
+const HP_BAR_GEOMETRY_BASE_HEIGHT = 2.2;
 // Keep in sync with minimap.wgsl.
 const PLAYER_PALETTE = array<vec3f, 4>(
   vec3f(0.32, 0.48, 0.85),
@@ -53,21 +52,25 @@ fn vs(
   @location(2) part: f32,
   @location(3) instancePos: vec3f,
   @location(4) selected: f32,
-  @location(5) frameIndex: f32,
-  @location(6) owner: f32,
-  @location(7) hpFrac: f32,
+  @location(5) owner: f32,
+  @location(6) hpFrac: f32,
+  @location(7) uvU0: f32,
+  @location(8) uvUW: f32,
+  @location(9) sizeW: f32,
+  @location(10) sizeH: f32,
 ) -> VertexOut {
   var world: vec3f;
   var local = baseLocal;
+  let right = normalize(u.right.xyz);
+  let upAxis = normalize(u.up.xyz);
 
   if (part > 1.5) {
     // Billboard: span the quad on the camera's right/up axes so the sprite
     // always faces the view; feet stay anchored at the instance position.
-    let right = normalize(u.right.xyz);
-    let upAxis = normalize(u.up.xyz);
     // Undamaged armies don't render as bars.
     let show = 1.0 - step(0.999, hpFrac);
-    local *= show;
+    // Bars ride above each sprite's actual height; a tree's bar must not hover mid-canopy.
+    local = vec2f(local.x, sizeH + local.y - HP_BAR_GEOMETRY_BASE_HEIGHT) * show;
     world = instancePos + right * local.x + upAxis * local.y;
   } else if (part > 0.5) {
     // Ring verts reuse local.xy as ground-plane XZ offsets. Unselected rings
@@ -78,8 +81,7 @@ fn vs(
   } else {
     // Billboard: span the quad on the camera's right/up axes so the sprite
     // always faces the view; feet stay anchored at the instance position.
-    let right = normalize(u.right.xyz);
-    let upAxis = normalize(u.up.xyz);
+    local *= vec2f(sizeW, sizeH);
     world = instancePos + right * local.x + upAxis * local.y;
   }
 
@@ -88,15 +90,7 @@ fn vs(
   if (part > 1.5) {
     out.uv = uv;
   } else {
-    let frame = clamp(
-      floor(frameIndex + 0.5),
-      0.0,
-      VILLAGER_ATLAS_COLUMNS * VILLAGER_ATLAS_ROWS - 1.0,
-    );
-    let row = floor(frame / VILLAGER_ATLAS_COLUMNS);
-    let column = frame - row * VILLAGER_ATLAS_COLUMNS;
-
-    out.uv = (vec2f(column, row) + uv) / vec2f(VILLAGER_ATLAS_COLUMNS, VILLAGER_ATLAS_ROWS);
+    out.uv = vec2f(uvU0 + uv.x * uvUW, uv.y);
   }
   out.part = part;
   out.selected = selected;

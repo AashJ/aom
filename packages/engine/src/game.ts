@@ -1,11 +1,14 @@
 import {
   createSnapshot,
   createWorld,
+  FOOD,
   hashWorld,
   MAX_UNITS,
+  RESOURCE_COUNT,
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
+  WOOD,
   writeSnapshot,
 } from "@aom/sim";
 import { applyCameraTerrain, createCamera, smoothCamera, updateMatrices } from "./camera/camera";
@@ -20,6 +23,7 @@ import { consumeCommandInput, consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
 import { createMarkerRenderer } from "./render/marker";
 import { createMinimapRenderer } from "./render/minimap";
+import { SPRITE_CONFIGS } from "./render/sprites";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
@@ -109,6 +113,7 @@ export async function createGame(
   spawnResourceNodes(world); // Fixed call order after armies - rng stream and handle ids must match on every client.
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
+  const unitDrawCallSeen = new Uint8Array(SPRITE_CONFIGS.length);
   const markerPos = new Float32Array(2);
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
@@ -273,6 +278,16 @@ export async function createGame(
       alpha,
       heights,
     );
+    unitDrawCallSeen.fill(0);
+    let unitDrawCalls = 0;
+    for (let i = 0; i < currSnap.count; i += 1) {
+      const unitType = currSnap.unitType[i]!;
+
+      if (unitDrawCallSeen[unitType] === 0) {
+        unitDrawCallSeen[unitType] = 1;
+        unitDrawCalls += 1;
+      }
+    }
     minimap.draw(
       pass,
       gpu.device.queue,
@@ -294,11 +309,15 @@ export async function createGame(
         markerKind,
       );
     }
-    // +4 = units + minimap base + minimap footprint + minimap dots; +1 while the marker is alive.
-    statsCollector.frameGauges.drawCalls = visibleChunks + 4 + (markerAgeMs < 600 ? 1 : 0);
+    // +3 = minimap base + minimap footprint + minimap dots; units draw once per occupied sprite bucket.
+    statsCollector.frameGauges.drawCalls =
+      visibleChunks + unitDrawCalls + 3 + (markerAgeMs < 600 ? 1 : 0);
     statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
+    const stockpileBase = selfPlayerId * RESOURCE_COUNT;
+    statsCollector.frameGauges.food = currSnap.stockpiles[stockpileBase + FOOD] ?? 0;
+    statsCollector.frameGauges.wood = currSnap.stockpiles[stockpileBase + WOOD] ?? 0;
     statsCollector.frameGauges.pingMs = session ? session.pingMs() : 0;
     pass.end();
     gpuTimer.afterPass(encoder);

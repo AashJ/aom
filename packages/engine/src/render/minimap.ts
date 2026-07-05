@@ -295,6 +295,7 @@ export function createMinimapRenderer(
         dotStaging[offset] = rectMinX + dotStaging[offset]! * rectWidth;
         dotStaging[offset + 1] = rectMinY + dotStaging[offset + 1]! * rectHeight;
         dotStaging[offset + 2] = curr.selected[i]!;
+        // Neutral resource nodes keep owner 255 so the shader paints them as map features.
         dotStaging[offset + 3] = curr.owner[i]!;
       }
 

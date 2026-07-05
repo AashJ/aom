@@ -106,7 +106,9 @@ fn vs_dot(
 @fragment
 fn fs_dot(in: DotOut) -> @location(0) vec4f {
   // Dots are 2-3 px, pure dark hues vanish on the terrain texture.
-  let base = mix(PLAYER_PALETTE[u32(in.owner) % 4u], vec3f(1.0), 0.25);
+  let owner = u32(in.owner);
+  // Neutral resources read as map features, not a fourth player.
+  let base = select(mix(PLAYER_PALETTE[owner % 4u], vec3f(1.0), 0.25), vec3f(0.25, 0.5, 0.2), owner == 255u);
   let highlight = vec3f(1.0, 0.85, 0.3);
   return vec4f(mix(base, highlight, in.selected), 1.0);
 }

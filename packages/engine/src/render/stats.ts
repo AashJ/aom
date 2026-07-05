@@ -10,6 +10,8 @@ export interface GameStats {
   instances: number;
   chunksVisible: number;
   chunksTotal: number;
+  food: number;
+  wood: number;
 }
 
 export type StatsCallback = (stats: GameStats) => void;
@@ -32,6 +34,8 @@ export function createStatsCollector(): {
     instances: number;
     chunksVisible: number;
     chunksTotal: number;
+    food: number;
+    wood: number;
   };
   sample(frameStart: number, cpuMs: number): void;
   subscribe(cb: StatsCallback): () => void;
@@ -50,6 +54,8 @@ export function createStatsCollector(): {
     instances: 0,
     chunksVisible: 0,
     chunksTotal: 0,
+    food: 0,
+    wood: 0,
   };
   // Frame gauges written by the render/tick paths, latched into GameStats at emit time.
   // Tick timing must capture the worst tick since the last emit - flow-field builds land inside
@@ -62,6 +68,8 @@ export function createStatsCollector(): {
     instances: 0,
     chunksVisible: 0,
     chunksTotal: 0,
+    food: 0,
+    wood: 0,
   };
   const callbacks = new Set<StatsCallback>();
 
@@ -105,6 +113,8 @@ export function createStatsCollector(): {
     stats.instances = frameGauges.instances;
     stats.chunksVisible = frameGauges.chunksVisible;
     stats.chunksTotal = frameGauges.chunksTotal;
+    stats.food = frameGauges.food;
+    stats.wood = frameGauges.wood;
     frameGauges.tickMsMax = 0;
 
     const memory = (performance as PerformanceWithMemory).memory;

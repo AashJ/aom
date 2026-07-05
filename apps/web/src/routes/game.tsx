@@ -14,6 +14,7 @@ import {
   type PlayerInfo,
 } from "@aom/engine";
 import { PerfHud } from "@/components/perf-hud";
+import { ResourceBar } from "@/components/resource-bar";
 
 const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:3002/ws"; // Dev default; production config arrives with deployment.
 
@@ -252,6 +253,7 @@ function GameComponent() {
   return (
     <div className="relative h-dvh w-screen">
       <canvas ref={canvasRef} className="block h-full w-full" />
+      <ResourceBar game={game} />
       <PerfHud game={game} />
       {net.desyncTick !== null && (
         <StatusPill text={`Desync detected at tick ${net.desyncTick} — match halted`} />

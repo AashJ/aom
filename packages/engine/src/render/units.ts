@@ -1,8 +1,8 @@
 import { heightAt, UNIT_TYPES, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
-import villagerSpriteUrl from "../assets/villager-walk.png";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
-import { VILLAGER_ATLAS_COLUMNS, villagerAnimationFrame } from "./unit-animation";
+import { SPRITE_CONFIGS, type SpriteConfig } from "./sprites";
+import { villagerAnimationFrame } from "./unit-animation";
 
 export interface UnitsRenderer {
   draw(
@@ -19,31 +19,47 @@ export interface UnitsRenderer {
 const RING_SEGMENTS = 32;
 const RING_INNER = 0.75;
 const RING_OUTER = 1.0;
-const SPRITE_HEIGHT = 2.2;
+const INSTANCE_FLOATS = 10;
+const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
 
-let villagerImage: Promise<ImageBitmap> | undefined;
-
-function loadVillagerImage(): Promise<ImageBitmap> {
-  villagerImage ??= fetch(villagerSpriteUrl)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`Failed to load villager sprite: ${response.status}`);
-      }
-
-      return response.blob();
-    })
-    .then((blob) => createImageBitmap(blob));
-
-  return villagerImage;
-}
-
-async function createSpriteTexture(device: GPUDevice): Promise<{
+interface SpriteTextureData {
   sampler: GPUSampler;
   texture: GPUTexture;
-  width: number;
-  height: number;
-}> {
-  const image = await loadVillagerImage();
+  aspect: number;
+  uvFrameWidth: number;
+}
+
+interface SpriteResources extends SpriteTextureData {
+  bindGroup: GPUBindGroup;
+}
+
+const spriteImages = new Map<string, Promise<ImageBitmap>>();
+
+function loadSpriteImage(config: SpriteConfig): Promise<ImageBitmap> {
+  let image = spriteImages.get(config.url);
+
+  if (!image) {
+    image = fetch(config.url)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load sprite ${config.url}: ${response.status}`);
+        }
+
+        return response.blob();
+      })
+      .then((blob) => createImageBitmap(blob));
+    spriteImages.set(config.url, image);
+  }
+
+  return image;
+}
+
+function createSpriteTexture(
+  device: GPUDevice,
+  sampler: GPUSampler,
+  image: ImageBitmap,
+  config: SpriteConfig,
+): SpriteTextureData {
   const texture = device.createTexture({
     size: [image.width, image.height],
     format: "rgba8unorm",
@@ -63,14 +79,22 @@ async function createSpriteTexture(device: GPUDevice): Promise<{
   );
 
   return {
-    sampler: device.createSampler({
-      magFilter: "linear",
-      minFilter: "linear",
-    }),
+    sampler,
     texture,
-    width: image.width,
-    height: image.height,
+    aspect: image.width / config.columns / image.height,
+    uvFrameWidth: 1 / config.columns,
   };
+}
+
+async function createSpriteTextures(
+  device: GPUDevice,
+  sampler: GPUSampler,
+): Promise<SpriteTextureData[]> {
+  const images = await Promise.all(SPRITE_CONFIGS.map((config) => loadSpriteImage(config)));
+
+  return images.map((image, type) =>
+    createSpriteTexture(device, sampler, image, SPRITE_CONFIGS[type]!),
+  );
 }
 
 export async function createUnitsRenderer(
@@ -79,31 +103,14 @@ export async function createUnitsRenderer(
   maxInstances: number,
   heights: Float32Array,
 ): Promise<UnitsRenderer> {
-  const sprite = await createSpriteTexture(device);
-  const spriteCellWidth = sprite.width / VILLAGER_ATLAS_COLUMNS;
-  const spriteWidth = SPRITE_HEIGHT * (spriteCellWidth / sprite.height);
+  const sampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+  });
+  const spriteTextures = await createSpriteTextures(device, sampler);
   const verts = [
-    // local xy, uv, part (0 = sprite, 1 = ring)
-    -spriteWidth * 0.5,
-    0,
-    0,
-    1,
-    0,
-    spriteWidth * 0.5,
-    0,
-    1,
-    1,
-    0,
-    spriteWidth * 0.5,
-    SPRITE_HEIGHT,
-    1,
-    0,
-    0,
-    -spriteWidth * 0.5,
-    SPRITE_HEIGHT,
-    0,
-    0,
-    0,
+    // local xy, uv, part (0 = sprite, 1 = ring, 2 = hp)
+    -0.5, 0, 0, 1, 0, 0.5, 0, 1, 1, 0, 0.5, 1, 1, 0, 0, -0.5, 1, 0, 0, 0,
   ];
   const indices = [0, 1, 2, 0, 2, 3];
   const ringBase = verts.length / 5;
@@ -146,10 +153,13 @@ export async function createUnitsRenderer(
     usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
   });
   const instanceBuffer = device.createBuffer({
-    size: maxInstances * 28,
+    size: maxInstances * INSTANCE_STRIDE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const staging = new Float32Array(maxInstances * 7);
+  const staging = new Float32Array(maxInstances * INSTANCE_FLOATS);
+  const typeCounts = new Uint32Array(SPRITE_CONFIGS.length);
+  const typeFirstInstances = new Uint32Array(SPRITE_CONFIGS.length);
+  const typeWriteOffsets = new Uint32Array(SPRITE_CONFIGS.length);
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -175,7 +185,7 @@ export async function createUnitsRenderer(
           ],
         },
         {
-          arrayStride: 28,
+          arrayStride: INSTANCE_STRIDE,
           // stepMode "instance" advances this buffer once per instance, not per vertex;
           // that is the whole trick of instancing.
           stepMode: "instance",
@@ -185,6 +195,9 @@ export async function createUnitsRenderer(
             { format: "float32", offset: 16, shaderLocation: 5 },
             { format: "float32", offset: 20, shaderLocation: 6 },
             { format: "float32", offset: 24, shaderLocation: 7 },
+            { format: "float32", offset: 28, shaderLocation: 8 },
+            { format: "float32", offset: 32, shaderLocation: 9 },
+            { format: "float32", offset: 36, shaderLocation: 10 },
           ],
         },
       ],
@@ -212,15 +225,20 @@ export async function createUnitsRenderer(
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
   });
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: heightTexture.createView() },
-      { binding: 2, resource: sprite.sampler },
-      { binding: 3, resource: sprite.texture.createView() },
-    ],
-  });
+  const bindGroupLayout = pipeline.getBindGroupLayout(0);
+  const heightView = heightTexture.createView();
+  const spriteResources: SpriteResources[] = spriteTextures.map((sprite) => ({
+    ...sprite,
+    bindGroup: device.createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: heightView },
+        { binding: 2, resource: sprite.sampler },
+        { binding: 3, resource: sprite.texture.createView() },
+      ],
+    }),
+  }));
 
   device.queue.writeBuffer(vertexBuffer, 0, vertexData);
   device.queue.writeBuffer(indexBuffer, 0, indexData);
@@ -236,6 +254,20 @@ export async function createUnitsRenderer(
 
   return {
     draw(pass, queue, viewProj, prev, curr, alpha, heights): number {
+      typeCounts.fill(0);
+
+      for (let i = 0; i < curr.count; i += 1) {
+        typeCounts[curr.unitType[i]!] = typeCounts[curr.unitType[i]!]! + 1;
+      }
+
+      // Counting sort like the sim's grid build: count per type, prefix to first instance, scatter.
+      let totalInstances = 0;
+      for (let type = 0; type < typeCounts.length; type += 1) {
+        typeFirstInstances[type] = totalInstances;
+        typeWriteOffsets[type] = totalInstances;
+        totalInstances += typeCounts[type]!;
+      }
+
       for (let i = 0; i < curr.count; i += 1) {
         // Swap-remove reorders dense slots when units die. Interpolating across an
         // identity change would smear one unit's position toward another's; snap instead,
@@ -247,27 +279,42 @@ export async function createUnitsRenderer(
         // smoothly at arbitrary display refresh rates.
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-        const offset = i * 7;
+        const type = curr.unitType[i]!;
+        const config = SPRITE_CONFIGS[type]!;
+        const sprite = spriteResources[type]!;
+        const instanceIndex = typeWriteOffsets[type]!;
+        const offset = instanceIndex * INSTANCE_FLOATS;
+        const frame = config.animated
+          ? villagerAnimationFrame(
+              {
+                prevX,
+                prevZ,
+                currX: curr.posX[i]!,
+                currZ: curr.posZ[i]!,
+                tick: curr.tick,
+                alpha,
+                unitIndex: i,
+              },
+              config,
+            )
+          : config.idleFrame;
+
+        typeWriteOffsets[type] = instanceIndex + 1;
 
         staging[offset] = x;
         staging[offset + 1] = heightAt(heights, x, z);
         staging[offset + 2] = z;
         staging[offset + 3] = curr.selected[i]!;
-        staging[offset + 4] = villagerAnimationFrame({
-          prevX,
-          prevZ,
-          currX: curr.posX[i]!,
-          currZ: curr.posZ[i]!,
-          tick: curr.tick,
-          alpha,
-          unitIndex: i,
-        });
-        staging[offset + 5] = curr.owner[i]!;
-        // Per-type max moves into the shader once a second unit type exists; snapshot would then carry unitType.
-        staging[offset + 6] = curr.hp[i]! / UNIT_TYPES[0]!.maxHp;
+        staging[offset + 4] = curr.owner[i]!;
+        staging[offset + 5] = curr.hp[i]! / UNIT_TYPES[type]!.maxHp;
+        // Frame math leaves the shader; per-type column counts become data, not consts.
+        staging[offset + 6] = frame * sprite.uvFrameWidth;
+        staging[offset + 7] = sprite.uvFrameWidth;
+        staging[offset + 8] = config.worldHeight * sprite.aspect;
+        staging[offset + 9] = config.worldHeight;
       }
 
-      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 7);
+      queue.writeBuffer(instanceBuffer, 0, staging, 0, totalInstances * INSTANCE_FLOATS);
       uniformStaging.set(viewProj);
       // Camera basis from the world-to-view matrix, packed as vec3 + padding each.
       uniformStaging[16] = viewProj[0]!;
@@ -278,13 +325,22 @@ export async function createUnitsRenderer(
       uniformStaging[22] = viewProj[9]!;
       queue.writeBuffer(uniformBuffer, 0, uniformStaging);
       pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup);
       pass.setVertexBuffer(0, vertexBuffer);
       pass.setVertexBuffer(1, instanceBuffer);
       pass.setIndexBuffer(indexBuffer, "uint16");
-      // The sprite body and draped ring still ride in one instanced draw.
-      pass.drawIndexed(indexData.length, curr.count);
-      return curr.count;
+      for (let type = 0; type < typeCounts.length; type += 1) {
+        const typeCount = typeCounts[type]!;
+
+        if (typeCount === 0) {
+          continue;
+        }
+
+        pass.setBindGroup(0, spriteResources[type]!.bindGroup);
+        // firstInstance walks the instance buffer -- 7 draws replace 1, budget yawns.
+        pass.drawIndexed(indexData.length, typeCount, 0, 0, typeFirstInstances[type]!);
+      }
+
+      return totalInstances;
     },
   };
 }
