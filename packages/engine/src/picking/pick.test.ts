@@ -15,6 +15,8 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
   return {
     tick: 0,
     count: xs.length,
+    // Generation-0 packed ids equal their indices.
+    ids: Uint32Array.from(xs.map((_, i) => i)),
     posX: new Float32Array(xs),
     posZ: new Float32Array(zs),
     selected: new Uint8Array(xs.length),

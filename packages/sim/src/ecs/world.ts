@@ -5,6 +5,7 @@ import { COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
 import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
+import { idGeneration, idIndex, packId } from "./id";
 
 export const TICK_HZ = 20;
 export const TICK_S = 0.05;
@@ -34,6 +35,8 @@ export interface World {
   moveTargetX: Float64Array;
   moveTargetZ: Float64Array;
   moving: Uint8Array;
+  // Bumped when a slot's unit dies — next chunk.
+  generation: Uint16Array;
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
@@ -71,6 +74,7 @@ export function createWorld(seed: number): World {
     moveTargetX: new Float64Array(MAX_UNITS),
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
+    generation: new Uint16Array(MAX_UNITS),
     selectable: new Uint8Array(MAX_UNITS),
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
@@ -103,7 +107,24 @@ export function spawnUnit(world: World, x: number, z: number, vx: number, vz: nu
   world.selectable[id] = 1;
   world.selected[id] = 0;
   world.count += 1;
-  return id;
+  // Numerically identical while generations are 0; callers holding "indices" from spawnUnit
+  // are already holding valid packed ids.
+  return packId(id, world.generation[id]!);
+}
+
+export function resolveId(world: World, id: number): number {
+  const index = idIndex(id);
+
+  // -1 = stale or invalid — a unit that died during the input-delay window; callers treat it
+  // as a silent, deterministic no-op. Ordering a corpse around must never be an error and NEVER
+  // a desync.
+  if (index >= world.count || world.generation[index] !== idGeneration(id)) return -1;
+  return index;
+}
+
+export function unitIdAt(world: World, index: number): number {
+  // How the engine converts a live index — e.g. from selection — into the id a command must carry.
+  return packId(index, world.generation[index]!);
 }
 
 export function clearSelection(world: World): void {
@@ -412,23 +433,23 @@ function applyPendingCommands(world: World): void {
 
         for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
           const id = command.unitIds[unitIndex]!;
+          const index = resolveId(world, id);
 
-          if (id >= 0 && id < world.count) {
-            world.moveTargetX[id] = targetX;
-            world.moveTargetZ[id] = targetZ;
-            world.moving[id] = 1;
-            world.unitField[id] = commandField;
-          }
+          if (index < 0) continue;
+          world.moveTargetX[index] = targetX;
+          world.moveTargetZ[index] = targetZ;
+          world.moving[index] = 1;
+          world.unitField[index] = commandField;
         }
       }
     } else if (command.type === COMMAND_STOP) {
       for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
         const id = command.unitIds[unitIndex]!;
+        const index = resolveId(world, id);
 
-        if (id >= 0 && id < world.count) {
-          world.moving[id] = 0;
-          world.unitField[id] = null;
-        }
+        if (index < 0) continue;
+        world.moving[index] = 0;
+        world.unitField[index] = null;
       }
     }
 

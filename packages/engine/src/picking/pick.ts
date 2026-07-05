@@ -4,6 +4,7 @@ import {
   heightAt,
   setSelected,
   SIM_MAP_SIZE,
+  unitIdAt,
   type RenderSnapshot,
   type World,
 } from "@aom/sim";
@@ -143,7 +144,8 @@ export function consumeCommandInput(
     // Allocation is fine at keypress rate; commands are serializable-by-construction plain data.
     for (let i = 0; i < world.count; i += 1) {
       if (world.selected[i] === 1) {
-        unitIds.push(i);
+        // Commands carry packed ids from here on.
+        unitIds.push(unitIdAt(world, i));
       }
     }
 
@@ -179,7 +181,8 @@ export function consumeCommandInput(
   // Allocation is fine at click rate; commands are serializable-by-construction plain data.
   for (let i = 0; i < world.count; i += 1) {
     if (world.selected[i] === 1) {
-      unitIds.push(i);
+      // Commands carry packed ids from here on.
+      unitIds.push(unitIdAt(world, i));
     }
   }
 

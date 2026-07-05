@@ -1,15 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { COMMAND_MOVE, COMMAND_STOP, enqueueCommand } from "./commands";
+import { idGeneration, idIndex, packId } from "./ecs/id";
 import { createPcg32, nextFloat, nextU32 } from "./math/prng";
 import {
   clearSelection,
   createWorld,
+  resolveId,
   SEPARATION_RADIUS,
   setSelected,
   SIM_MAP_SIZE,
   spawnUnit,
   spawnUnits,
   tickWorld,
+  unitIdAt,
   type World,
 } from "./ecs/world";
 import { hashWorld } from "./hash";
@@ -187,6 +190,89 @@ describe("walkability", () => {
     expect(walkable[200 * MAP_TILES + 10]).toBe(1);
     // The transposed tile must stay walkable, pinning row-major z addressing.
     expect(walkable[10 * MAP_TILES + 127]).toBe(1);
+  });
+});
+
+describe("packed entity ids", () => {
+  test("pack and unpack are inverses, and generation 0 equals the index", () => {
+    expect(packId(0, 0)).toBe(0);
+    // The property that made 1a a zero-behavior-change chunk.
+    expect(packId(4321, 0)).toBe(4321);
+    expect(idIndex(packId(4321, 7))).toBe(4321);
+    expect(idGeneration(packId(4321, 7))).toBe(7);
+    // Extremes survive the bit packing.
+    expect(idIndex(packId(0xffff, 0xffff))).toBe(0xffff);
+    expect(idGeneration(packId(0xffff, 0xffff))).toBe(0xffff);
+  });
+
+  test("resolveId accepts live ids and rejects stale or absurd ones", () => {
+    const world = flatWorld(42);
+    const id = spawnUnit(world, 10, 10, 0, 0);
+
+    expect(resolveId(world, id)).toBe(0);
+    expect(unitIdAt(world, 0)).toBe(id);
+
+    // Wrong generation: the slot was "reused" (death arrives next chunk; the
+    // manual bump simulates exactly what it will do).
+    world.generation[0] = 1;
+    expect(resolveId(world, id)).toBe(-1);
+    expect(resolveId(world, packId(0, 1))).toBe(0);
+
+    // Index beyond the live count.
+    expect(resolveId(world, packId(50, 0))).toBe(-1);
+  });
+
+  test("a stale-generation command is a silent deterministic no-op", () => {
+    const world = flatWorld(42);
+    const id = spawnUnit(world, 10, 10, 0, 0);
+
+    world.generation[0] = 3;
+
+    // The old id must order nobody around...
+    enqueueCommand(world, { tick: 1, type: COMMAND_MOVE, unitIds: [id], targetX: 40, targetZ: 10 });
+
+    for (let t = 0; t < 10; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.posX[0]).toBe(10);
+    expect(world.moving[0]).toBe(0);
+
+    // ...while the current-generation id works normally.
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      type: COMMAND_MOVE,
+      unitIds: [unitIdAt(world, 0)],
+      targetX: 40,
+      targetZ: 10,
+    });
+    tickWorld(world);
+    tickWorld(world);
+    expect(world.moving[0]).toBe(1);
+  });
+
+  test("snapshots carry the packed id of every live slot", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 20);
+    world.generation[3] = 9;
+
+    const snapshot = createSnapshot(32);
+    writeSnapshot(world, snapshot);
+
+    expect(snapshot.ids[0]).toBe(unitIdAt(world, 0));
+    expect(snapshot.ids[3]).toBe(packId(3, 9));
+  });
+
+  test("generation changes are visible to the state hash", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 10);
+
+    const before = hashWorld(world);
+    world.generation[2] = 1;
+
+    // A client that disagrees about a slot's generation would accept/reject
+    // different commands — the hash must see that.
+    expect(hashWorld(world)).not.toBe(before);
   });
 });
 

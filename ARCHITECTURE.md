@@ -9,7 +9,9 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 
 **Milestone 3 (complete):** gameplay sim — commands and movement. Built **before** M2 (meshes/animation) on purpose: movement needs no art, exercises the deterministic-sim investment, and finally binds right-click. M2's meshes then land on units that already behave. See its section below.
 
-**Milestone 4 (current focus):** lockstep netcode — two browsers, one deterministic world. The command queue, tick stamping, and `hashWorld` were built as this milestone's seams; M4 adds transport and pacing around them. The sim itself changes zero lines of gameplay logic. See its section below.
+**Milestone 4 (feature-complete; two-machine exit run pending):** lockstep netcode — two browsers, one deterministic world. The command queue, tick stamping, and `hashWorld` were built as this milestone's seams; M4 added transport and pacing around them. The sim itself changed zero lines of gameplay logic. See its section below.
+
+**Milestone 5 (current focus):** players & combat — the first game. Ownership, command validation, damage, death, and a winner. Chosen over the old "fog + economy" sketch because both of those _require_ ownership and entity lifecycle, and combat is the smallest increment that makes the sandbox a playable 1v1. See its section below.
 
 ---
 
@@ -373,7 +375,7 @@ Dependency directions: `@aom/relay` → `@aom/sim` (Command types only); `@aom/e
 5. **Hash exchange + desync banner + dev dump.** _Verify: artificially corrupt one client (dev hotkey pokes a position) → desync detected within one hash interval, banner on both, dumps diff to the corrupted array._
 6. **Feel + failure polish.** Waiting-UI, ping display on the HUD, clean disconnect handling. _Verify: a 2-player match survives a laptop lid-close-and-reopen on one side (as a pause, not a crash)._
 
-**Exit criteria:** a 2-player match across two machines on real (non-localhost) networking: 1k units each issuing group moves, hash-verified every second for a 10-minute session with zero desyncs, bandwidth under budget, and the fake-relay determinism test green in CI.
+**Exit criteria:** a 2-player match across two machines on real (non-localhost) networking: 1k units each issuing group moves, hash-verified every second for a 10-minute session with zero desyncs, bandwidth under budget, and the fake-relay determinism test green in CI. Lid-close survival means a **brief** suspend on ONE side (the relay and opponent stay up; TCP outlives short sleeps) — long suspends disconnect by design while reconnection stays parked, and the tested behavior there is a clean disconnect message, not a crash or a silent stale lobby.
 
 ### M4 open questions (parked, on purpose)
 
@@ -386,9 +388,64 @@ Dependency directions: `@aom/relay` → `@aom/sim` (Command types only); `@aom/e
 
 ---
 
+## Milestone 5 — players & combat: the first game
+
+Scope: units belong to players; you command only your own; right-click an enemy orders an attack; units deal damage, die, and are removed; last player standing wins. No economy, no buildings, no fog, no ranged units, no meshes. After M5, two people can _play_ — a skirmish with the armies they start with. Orderings considered and rejected: economy-first (deep three-subsystem build with nothing to spend armies on) and fog-first (a compute-shader showpiece with no stakes); both also hard-require the ownership + entity-lifecycle work below, so combat-first builds the foundation _and_ ships a game.
+
+### Decisions
+
+| Decision                  | Choice                                                                | Rationale                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ownership                 | **`owner: Uint8Array` component; the SIM validates commands**         | A command affecting units the issuing player doesn't own is dropped — deterministically, by every client, inside command application (the relay stays dumb; `playerId` on the turn broadcast is already the trusted identity). This is the first real command validation, and it happens in exactly one place.                                                          |
+| Entity identity           | **Generational ids — M3's deferred debt comes due**                   | Death breaks raw-index stability. Each slot gains a `generation: Uint16Array` counter, bumped on reuse; commands and snapshots carry packed ids (`index \| generation << 16`). A stale id (unit died during the input-delay window — an unavoidable race) resolves to a silent, deterministic no-op: ordering a corpse around is not an error and MUST not be a desync. |
+| Death & storage           | **Swap-remove keeps the SoA dense**                                   | Dense iteration stays allocation-free and hash-cheap. The last unit moves into the freed slot; generations make dangling references detectable. Deaths are collected during the tick and applied at tick END in descending index order (fixed order — determinism; descending so swaps never disturb a pending removal).                                                |
+| Snapshot ids              | **`RenderSnapshot` gains `ids` (+ `owner`, `hp`)**                    | Swap-remove breaks prev/curr index alignment, which interpolation silently assumed. The renderer interpolates a slot only when prev and curr ids match; on mismatch it snaps (the swapped unit pops for one frame — imperceptible, and honest). This is the M5 change most likely to bite silently, hence tested first.                                                 |
+| Combat model              | **Auto-acquire + chase + cooldown melee; no projectiles**             | Nearest enemy within aggro radius (spatial hash reused; ties break by id — determinism), chase via direct seek with a leash, instant damage on a tick-counted cooldown. Projectiles/ballistics/ranged are a later milestone; attack-move and stances are parked.                                                                                                        |
+| Win condition             | **Annihilation, detected in-sim, part of the hash**                   | `world.winner` set when one owner's army count reaches zero — shared truth, hashed like everything else. The UI learns about it from the snapshot, never computes it.                                                                                                                                                                                                   |
+| Player identity on screen | **Owner-indexed palette: sprite tint, minimap dots, selection rings** | Instance data gains `owner`; a small palette constant colors sprites (tint/multiply over the villager sprite — exact recolor technique decided at implementation), minimap dots, and ring colors. Selecting enemy units is allowed (inspection is free); commanding them is what validation drops.                                                                      |
+
+### Sim additions
+
+- Components: `owner: Uint8Array`, `hp: Uint16Array` (integer damage — no float drift questions in combat math), `attackCooldown: Uint16Array` (ticks), `generation: Uint16Array`, plus `COMBAT_*` constants (aggro radius, attack range, damage, cooldown ticks, leash distance).
+- New command: `Attack { unitIds[], targetId }` (packed ids). Move/Stop gain id validation + ownership validation.
+- Tick pipeline gains a combat phase between commands and movement: acquire (idle units scan for nearest enemy in aggro range) → chase (seek toward target position while outside attack range, leashed) → strike (in range, cooldown elapsed: subtract hp, reset cooldown) → deaths collected → applied at tick end (swap-remove, descending).
+- `spawnUnits` splits the army between players at opposite map corners.
+
+### Engine/web changes
+
+- Right-click on an _enemy_ unit issues Attack (pick already finds the unit; owner check routes move-vs-attack). Attack feedback marker in red.
+- Units renderer: owner tint + hp bar (small quad above damaged units — same instanced draw, flag-driven like the ring). Minimap dots by owner color.
+- Win/loss overlay (React, reads snapshot `winner`), with the match freezing exactly like a desync freeze — the game is simply over.
+
+### Performance budgets (adds)
+
+| Metric                                             | Budget                                       |
+| -------------------------------------------------- | -------------------------------------------- |
+| Sim tick, 1k units in active combat                | < 0.5 ms (the standing budget holds)         |
+| Determinism suite with a full scripted 500v500 war | green in CI, identical winner on both worlds |
+
+### Milestone 5 — sequential build order
+
+1. **Entity lifecycle.** Generational ids, swap-remove death (driven by a test-only kill helper), snapshot `ids`/`owner`/`hp`, renderer snap-on-id-mismatch. _Verify: determinism suite with scripted deaths; no interpolation smear when units die._
+2. **Ownership + validation + colors.** Per-player spawns at opposite corners, sim-side command validation, sprite tint + minimap dot colors. _Verify: two tabs — each can select everything but command only their own; a forged command for enemy units is a no-op on both clients._
+3. **Combat.** Attack command, auto-acquire, chase + leash, cooldown damage, deaths for real. _Verify: scripted 500v500 battle is hash-identical with the same winner on two worlds; tick under budget mid-battle._
+4. **Game feel.** HP bars, attack markers, win/loss overlay, kill-command polish. _Verify: a full 1v1 skirmish over the network ends with a winner banner on both screens and zero desyncs._
+
+**Exit criteria:** two players on two machines fight a 500v500 skirmish to annihilation — deterministic (hash-silent throughout), within tick budget during the biggest engagement, with a correct winner banner on both screens.
+
+### M5 open questions (parked, on purpose)
+
+- Ranged units / projectiles (deterministic ballistics is its own design pass).
+- Attack-move, stances, formations — command vocabulary beyond point-and-click.
+- Unit types and counters (one unit type in M5; the component layout should not assume it stays that way).
+- Whether target acquisition should respect fog once fog exists (it must — noted for the fog milestone).
+- Reconnection (carried from M4, unblocked by nothing here).
+
+---
+
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question; the villager sprite atlas landed early and covers M4's needs) → M5 fog of war (compute), economy/buildings, and onward.
+M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question; the villager sprite atlas landed early and keeps serving) → M6 economy & buildings: gathering, stockpiles, placement, production (right-click vocabulary grows) → M7 fog of war (compute shader; acquisition + minimap + rendering all consult it) → matchmaking/persistence in `apps/server`, and onward.
 
 ## Open questions (parked, on purpose)
 

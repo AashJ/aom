@@ -59,5 +59,13 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // Generations are shared state — a client that disagrees about a slot's generation would
+  // accept/reject different commands.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.generation[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   return h >>> 0;
 }
