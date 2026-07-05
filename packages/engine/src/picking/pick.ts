@@ -146,7 +146,7 @@ export function consumeCommandInput(
   heights: Float32Array,
   canvas: HTMLCanvasElement,
   markerOut: Float32Array,
-): 0 | 1 | 2 | 3 {
+): 0 | 1 | 2 | 3 | 4 {
   if (input.stopPending) {
     input.stopPending = false;
     const unitIds: number[] = [];
@@ -199,6 +199,35 @@ export function consumeCommandInput(
       markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
       markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
       return 3;
+    }
+    // Own-incomplete-building routing must come before enemy routing; own vs enemy owner cannot collide.
+  } else if (
+    hit >= 0 &&
+    curr.owner[hit] === selfPlayerId &&
+    UNIT_TYPES[curr.unitType[hit]!]!.footprint > 0 &&
+    curr.buildProgress[hit]! < UNIT_TYPES[curr.unitType[hit]!]!.buildTicks
+  ) {
+    const unitIds: number[] = [];
+
+    // Allocation is fine at click rate; commands are serializable-by-construction plain data.
+    for (let i = 0; i < world.count; i += 1) {
+      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
+      // stays the authority. Selecting enemies stays allowed for inspection.
+      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
+        // Commands carry packed ids from here on.
+        unitIds.push(unitIdAt(world, i));
+      }
+    }
+
+    if (unitIds.length > 0) {
+      const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
+      const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
+      const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
+
+      sink.submitBuild(unitIds, curr.ids[hit]!);
+      markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
+      markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
+      return 4;
     }
   } else if (hit >= 0 && curr.owner[hit] !== selfPlayerId && curr.owner[hit] !== NEUTRAL_OWNER) {
     const unitIds: number[] = [];

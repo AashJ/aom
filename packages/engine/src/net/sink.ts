@@ -6,6 +6,7 @@
 // encoder wants anyway.
 import {
   COMMAND_ATTACK,
+  COMMAND_BUILD,
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
@@ -24,6 +25,7 @@ export interface CommandSink {
   submitStop(unitIds: number[]): void;
   submitAttack(unitIds: number[], targetId: number): void;
   submitGather(unitIds: number[], targetId: number): void;
+  submitBuild(unitIds: number[], targetId: number): void;
   submitPlace(buildingType: number, tileX: number, tileZ: number): void;
 }
 
@@ -65,6 +67,16 @@ export function createLoopbackSink(world: World): CommandSink {
         // Single-player is player 0 and owns everything spawned by default.
         issuer: 0,
         type: COMMAND_GATHER,
+        unitIds,
+        targetId,
+      });
+    },
+    submitBuild(unitIds: number[], targetId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        // Single-player is player 0 and owns everything spawned by default.
+        issuer: 0,
+        type: COMMAND_BUILD,
         unitIds,
         targetId,
       });

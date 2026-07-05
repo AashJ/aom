@@ -23,7 +23,7 @@ export interface UnitsRenderer {
 const RING_SEGMENTS = 32;
 const RING_INNER = 0.75;
 const RING_OUTER = 1.0;
-const INSTANCE_FLOATS = 10;
+const INSTANCE_FLOATS = 11;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
 
 interface SpriteTextureData {
@@ -203,6 +203,7 @@ export async function createUnitsRenderer(
             { format: "float32", offset: 28, shaderLocation: 8 },
             { format: "float32", offset: 32, shaderLocation: 9 },
             { format: "float32", offset: 36, shaderLocation: 10 },
+            { format: "float32", offset: 40, shaderLocation: 11 },
           ],
         },
       ],
@@ -297,10 +298,13 @@ export async function createUnitsRenderer(
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
         const type = curr.unitType[i]!;
+        const ts = UNIT_TYPES[curr.unitType[i]!]!;
         const config = SPRITE_CONFIGS[type]!;
         const sprite = spriteResources[type]!;
         const instanceIndex = typeWriteOffsets[type]!;
         const offset = instanceIndex * INSTANCE_FLOATS;
+        const buildFrac =
+          ts.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / ts.buildTicks) : 1;
         const frame = config.animated
           ? villagerAnimationFrame(
               {
@@ -323,12 +327,13 @@ export async function createUnitsRenderer(
         staging[offset + 2] = z;
         staging[offset + 3] = curr.selected[i]!;
         staging[offset + 4] = curr.owner[i]!;
-        staging[offset + 5] = curr.hp[i]! / UNIT_TYPES[type]!.maxHp;
+        staging[offset + 5] = curr.hp[i]! / ts.maxHp;
         // Frame math leaves the shader; per-type column counts become data, not consts.
         staging[offset + 6] = frame * sprite.uvFrameWidth;
         staging[offset + 7] = sprite.uvFrameWidth;
         staging[offset + 8] = config.worldHeight * sprite.aspect;
         staging[offset + 9] = config.worldHeight;
+        staging[offset + 10] = buildFrac;
       }
 
       let ghostFirstInstance = -1;
@@ -354,6 +359,7 @@ export async function createUnitsRenderer(
           staging[offset + 7] = sprite.uvFrameWidth;
           staging[offset + 8] = config.worldHeight * sprite.aspect;
           staging[offset + 9] = config.worldHeight;
+          staging[offset + 10] = 1;
           totalInstances += 1;
         }
       }

@@ -41,10 +41,11 @@ fn vs(@location(0) local: vec2f) -> VertexOut {
 
 @fragment
 fn fs() -> @location(0) vec4f {
-  // Same expanding ring; move/gather/attack choose the acknowledgement hue.
+  // Same expanding ring; move/attack/gather/build choose the acknowledgement hue.
   let moveOrAttack =
     mix(vec3f(1.0, 0.85, 0.3), vec3f(0.95, 0.25, 0.18), step(1.5, u.params.w));
-  let color = mix(moveOrAttack, vec3f(0.35, 0.8, 0.3), step(2.5, u.params.w));
+  let moveAttackOrGather = mix(moveOrAttack, vec3f(0.35, 0.8, 0.3), step(2.5, u.params.w));
+  let color = mix(moveAttackOrGather, vec3f(0.95, 0.55, 0.2), step(3.5, u.params.w));
   let a = (1.0 - u.params.z) * 0.9;
 
   return vec4f(color * a, a);

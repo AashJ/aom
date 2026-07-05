@@ -27,6 +27,7 @@ struct VertexOut {
   @location(2) selected: f32,
   @location(3) owner: f32,
   @location(4) hpFrac: f32,
+  @location(5) buildFrac: f32,
 }
 
 fn terrainHeight(worldXZ: vec2f) -> f32 {
@@ -58,6 +59,7 @@ fn vs(
   @location(8) uvUW: f32,
   @location(9) sizeW: f32,
   @location(10) sizeH: f32,
+  @location(11) buildFrac: f32,
 ) -> VertexOut {
   var world: vec3f;
   var local = baseLocal;
@@ -68,7 +70,7 @@ fn vs(
     // Billboard: span the quad on the camera's right/up axes so the sprite
     // always faces the view; feet stay anchored at the instance position.
     // Undamaged armies don't render as bars.
-    let show = 1.0 - step(0.999, hpFrac);
+    let show = max(1.0 - step(0.999, hpFrac), 1.0 - step(1.0, buildFrac));
     // Bars ride above each sprite's actual height; a tree's bar must not hover mid-canopy.
     local = vec2f(local.x, sizeH + local.y - HP_BAR_GEOMETRY_BASE_HEIGHT) * show;
     world = instancePos + right * local.x + upAxis * local.y;
@@ -96,6 +98,7 @@ fn vs(
   out.selected = selected;
   out.owner = owner;
   out.hpFrac = hpFrac;
+  out.buildFrac = buildFrac;
   return out;
 }
 
@@ -109,8 +112,10 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   if (in.part > 1.5) {
     // Unlit UI, like the ring.
     let hpFrac = in.hpFrac;
-    let filled = step(in.uv.x, hpFrac);
-    let color = mix(vec3f(0.25, 0.05, 0.05), mix(vec3f(0.85, 0.2, 0.15), vec3f(0.3, 0.8, 0.3), hpFrac), filled);
+    // The bar doubles as the construction progress bar; damaged-while-building displays progress, an accepted M6 simplification.
+    let barFrac = select(hpFrac, in.buildFrac, in.buildFrac < 1.0);
+    let filled = step(in.uv.x, barFrac);
+    let color = mix(vec3f(0.25, 0.05, 0.05), mix(vec3f(0.85, 0.2, 0.15), vec3f(0.3, 0.8, 0.3), barFrac), filled);
     return vec4f(color, 1.0);
   }
 
@@ -133,7 +138,9 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   }
 
   // Multiply-tint keeps the sprite's own shading; 0.45 keeps faces readable while armies stay unmistakable.
+  let scaffold = mix(vec3f(0.55, 0.45, 0.35), vec3f(1.0), in.buildFrac);
   var color = texel.rgb * mix(vec3f(1.0), PLAYER_PALETTE[u32(in.owner) % 4u], 0.45);
+  color *= scaffold;
   color = mix(color, vec3f(1.0, 0.85, 0.3), in.selected * 0.35);
   return vec4f(color, texel.a);
 }
