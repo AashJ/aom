@@ -22,6 +22,7 @@ export function PerfHud({ game }: { game: GameHandle | null }) {
         "avg  " + stats.frameMsAvg.toFixed(2) + " ms",
         "p99  " + stats.frameMsP99.toFixed(2) + " ms",
         "gpu  " + (stats.gpuMs > 0 ? stats.gpuMs.toFixed(2) + " ms" : "n/a"),
+        "tick " + (stats.tickMsMax > 0 ? stats.tickMsMax.toFixed(2) + " ms" : "idle"),
         "draw " + stats.drawCalls,
         "inst " + stats.instances,
         "heap " + (stats.heapMB > 0 ? stats.heapMB.toFixed(1) + " MB" : "n/a"),

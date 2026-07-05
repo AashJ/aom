@@ -1,8 +1,6 @@
 // CPU picking per ARCHITECTURE.md M1. GPU id-buffer picking is the known upgrade path.
 import {
   clearSelection,
-  COMMAND_MOVE,
-  enqueueCommand,
   heightAt,
   setSelected,
   SIM_MAP_SIZE,
@@ -13,6 +11,7 @@ import { screenRay, screenToGround, type Camera } from "../camera/camera";
 import * as vec3 from "../math/vec3";
 import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
+import type { CommandSink } from "../net/sink";
 
 // Approximates the billboard sprite (2.2 tall, ~1.2 wide) as an upright box.
 const HALF_W = 0.5;
@@ -126,15 +125,35 @@ export function consumeSelectionInput(
   }
 }
 
+// World stays here for reading selection only. After this chunk, nothing in the engine writes
+// gameplay state except through a sink — the M4 invariant.
 export function consumeCommandInput(
   input: InputState,
   world: World,
+  sink: CommandSink,
   camera: Camera,
   heights: Float32Array,
   canvas: HTMLCanvasElement,
-): void {
+  markerOut: Float32Array,
+): boolean {
+  if (input.stopPending) {
+    input.stopPending = false;
+    const unitIds: number[] = [];
+
+    // Allocation is fine at keypress rate; commands are serializable-by-construction plain data.
+    for (let i = 0; i < world.count; i += 1) {
+      if (world.selected[i] === 1) {
+        unitIds.push(i);
+      }
+    }
+
+    if (unitIds.length > 0) {
+      sink.submitStop(unitIds);
+    }
+  }
+
   if (!input.commandPending) {
-    return;
+    return false;
   }
 
   input.commandPending = false;
@@ -147,7 +166,7 @@ export function consumeCommandInput(
   if (!raycastHeightfield(heights, rayOrigin, rayDir, commandTarget)) {
     // Off-map clicks still order a move to the map edge - generous, AoM-like.
     if (!screenToGround(camera, ndcX, ndcY, commandTarget)) {
-      return;
+      return false;
     }
   }
 
@@ -165,18 +184,14 @@ export function consumeCommandInput(
   }
 
   if (unitIds.length === 0) {
-    return;
+    return false;
   }
 
-  // +1 = "apply next tick" — the slot where lockstep input delay will live in
-  // M4.
-  enqueueCommand(world, {
-    tick: world.tick + 1,
-    type: COMMAND_MOVE,
-    unitIds,
-    targetX,
-    targetZ,
-  });
+  // The marker is the immediate order acknowledgement that absorbs the input delay.
+  sink.submitMove(unitIds, targetX, targetZ);
+  markerOut[0] = targetX;
+  markerOut[1] = targetZ;
+  return true;
 }
 
 export function marqueeSelect(

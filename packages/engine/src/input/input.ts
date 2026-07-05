@@ -31,6 +31,7 @@ export interface InputState {
   commandPending: boolean;
   commandX: number;
   commandY: number;
+  stopPending: boolean;
   marqueePending: boolean;
   marqueeMinX: number;
   marqueeMinY: number;
@@ -64,6 +65,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     commandPending: false,
     commandX: 0,
     commandY: 0,
+    stopPending: false,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -140,6 +142,12 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       // A persistent flag read by the render loop each frame, not a consumed intent --
       // toggles are state, clicks are events.
       state.debugOverlay = !state.debugOverlay;
+      return;
+    }
+
+    if (event.code === "KeyH" && !event.repeat) {
+      // H = halt; S is taken by WASD pan. A consumed intent, unlike the debugOverlay toggle.
+      state.stopPending = true;
       return;
     }
 

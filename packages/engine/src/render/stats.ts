@@ -3,6 +3,7 @@ export interface GameStats {
   frameMsAvg: number;
   frameMsP99: number;
   gpuMs: number;
+  tickMsMax: number;
   heapMB: number;
   drawCalls: number;
   instances: number;
@@ -24,6 +25,7 @@ interface PerformanceWithMemory extends Performance {
 export function createStatsCollector(): {
   frameGauges: {
     gpuMs: number;
+    tickMsMax: number;
     drawCalls: number;
     instances: number;
     chunksVisible: number;
@@ -39,14 +41,24 @@ export function createStatsCollector(): {
     frameMsAvg: 0,
     frameMsP99: 0,
     gpuMs: 0,
+    tickMsMax: 0,
     heapMB: 0,
     drawCalls: 0,
     instances: 0,
     chunksVisible: 0,
     chunksTotal: 0,
   };
-  // Per-frame gauges written by the render path, latched into GameStats at emit time.
-  const frameGauges = { gpuMs: 0, drawCalls: 0, instances: 0, chunksVisible: 0, chunksTotal: 0 };
+  // Frame gauges written by the render/tick paths, latched into GameStats at emit time.
+  // Tick timing must capture the worst tick since the last emit - flow-field builds land inside
+  // a single tick and a last-value gauge would hide exactly those spikes.
+  const frameGauges = {
+    gpuMs: 0,
+    tickMsMax: 0,
+    drawCalls: 0,
+    instances: 0,
+    chunksVisible: 0,
+    chunksTotal: 0,
+  };
   const callbacks = new Set<StatsCallback>();
 
   let sampleIndex = 0;
@@ -83,10 +95,12 @@ export function createStatsCollector(): {
     stats.frameMsAvg = total / sampleCount;
     stats.frameMsP99 = scratch[Math.min(sampleCount - 1, Math.floor(sampleCount * 0.99))] ?? 0;
     stats.gpuMs = frameGauges.gpuMs;
+    stats.tickMsMax = frameGauges.tickMsMax;
     stats.drawCalls = frameGauges.drawCalls;
     stats.instances = frameGauges.instances;
     stats.chunksVisible = frameGauges.chunksVisible;
     stats.chunksTotal = frameGauges.chunksTotal;
+    frameGauges.tickMsMax = 0;
 
     const memory = (performance as PerformanceWithMemory).memory;
     stats.heapMB = memory ? memory.usedJSHeapSize / (1024 * 1024) : 0;

@@ -7,7 +7,9 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 
 **Milestone 1 (complete):** frontend only. A 3D terrain map you can pan, zoom, and edge-scroll around, with dummy units, marquee selection, a minimap, and a perf HUD. No gameplay, no networking, no backend.
 
-**Milestone 3 (current focus):** gameplay sim — commands and movement. Built **before** M2 (meshes/animation) on purpose: movement needs no art, exercises the deterministic-sim investment, and finally binds right-click. M2's meshes then land on units that already behave. See its section below.
+**Milestone 3 (complete):** gameplay sim — commands and movement. Built **before** M2 (meshes/animation) on purpose: movement needs no art, exercises the deterministic-sim investment, and finally binds right-click. M2's meshes then land on units that already behave. See its section below.
+
+**Milestone 4 (current focus):** lockstep netcode — two browsers, one deterministic world. The command queue, tick stamping, and `hashWorld` were built as this milestone's seams; M4 adds transport and pacing around them. The sim itself changes zero lines of gameplay logic. See its section below.
 
 ---
 
@@ -299,14 +301,94 @@ Scope: right-click move orders for selected units, pathfinding around unwalkable
 
 - Formations / group cohesion beyond separation (arrival spread is enough for M3).
 - Hard collision vs. soft separation only — revisit with combat.
-- Lockstep input-delay scheme (fixed delay vs. rollback) — M4's first design question.
-- When selection moves out of World into a client-local store (likely M4, when hashing goes live).
+- ~~Lockstep input-delay scheme (fixed delay vs. rollback)~~ — answered in M4: fixed delay, rollback rejected.
+- ~~When selection moves out of World~~ — answered in M4: it stays, guarded by the never-branch-on-selected invariant.
+
+---
+
+## Milestone 4 — lockstep netcode
+
+Scope: two or more browsers playing the same match — shared seed, shared command stream, bit-identical worlds, desync detection. No matchmaking service, no reconnect/late-join, no spectators, no cheat hardening. The guiding fact: **only inputs cross the wire.** A move order for 500 units costs the same ~60 bytes as for 5; the per-player bandwidth is measured in KB/s regardless of army size. That economy is why every sim decision since M1 (determinism rules, PCG32, tick-stamped commands, `hashWorld`) was shaped the way it was.
+
+### Decisions
+
+| Decision       | Choice                                                        | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Topology       | **WebSocket relay server, not P2P**                           | Browsers have no raw UDP; the real choice is WebSocket vs. WebRTC DataChannel. WebRTC buys unordered delivery at the cost of STUN/TURN and NAT pain — but lockstep _wants_ ordered-reliable, and command traffic is tiny, so TCP head-of-line blocking is tolerable. The relay is also the natural authoritative command orderer. Parked: WebRTC as a later latency optimization.                                                                                                                                                                                                              |
+| Pacing scheme  | **Fixed input delay + server-paced turns; rollback rejected** | Commands execute at `issueTick + INPUT_DELAY_TICKS` (start: 4 ticks = 200 ms — genre-native "acknowledgement" feel). Rollback (fighting-game style) requires resimulating many ticks of 1k-unit state per correction — the wrong trade at RTS scale. The relay batches commands into numbered **turns** and broadcasts them on its own 20 Hz clock; a client may simulate tick T only after receiving turn T (possibly empty).                                                                                                                                                                 |
+| Relay brain    | **`packages/relay` (`@aom/relay`) — transport-free**          | The protocol types and the turn sequencer are consumed by BOTH ends (the engine's net layer and the server), so they must live in a package, not an app. `@aom/relay` holds: message types, the turn sequencer (commands in → player-id + arrival-order tiebreak → turn batches out), and the room/lobby state model as plain data. It imports `Command` from `@aom/sim` and nothing environmental — no sockets, no Bun APIs, no DB. It is to networking what `@aom/sim` is to gameplay: pure logic, drivable in-process.                                                                      |
+| Server shell   | **`apps/server` — Bun.serve + Hono + native WS pub/sub**      | The thin deployable that a package can't be: `Bun.serve` owns the port, native Bun WebSockets own the room broadcast (`ws.subscribe(room)` / `server.publish(room, msg)` — the relay's core primitive, built into the runtime), and Hono owns the HTTP routes. Hono earns its place because the server's HTTP surface is _known_ to grow (saves, accounts, lobby lists) — those live here, behind Hono, never in the package. Invariant: the relay module path imports nothing stateful; DB code and `@aom/relay` never meet in the same import graph except at the server's composition root. |
+| Wire format    | **JSON per message in M4; binary parked**                     | Command rates are human-click rates; JSON costs nothing measurable and keeps every message readable in devtools during the milestone where debugging matters most. The protocol is versioned from message one (`v` field) so binary can arrive without a flag day.                                                                                                                                                                                                                                                                                                                             |
+| Sim networking | **None. The sim gains zero IO**                               | All transport lives in `@aom/engine` (`src/net/`) behind a `CommandSink` interface: single-player = loopback sink (enqueue locally at `tick + delay`), multiplayer = relay sink (send up, enqueue what comes back). The load-bearing three-layer rule survives M4 untouched.                                                                                                                                                                                                                                                                                                                   |
+| Selection      | **Stays in World, with a new invariant**                      | Per-client selection arrays now genuinely diverge between clients. That is safe iff no sim code ever _branches_ on `selected` — selection influences gameplay only by choosing which unitIds go into a command at issue time, on the issuing client. Recorded as an invariant; the full move-out-of-World is deferred until it earns its disruption.                                                                                                                                                                                                                                           |
+
+### New workspaces
+
+```
+packages/
+  relay/              @aom/relay ← new: protocol types, turn sequencer, room model (pure)
+apps/
+  server/             ← new: Bun.serve + Hono HTTP + WS pub/sub + (later) DB; imports @aom/relay
+```
+
+Dependency directions: `@aom/relay` → `@aom/sim` (Command types only); `@aom/engine` → `@aom/relay` (client side); `apps/server` → `@aom/relay` (server side). The engine and the server never import each other; they meet only on the wire.
+
+### Protocol (client ⇄ server, shapes defined in `@aom/relay`)
+
+- `join { room, name }` → `joined { playerId, players[] }` (room = shareable code; first joiner is host).
+- `start { }` (host) → `begin { seed, players[], inputDelayTicks, hashIntervalTicks }` — everyone constructs `createWorld(seed)` and spawns identically; the lobby is the only place state is agreed on.
+- `commands { turn, cmds[] }` up; `turn { turn, byPlayer: { playerId: cmds[] } }` down — broadcast every 50 ms even when empty (an empty turn is the "you may advance" token).
+- `hash { tick, value }` up at the agreed interval; `desync { tick, players[] }` down when reports disagree.
+- Commands gain `playerId` (stamped server-side, not trusted from the client). Within a turn, application order is (playerId, arrival order) — deterministic on every client because the sequencer's output IS the order.
+
+### Tick gating (engine frame loop)
+
+- The accumulator keeps producing "tick debt" from real time, but a tick may only run if its turn has arrived. Debt with no turn → **pause the game clock** (waiting-for-player UI after ~250 ms) rather than freeze the tab; a burst of late turns fast-forwards capped at the existing 5-ticks-per-frame spiral guard.
+- Background-tab reality: browsers throttle `requestAnimationFrame` to ~0 in hidden tabs, which would stall every opponent. When `document.hidden`, a `setInterval` fallback keeps consuming turns and ticking the sim (no rendering) so an alt-tabbed player doesn't pause the match.
+
+### Desync handling (M4 = detect, not recover)
+
+- Every `hashIntervalTicks` (default 20 = once/sec), clients report `hashWorld`. The relay compares all reports for a tick; any mismatch → `desync` broadcast → clients freeze the sim and show a banner. Recovery/resync is parked — in M4 a desync is a bug to _fix_, not an event to survive, and the per-tick hash in CI is the tool that keeps it theoretical.
+- Dev mode: on desync, clients dump their full gameplay arrays to console/download for diffing — finding _which array_ diverged is 90% of the debugging.
+
+### Testing without a network
+
+- Because the sequencer is a pure package, the "fake relay" in tests is the REAL sequencer — two Worlds + one `@aom/relay` sequencer instance in one process, commands issued from "both players" at staggered turns, hashes compared every tick. Same test teeth as today, now exercising playerId ordering, input delay, and turn batching — with zero sockets to mock. This test is the milestone's spine, exactly as the scripted-command test was M3's, and it lands BEFORE the server exists.
+
+### Performance budgets (adds to the tables above)
+
+| Metric                                     | Budget                                              |
+| ------------------------------------------ | --------------------------------------------------- |
+| Bandwidth per client, steady play          | < 10 KB/s (typical: < 2)                            |
+| Added order latency (input delay)          | 4 ticks = 200 ms, tunable per match                 |
+| Waiting-for-player pauses on LAN/same-city | effectively none (turn RTT ≪ 50 ms turn period)     |
+| Relay CPU per match                        | negligible — it routes strings and compares numbers |
+
+### Milestone 4 — sequential build order
+
+1. **CommandSink seam + real input delay, single-player.** Extract the sink interface in the engine; loopback sink schedules at `tick + 4`. _Verify: game feels identical (the marker/acknowledgement absorbs the delay); determinism test passes with delay on._
+2. **Relay brain.** `packages/relay`: protocol message types, turn sequencer, room model — pure, no sockets. The two-player fake-relay determinism test lands here, before any server exists. _Verify: `bun test` — sequencer ordering, input delay, and turn batching all pinned in-process._
+3. **Server shell + lobby.** `apps/server`: Bun.serve + Hono (health route only for now) + native WS pub/sub wiring the sequencer; join/start/begin + seed handshake. _Verify: two tabs join a room, both render the identical world, sim still local._
+4. **Turn pipeline.** Engine relay sink + turn broadcasting + tick gating + background-tab fallback. _Verify: right-click in tab A moves units in tab B; kill the server mid-match → both clients pause gracefully._
+5. **Hash exchange + desync banner + dev dump.** _Verify: artificially corrupt one client (dev hotkey pokes a position) → desync detected within one hash interval, banner on both, dumps diff to the corrupted array._
+6. **Feel + failure polish.** Waiting-UI, ping display on the HUD, clean disconnect handling. _Verify: a 2-player match survives a laptop lid-close-and-reopen on one side (as a pause, not a crash)._
+
+**Exit criteria:** a 2-player match across two machines on real (non-localhost) networking: 1k units each issuing group moves, hash-verified every second for a 10-minute session with zero desyncs, bandwidth under budget, and the fake-relay determinism test green in CI.
+
+### M4 open questions (parked, on purpose)
+
+- Hosting/deploy for `apps/server` (and TURN, if WebRTC ever happens) — a milestone-of-ops, not code. If per-room coordination ever wants to be globally distributed, Cloudflare Durable Objects fit the relay's shape — and `@aom/relay` being transport-free is what would make that port cheap.
+- Which database, when saves/accounts arrive — an `apps/server` concern by construction; nothing in M4 blocks on it.
+- Reconnect and late-join (requires full-state serialization — the SoA layout makes this nearly free when we want it).
+- Binary wire format; delta-compressed turns.
+- Lockstep's honest weakness: every client holds full world state, so fog-of-war cheating is possible by construction. Server-validated visibility is a different architecture; accepted for now, revisit if the game ever matters competitively.
+- Sim-thread migration (Web Worker) if tick cost ever contends with rendering — the sim's zero-DOM discipline makes it worker-portable by construction.
 
 ---
 
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question) → M4 lockstep netcode: command transport, tick hashing, desync detection, backend service → M5 fog of war (compute), economy/buildings, and onward.
+M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question; the villager sprite atlas landed early and covers M4's needs) → M5 fog of war (compute), economy/buildings, and onward.
 
 ## Open questions (parked, on purpose)
 

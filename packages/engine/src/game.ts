@@ -11,8 +11,10 @@ import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
+import { createLoopbackSink } from "./net/sink";
 import { consumeCommandInput, consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
+import { createMarkerRenderer } from "./render/marker";
 import { createMinimapRenderer } from "./render/minimap";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
@@ -62,6 +64,7 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
         terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights, world.walkable);
         units = nextUnits;
         minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
+        marker = createMarkerRenderer(nextGpu.device, nextGpu.format, heights);
         gpuTimer = createGpuTimer(nextGpu.device);
         passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
         recreateDepthTexture();
@@ -79,17 +82,22 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
   const world = createWorld(1337);
+  // Loopback = single-player; the relay sink replaces this line in M4 step 4.
+  const sink = createLoopbackSink(world);
   // Init handoff: createWorld(1337) derives the same terrain seed the engine used before,
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
   spawnUnits(world, 1_000);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
+  const markerPos = new Float32Array(2);
+  let markerAgeMs = Number.POSITIVE_INFINITY;
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
   let units = await createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
+  let marker = createMarkerRenderer(gpu.device, gpu.format, heights);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
 
@@ -130,6 +138,8 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
   const input = attachInput(canvas);
 
   function tick(): void {
+    const tickStart = performance.now();
+
     tickWorld(world);
 
     // Prev/curr double-buffer swap: render interpolates between the last two completed ticks,
@@ -138,6 +148,11 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     prevSnap = currSnap;
     currSnap = tmp;
     writeSnapshot(world, currSnap);
+    // Max-since-emit, reset by the collector.
+    statsCollector.frameGauges.tickMsMax = Math.max(
+      statsCollector.frameGauges.tickMsMax,
+      performance.now() - tickStart,
+    );
   }
 
   function onGpuSample(gpuMs: number): void {
@@ -150,7 +165,10 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
     consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
-    consumeCommandInput(input.state, world, camera, heights, canvas);
+    if (consumeCommandInput(input.state, world, sink, camera, heights, canvas, markerPos)) {
+      markerAgeMs = 0;
+    }
+    markerAgeMs += dtMs;
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 
     const encoder = gpu.device.createCommandEncoder();
@@ -181,8 +199,18 @@ export async function createGame(canvas: HTMLCanvasElement): Promise<GameHandle>
       currSnap,
       alpha,
     );
-    // +4 = units + minimap base + minimap footprint + minimap dots.
-    statsCollector.frameGauges.drawCalls = visibleChunks + 4;
+    if (markerAgeMs < 600) {
+      marker.draw(
+        pass,
+        gpu.device.queue,
+        camera.viewProj,
+        markerPos[0]!,
+        markerPos[1]!,
+        markerAgeMs / 600,
+      );
+    }
+    // +4 = units + minimap base + minimap footprint + minimap dots; +1 while the marker is alive.
+    statsCollector.frameGauges.drawCalls = visibleChunks + 4 + (markerAgeMs < 600 ? 1 : 0);
     statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
