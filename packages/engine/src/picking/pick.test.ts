@@ -21,6 +21,8 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     posZ: new Float32Array(zs),
     selected: new Uint8Array(xs.length),
     owner: new Uint8Array(xs.length),
+    hp: new Uint16Array(xs.length),
+    winner: -1,
   };
 }
 

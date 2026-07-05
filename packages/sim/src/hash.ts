@@ -20,6 +20,11 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
+  // Shared combat state: winner is the in-sim annihilation result, not UI-derived.
+  word = world.winner >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
   word = world.nextHandle >>> 0;
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
@@ -70,6 +75,12 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.unitType[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // Handle wiring determines which commands resolve — clients must agree on it exactly.
   for (let i = 0; i < world.count; i += 1) {
     word = world.handleOf[i]!;
@@ -81,6 +92,31 @@ export function hashWorld(world: World): number {
   // handle's generation would accept/reject different commands.
   for (let i = 0; i < world.nextHandle; i += 1) {
     word = world.generation[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // Shared combat state: HP, cooldowns, targets, and order flags affect future strikes.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.hp[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.attackCooldown[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.attackTarget[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.attackOrdered[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

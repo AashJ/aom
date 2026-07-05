@@ -9,6 +9,8 @@ export interface RenderSnapshot {
   posZ: Float32Array;
   selected: Uint8Array;
   owner: Uint8Array;
+  hp: Uint16Array;
+  winner: number;
 }
 
 export function createSnapshot(capacity: number): RenderSnapshot {
@@ -20,12 +22,16 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     posZ: new Float32Array(capacity),
     selected: new Uint8Array(capacity),
     owner: new Uint8Array(capacity),
+    hp: new Uint16Array(capacity),
+    winner: -1,
   };
 }
 
 export function writeSnapshot(world: World, out: RenderSnapshot): void {
   out.tick = world.tick;
   out.count = world.count;
+  // HP bars and the win banner are 4a/4b consumers.
+  out.winner = world.winner;
 
   for (let i = 0; i < world.count; i += 1) {
     // The renderer will use id equality to decide interpolate-vs-snap once swap-remove exists;
@@ -39,5 +45,6 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
     out.selected[i] = world.selected[i]!;
     // Renderer tints by owner in the next chunk.
     out.owner[i] = world.owner[i]!;
+    out.hp[i] = world.hp[i]!;
   }
 }

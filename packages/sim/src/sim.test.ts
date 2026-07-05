@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { COMMAND_MOVE, COMMAND_STOP, enqueueCommand } from "./commands";
+import { COMMAND_ATTACK, COMMAND_MOVE, COMMAND_STOP, enqueueCommand } from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
+import { LEASH_FACTOR, UNIT_TYPES } from "./ecs/types";
 import { createPcg32, nextFloat, nextU32 } from "./math/prng";
 import {
   clearSelection,
   createWorld,
   killUnit,
+  MATCH_DRAW,
+  NO_TARGET,
   resolveId,
   SEPARATION_RADIUS,
   setSelected,
@@ -572,6 +575,256 @@ describe("death and swap-remove", () => {
     expect(curr.count).toBe(4);
     expect(curr.ids[1]).not.toBe(prev.ids[1]);
     expect(curr.ids[0]).toBe(prev.ids[0]);
+  });
+});
+
+describe("combat", () => {
+  const stats = UNIT_TYPES[0]!;
+
+  test("adjacent enemies auto-acquire, trade damage, and produce a winner", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 100, 100, 0, 0, 0);
+    spawnUnit(world, 100.5, 100, 0, 0, 1);
+    world.contested = true;
+
+    // Acquire is staggered over 4 ticks, cooldown is 20: give the duel time.
+    let winnerAt = -1;
+
+    for (let t = 0; t < 400 && winnerAt < 0; t += 1) {
+      tickWorld(world);
+
+      if (world.winner !== -1) {
+        winnerAt = t;
+      }
+    }
+
+    expect(world.count).toBe(1);
+    expect(world.winner).toBe(world.owner[0]!);
+    // Sanity on pace: 8 strikes at 20-tick cooldown can't finish instantly.
+    expect(winnerAt).toBeGreaterThan(100);
+  });
+
+  test("enemies outside aggro range ignore each other", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 100, 100, 0, 0, 0);
+    spawnUnit(world, 100 + stats.aggroRange * 3, 100, 0, 0, 1);
+    world.contested = true;
+
+    for (let t = 0; t < 200; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.count).toBe(2);
+    expect(world.hp[0]).toBe(stats.maxHp);
+    expect(world.hp[1]).toBe(stats.maxHp);
+    expect(world.winner).toBe(-1);
+  });
+
+  test("a move order breaks off a fight", () => {
+    const world = flatWorld(42);
+    const brawlerId = spawnUnit(world, 100, 100, 0, 0, 0);
+    spawnUnit(world, 100.5, 100, 0, 0, 1);
+    world.contested = true;
+
+    // Let them engage.
+    for (let t = 0; t < 30; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.attackTarget[0]).not.toBe(NO_TARGET);
+
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [brawlerId],
+      targetX: 160,
+      targetZ: 100,
+    });
+
+    for (let t = 0; t < 40; t += 1) {
+      tickWorld(world);
+    }
+
+    // The brawler left: target cleared and headed east. It does NOT get far
+    // fast — the enemy auto-chases and body-blocks, so the pair congas east
+    // at roughly half speed while the brawler flees under fire. That pursuit
+    // is emergent and correct; the property under test is only the breakoff.
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+    expect(world.moving[0]).toBe(1);
+    expect(world.posX[0]!).toBeGreaterThan(101.5);
+  });
+
+  test("an ordered attack chases far beyond aggro range", () => {
+    const world = flatWorld(42);
+    const hunterId = spawnUnit(world, 50, 100, 0, 0, 0);
+    const preyId = spawnUnit(world, 120, 100, 0, 0, 1);
+    world.contested = true;
+
+    // 70 units apart — no auto-acquire could ever see this target.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [hunterId],
+      targetId: preyId,
+    });
+
+    for (let t = 0; t < 800 && world.winner === -1; t += 1) {
+      tickWorld(world);
+    }
+
+    // The duel is symmetric (the prey fights back on arrival), so the result
+    // may be a win OR a mutual-annihilation draw — the property under test is
+    // that contact happened at all across 70 units: an auto-acquire leash
+    // would have ended this chase 56 units short of the prey.
+    expect(world.winner).not.toBe(-1);
+    void hunterId;
+    void preyId;
+  });
+
+  test("a symmetric duel double-KOs into a draw, not an eternal stalemate", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 100, 100, 0, 0, 0);
+    spawnUnit(world, 100.5, 100, 0, 0, 1);
+    // Identical stats + engaged the same tick = synchronized cooldowns all
+    // the way down. Both die on the same strike; the match must END.
+    world.attackTarget[0] = unitIdAt(world, 1);
+    world.attackTarget[1] = unitIdAt(world, 0);
+    world.attackOrdered[0] = 1;
+    world.attackOrdered[1] = 1;
+    world.contested = true;
+
+    for (let t = 0; t < 400 && world.winner === -1; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.count).toBe(0);
+    expect(world.winner).toBe(MATCH_DRAW);
+  });
+
+  test("an auto-acquired chase leashes; an ordered one would not", () => {
+    const world = flatWorld(42);
+    spawnUnit(world, 100, 100, 0, 0, 0);
+    const farId = spawnUnit(world, 100 + stats.aggroRange * LEASH_FACTOR + 2, 100, 0, 0, 1);
+    world.contested = true;
+
+    // Simulate an auto-engagement whose target has slipped past the leash.
+    world.attackTarget[0] = farId;
+    world.attackOrdered[0] = 0;
+    tickWorld(world);
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+
+    // The identical geometry under an ORDER keeps the chase alive.
+    world.attackTarget[0] = farId;
+    world.attackOrdered[0] = 1;
+    tickWorld(world);
+    expect(world.attackTarget[0]).toBe(farId);
+    expect(world.moving[0]).toBe(1);
+  });
+
+  test("attacking a friendly or stale target is a no-op", () => {
+    const world = flatWorld(42);
+    // Enemy parked OUTSIDE aggro range: auto-acquire must not contaminate
+    // what these command-validation assertions isolate.
+    const a = spawnUnit(world, 100, 100, 0, 0, 0);
+    const friend = spawnUnit(world, 102, 100, 0, 0, 0);
+    const enemy = spawnUnit(world, 130, 100, 0, 0, 1);
+    world.contested = true;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [a],
+      targetId: friend,
+    });
+    killUnit(world, 2);
+    tickWorld(world);
+
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+
+    // The enemy died before this order lands: stale target, silent no-op.
+    enqueueCommand(world, {
+      tick: world.tick + 1,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [a],
+      targetId: enemy,
+    });
+    tickWorld(world);
+    tickWorld(world);
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+  });
+
+  test("a solo world never declares a winner", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 10, [0]);
+
+    killUnit(world, 0);
+    killUnit(world, 1);
+
+    for (let t = 0; t < 20; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.winner).toBe(-1);
+  });
+
+  test("a 500v500 war stays hash-identical and someone wins", () => {
+    const build = (): World => {
+      const world = flatWorld(1337);
+      spawnUnits(world, 1000, [0, 1]);
+      return world;
+    };
+    const a = build();
+    const b = build();
+
+    const marchBoth = (world: World, issuer: number, targetX: number, targetZ: number): void => {
+      const ids: number[] = [];
+
+      for (let i = 0; i < world.count; i += 1) {
+        if (world.owner[i] === issuer) {
+          ids.push(unitIdAt(world, i));
+        }
+      }
+
+      enqueueCommand(world, {
+        tick: world.tick + 1,
+        issuer,
+        type: COMMAND_MOVE,
+        unitIds: ids,
+        targetX,
+        targetZ,
+      });
+    };
+
+    // Both armies ordered into the same field: the mother of all brawls.
+    marchBoth(a, 0, 128, 128);
+    marchBoth(b, 0, 128, 128);
+    marchBoth(a, 1, 128, 128);
+    marchBoth(b, 1, 128, 128);
+
+    let sawWinner = false;
+
+    for (let t = 0; t < 3000; t += 1) {
+      tickWorld(a);
+      tickWorld(b);
+
+      if (hashWorld(a) !== hashWorld(b)) {
+        throw new Error(`desync at tick ${t}`);
+      }
+
+      if (a.winner !== -1) {
+        sawWinner = true;
+        break;
+      }
+    }
+
+    // The war must actually resolve — a stalemate would mean acquire or
+    // chase is broken in a way the smaller tests can't see.
+    expect(sawWinner).toBe(true);
+    expect(a.winner).toBe(b.winner);
   });
 });
 

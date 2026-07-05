@@ -1,17 +1,24 @@
 // Determinism rules: allowed math is + - * /, Math.sqrt/fround/abs/min/max/floor/ceil/
 // trunc/sign, integer ops, and comparisons. Banned: transcendental Math functions,
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
-import { COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
+import { COMMAND_ATTACK, COMMAND_MOVE, COMMAND_STOP, type Command } from "../commands";
 import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 import { idGeneration, idIndex, packId } from "./id";
+import { LEASH_FACTOR, UNIT_TYPES } from "./types";
 
 export const TICK_HZ = 20;
 export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 export const UNIT_SPEED = 3;
+// Packed id 0 is VALID (handle 0, gen 0), so the no-target sentinel must be an
+// impossible handle. 0xffff exceeds MAX_UNITS.
+export const NO_TARGET = 0xffffffff;
+// world.winner values: -1 = match ongoing, >= 0 = that player id won,
+// MATCH_DRAW = everyone is dead (mutual annihilation).
+export const MATCH_DRAW = -2;
 const FIELD_CACHE_SIZE = 8;
 const FINAL_APPROACH_DIST = 2;
 const GOAL_REMAP_RADIUS = 8;
@@ -45,6 +52,11 @@ export interface World {
   // Actual player ids, which are NOT guaranteed contiguous - lobby churn skips numbers;
   // 255 owners is plenty.
   owner: Uint8Array;
+  unitType: Uint8Array;
+  hp: Uint16Array;
+  attackCooldown: Uint16Array;
+  attackTarget: Uint32Array;
+  attackOrdered: Uint8Array;
   // Indexed by stable HANDLE, not dense slot. Per-dense-slot generations cannot
   // survive swap-remove: the moved unit's dense index changes, and its outstanding
   // ids must stay valid while it lives. Before any death, handle === dense index,
@@ -61,6 +73,8 @@ export interface World {
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
+  winner: number;
+  contested: boolean;
   // Per-tick derived scratch and command-time flow caches. Excluded from hashWorld:
   // grid/push arrays are rebuilt from positions each tick; unitField/fieldCache are
   // derived flow-field references for current move targets and walkability.
@@ -99,6 +113,11 @@ export function createWorld(seed: number): World {
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
     owner: new Uint8Array(MAX_UNITS),
+    unitType: new Uint8Array(MAX_UNITS),
+    hp: new Uint16Array(MAX_UNITS),
+    attackCooldown: new Uint16Array(MAX_UNITS),
+    attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    attackOrdered: new Uint8Array(MAX_UNITS),
     generation: new Uint16Array(MAX_UNITS),
     slotOf,
     handleOf: new Uint32Array(MAX_UNITS),
@@ -112,6 +131,8 @@ export function createWorld(seed: number): World {
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
     commands: [],
+    winner: -1,
+    contested: false,
     cellCount: new Uint32Array(GRID_CELLS),
     cellStart: new Uint32Array(GRID_CELLS + 1),
     cellUnits: new Uint32Array(MAX_UNITS),
@@ -149,6 +170,11 @@ export function spawnUnit(
   world.moveTargetZ[index] = 0;
   world.moving[index] = 0;
   world.owner[index] = owner;
+  world.unitType[index] = 0;
+  world.hp[index] = UNIT_TYPES[0]!.maxHp;
+  world.attackCooldown[index] = 0;
+  world.attackTarget[index] = NO_TARGET;
+  world.attackOrdered[index] = 0;
   world.selectable[index] = 1;
   world.selected[index] = 0;
   world.count += 1;
@@ -200,6 +226,9 @@ export function setSelected(world: World, id: number, on: boolean): void {
 
 export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]): void {
   const ownerCount = ownerIds.length;
+
+  // A solo world must never declare a winner.
+  world.contested = ownerCount > 1;
 
   if (ownerCount === 0) {
     return;
@@ -274,7 +303,122 @@ export function tickWorld(world: World): void {
     world.cellCount[cell] = world.cellCount[cell]! + 1;
   }
 
-  // 3. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
+  // 3. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
+  // that the movement compute then consumes.
+  for (let i = 0; i < world.count; i += 1) {
+    const stats = UNIT_TYPES[world.unitType[i]!]!;
+
+    if (world.attackCooldown[i]! > 0) {
+      world.attackCooldown[i] = world.attackCooldown[i]! - 1;
+    }
+
+    if (world.attackTarget[i] !== NO_TARGET) {
+      const target = resolveId(world, world.attackTarget[i]!);
+
+      if (target < 0) {
+        world.attackTarget[i] = NO_TARGET;
+        world.attackOrdered[i] = 0;
+        world.moving[i] = 0;
+        world.unitField[i] = null;
+      } else {
+        const dx = world.posX[target]! - world.posX[i]!;
+        const dz = world.posZ[target]! - world.posZ[i]!;
+        const distSq = dx * dx + dz * dz;
+        const attackRangeSq = stats.attackRange * stats.attackRange;
+
+        if (distSq <= attackRangeSq) {
+          world.moving[i] = 0;
+          world.unitField[i] = null;
+
+          if (world.attackCooldown[i] === 0) {
+            dealDamage(world, target, stats.attackDamage);
+            world.attackCooldown[i] = stats.attackCooldownTicks;
+          }
+        } else {
+          const leashRange = stats.aggroRange * LEASH_FACTOR;
+          const leashRangeSq = leashRange * leashRange;
+
+          if (world.attackOrdered[i] === 1 || distSq <= leashRangeSq) {
+            world.moveTargetX[i] = world.posX[target]!;
+            world.moveTargetZ[i] = world.posZ[target]!;
+            world.moving[i] = 1;
+            // Chase rides the existing seek/separation/walkable machinery: one movement
+            // system, no parallel path.
+            world.unitField[i] = null;
+          } else {
+            world.attackTarget[i] = NO_TARGET;
+            world.attackOrdered[i] = 0;
+            world.moving[i] = 0;
+            world.unitField[i] = null;
+          }
+        }
+      }
+    }
+
+    if (world.attackTarget[i] === NO_TARGET && world.moving[i] === 0) {
+      // Classic RTS trick: 4x cheaper scans for a worst-case 200 ms reaction,
+      // imperceptible and deterministic.
+      if ((i + world.tick) % 4 !== 0) {
+        continue;
+      }
+
+      const x = world.posX[i]!;
+      const z = world.posZ[i]!;
+      const aggroRangeSq = stats.aggroRange * stats.aggroRange;
+      const searchRadius = Math.ceil(stats.aggroRange / GRID_CELL);
+      const rawCellX = Math.floor(x / GRID_CELL);
+      const rawCellZ = Math.floor(z / GRID_CELL);
+      const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
+      const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+      const minCellX = cellX > searchRadius ? cellX - searchRadius : 0;
+      const maxCellX = cellX < GRID_DIM - 1 - searchRadius ? cellX + searchRadius : GRID_DIM - 1;
+      const minCellZ = cellZ > searchRadius ? cellZ - searchRadius : 0;
+      const maxCellZ = cellZ < GRID_DIM - 1 - searchRadius ? cellZ + searchRadius : GRID_DIM - 1;
+      let bestIndex = -1;
+      let bestDistSq = aggroRangeSq;
+
+      for (let neighborCellZ = minCellZ; neighborCellZ <= maxCellZ; neighborCellZ += 1) {
+        for (let neighborCellX = minCellX; neighborCellX <= maxCellX; neighborCellX += 1) {
+          const cell = neighborCellX + GRID_DIM * neighborCellZ;
+          const start = world.cellStart[cell]!;
+          const end = world.cellStart[cell + 1]!;
+
+          for (let unitOffset = start; unitOffset < end; unitOffset += 1) {
+            const j = world.cellUnits[unitOffset]!;
+
+            if (j === i || world.owner[j] === world.owner[i]) {
+              continue;
+            }
+
+            const dx = world.posX[j]! - x;
+            const dz = world.posZ[j]! - z;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq > aggroRangeSq) {
+              continue;
+            }
+
+            // Grid buckets are in ascending unit order, so first-found-at-min-distance
+            // is deterministic; equality keeps the lower dense index tiebreak across cells.
+            if (
+              bestIndex === -1 ||
+              distSq < bestDistSq ||
+              (distSq === bestDistSq && j < bestIndex)
+            ) {
+              bestIndex = j;
+              bestDistSq = distSq;
+            }
+          }
+        }
+      }
+
+      if (bestIndex >= 0) {
+        world.attackTarget[i] = unitIdAt(world, bestIndex);
+      }
+    }
+  }
+
+  // 4. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
   const step = UNIT_SPEED * TICK_S;
 
   for (let i = 0; i < world.count; i += 1) {
@@ -392,7 +536,7 @@ export function tickWorld(world: World): void {
     world.pushZ[i] = pushZ + separationZ;
   }
 
-  // 4. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
+  // 5. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
     const oldX = world.posX[i]!;
     const oldZ = world.posZ[i]!;
@@ -430,7 +574,40 @@ export function tickWorld(world: World): void {
 
   applyDeaths(world);
 
+  // Annihilation, in-sim, hashed: the UI reads it, never computes it.
+  if (world.contested && world.winner === -1) {
+    if (world.count === 0) {
+      // Mutual annihilation is a real outcome: symmetric duels genuinely
+      // double-KO on synchronized cooldowns. A draw, not an eternal stalemate.
+      world.winner = MATCH_DRAW;
+    } else {
+      const owner = world.owner[0]!;
+      let singleOwner = true;
+
+      for (let i = 1; i < world.count; i += 1) {
+        if (world.owner[i] !== owner) {
+          singleOwner = false;
+          break;
+        }
+      }
+
+      if (singleOwner) {
+        world.winner = owner;
+      }
+    }
+  }
+
   world.tick += 1;
+}
+
+function dealDamage(world: World, index: number, damage: number): void {
+  // THE strike seam: "decided to hit" is upstream, "damage lands" is here.
+  // Deterministic projectile flight will insert between the two when ranged units arrive.
+  world.hp[index] = Math.max(0, world.hp[index]! - damage);
+
+  if (world.hp[index] === 0) {
+    killUnit(world, index);
+  }
 }
 
 function applyDeaths(world: World): void {
@@ -455,8 +632,8 @@ function applyDeaths(world: World): void {
     world.freeHandleCount += 1;
 
     if (i !== last) {
-      // EVERY future per-unit component (owner, hp, cooldown...) must be added
-      // here. Missing one array is a delayed desync, the worst kind.
+      // LOUD component-copy checklist: EVERY future per-unit component (owner, hp,
+      // cooldown...) must be added here. Missing one array is a delayed desync, the worst kind.
       world.posX[i] = world.posX[last]!;
       world.posZ[i] = world.posZ[last]!;
       world.velX[i] = world.velX[last]!;
@@ -465,6 +642,11 @@ function applyDeaths(world: World): void {
       world.moveTargetZ[i] = world.moveTargetZ[last]!;
       world.moving[i] = world.moving[last]!;
       world.owner[i] = world.owner[last]!;
+      world.unitType[i] = world.unitType[last]!;
+      world.hp[i] = world.hp[last]!;
+      world.attackCooldown[i] = world.attackCooldown[last]!;
+      world.attackTarget[i] = world.attackTarget[last]!;
+      world.attackOrdered[i] = world.attackOrdered[last]!;
       world.selectable[i] = world.selectable[last]!;
       world.selected[i] = world.selected[last]!;
       world.unitField[i] = world.unitField[last] ?? null;
@@ -569,6 +751,8 @@ function applyPendingCommands(world: World): void {
           // THE ownership validation - one place, every client, deterministic. The relay stays
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
+          world.attackTarget[index] = NO_TARGET;
+          world.attackOrdered[index] = 0;
           world.moveTargetX[index] = targetX;
           world.moveTargetZ[index] = targetZ;
           world.moving[index] = 1;
@@ -584,8 +768,28 @@ function applyPendingCommands(world: World): void {
         // THE ownership validation - one place, every client, deterministic. The relay stays
         // dumb; forged or mis-addressed commands die here identically everywhere.
         if (world.owner[index] !== command.issuer) continue;
+        world.attackTarget[index] = NO_TARGET;
+        world.attackOrdered[index] = 0;
         world.moving[index] = 0;
         world.unitField[index] = null;
+      }
+    } else if (command.type === COMMAND_ATTACK) {
+      const target = resolveId(world, command.targetId);
+
+      if (target >= 0 && world.owner[target] !== command.issuer) {
+        for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+          const id = command.unitIds[unitIndex]!;
+          const index = resolveId(world, id);
+
+          if (index < 0) continue;
+          // THE ownership validation - one place, every client, deterministic. The relay stays
+          // dumb; forged or mis-addressed commands die here identically everywhere.
+          if (world.owner[index] !== command.issuer) continue;
+          world.attackTarget[index] = command.targetId;
+          world.attackOrdered[index] = 1;
+          world.moving[index] = 0;
+          world.unitField[index] = null;
+        }
       }
     }
 
