@@ -33,6 +33,7 @@ export interface InputState {
   commandY: number;
   stopPending: boolean;
   corruptPending: boolean;
+  escapePending: boolean;
   marqueePending: boolean;
   marqueeMinX: number;
   marqueeMinY: number;
@@ -68,6 +69,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     commandY: 0,
     stopPending: false,
     corruptPending: false,
+    escapePending: false,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -150,6 +152,11 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     if (event.code === "KeyH" && !event.repeat) {
       // H = halt; S is taken by WASD pan. A consumed intent, unlike the debugOverlay toggle.
       state.stopPending = true;
+      return;
+    }
+
+    if (event.code === "Escape" && !event.repeat) {
+      state.escapePending = true;
       return;
     }
 

@@ -1,4 +1,5 @@
 import {
+  canPlaceBuilding,
   createSnapshot,
   createWorld,
   FOOD,
@@ -8,14 +9,22 @@ import {
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
+  UNIT_TYPES,
   WOOD,
   writeSnapshot,
 } from "@aom/sim";
-import { applyCameraTerrain, createCamera, smoothCamera, updateMatrices } from "./camera/camera";
+import {
+  applyCameraTerrain,
+  createCamera,
+  screenRay,
+  smoothCamera,
+  updateMatrices,
+} from "./camera/camera";
 import { DEPTH_FORMAT, initGPU } from "./gpu/device";
 import { observeCanvasSize } from "./gpu/surface";
 import { applyInput } from "./input/apply";
 import { attachInput } from "./input/input";
+import * as vec3 from "./math/vec3";
 import { dumpWorldState } from "./net/dump";
 import type { NetSession } from "./net/relay";
 import { createLoopbackSink } from "./net/sink";
@@ -28,11 +37,18 @@ import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
+import { raycastHeightfield } from "./terrain/raycast";
+
+const placementRayOrigin = vec3.create();
+const placementRayDir = vec3.create();
+const placementHit = vec3.create();
 
 export interface GameHandle {
   start(): void;
   stop(): void;
   dispose(): void;
+  startPlacement(buildingType: number): void;
+  cancelPlacement(): void;
   onMatchEnd(cb: (winner: number) => void): () => void;
   onStats(cb: StatsCallback): () => void;
 }
@@ -117,6 +133,9 @@ export async function createGame(
   const markerPos = new Float32Array(2);
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
+  let placementType = -1;
+  const placementTile = new Int32Array(2);
+  let placementValid = false;
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
@@ -229,32 +248,103 @@ export async function createGame(
 
     // the war is over — commands die here, but the camera stays live to survey the aftermath; the sim keeps ticking peacefully and identically on every client.
     if (!matchEnded) {
-      consumeSelectionInput(input.state, world, camera, prevSnap, currSnap, alpha, heights, canvas);
-      if (input.state.corruptPending) {
-        input.state.corruptPending = false;
-        if (session) {
-          // A DELIBERATE violation of the command seam — the whole point is to simulate the class of bug the hash exchange exists to catch. Networked only; meaningless in single-player.
-          world.posX[0] = world.posX[0]! + 0.001;
-          console.warn("[dev] corrupted posX[0] to force a desync");
-        }
-      }
+      if (placementType >= 0) {
+        const placementStats = UNIT_TYPES[placementType];
 
-      const issued = consumeCommandInput(
-        input.state,
-        world,
-        sink,
-        selfPlayerId,
-        camera,
-        prevSnap,
-        currSnap,
-        alpha,
-        heights,
-        canvas,
-        markerPos,
-      );
-      if (issued !== 0) {
-        markerAgeMs = 0;
-        markerKind = issued;
+        if (placementStats) {
+          const ndcX = (input.state.pointerX / canvas.clientWidth) * 2 - 1;
+          const ndcY = 1 - (input.state.pointerY / canvas.clientHeight) * 2;
+          let hitGround = false;
+
+          screenRay(camera, ndcX, ndcY, placementRayOrigin, placementRayDir);
+          hitGround = raycastHeightfield(
+            heights,
+            placementRayOrigin,
+            placementRayDir,
+            placementHit,
+          );
+
+          if (hitGround) {
+            const footprint = placementStats.footprint;
+
+            placementTile[0] = Math.round(placementHit[0]! - footprint / 2);
+            placementTile[1] = Math.round(placementHit[2]! - footprint / 2);
+          }
+
+          const stockpileBase = selfPlayerId * RESOURCE_COUNT;
+          // Preview-validation only — the sim revalidates authoritatively at application.
+          const affordable =
+            (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementStats.costFood &&
+            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementStats.costWood;
+
+          placementValid =
+            hitGround &&
+            canPlaceBuilding(world, placementTile[0]!, placementTile[1]!, placementType) &&
+            affordable;
+        } else {
+          placementValid = false;
+        }
+
+        // Placement is modal — clicks place, right-click cancels, selection/marquee suppressed.
+        if (input.state.clickPending) {
+          input.state.clickPending = false;
+
+          if (placementValid) {
+            sink.submitPlace(placementType, placementTile[0]!, placementTile[1]!);
+            placementType = -1;
+            placementValid = false;
+          }
+        }
+
+        if (input.state.commandPending || input.state.escapePending) {
+          input.state.commandPending = false;
+          input.state.escapePending = false;
+          placementType = -1;
+          placementValid = false;
+        }
+
+        input.state.marqueePending = false;
+      } else {
+        consumeSelectionInput(
+          input.state,
+          world,
+          camera,
+          prevSnap,
+          currSnap,
+          alpha,
+          heights,
+          canvas,
+        );
+        if (input.state.corruptPending) {
+          input.state.corruptPending = false;
+          if (session) {
+            // A DELIBERATE violation of the command seam — the whole point is to simulate the class of bug the hash exchange exists to catch. Networked only; meaningless in single-player.
+            world.posX[0] = world.posX[0]! + 0.001;
+            console.warn("[dev] corrupted posX[0] to force a desync");
+          }
+        }
+
+        const issued = consumeCommandInput(
+          input.state,
+          world,
+          sink,
+          selfPlayerId,
+          camera,
+          prevSnap,
+          currSnap,
+          alpha,
+          heights,
+          canvas,
+          markerPos,
+        );
+        if (issued !== 0) {
+          markerAgeMs = 0;
+          markerKind = issued;
+        }
+
+        // No placement to cancel: drop the intent so a stray Esc can't linger and
+        // instantly cancel the NEXT placement the player starts.
+        input.state.escapePending = false;
       }
     }
     markerAgeMs += dtMs;
@@ -269,6 +359,10 @@ export async function createGame(
       camera.frustum,
       input.state.debugOverlay,
     );
+    const placementStats = UNIT_TYPES[placementType];
+    const ghostType = placementStats ? placementType : -1;
+    const ghostX = placementStats ? placementTile[0]! + placementStats.footprint / 2 : 0;
+    const ghostZ = placementStats ? placementTile[1]! + placementStats.footprint / 2 : 0;
     const instances = units.draw(
       pass,
       gpu.device.queue,
@@ -277,6 +371,10 @@ export async function createGame(
       currSnap,
       alpha,
       heights,
+      ghostType,
+      ghostX,
+      ghostZ,
+      placementValid,
     );
     unitDrawCallSeen.fill(0);
     let unitDrawCalls = 0;
@@ -405,6 +503,15 @@ export async function createGame(
       return () => matchEndCbs.delete(cb);
     },
     onStats: statsCollector.subscribe,
+    startPlacement(buildingType: number): void {
+      // UI-driven modal — the React build bar calls this.
+      placementType = buildingType;
+      placementValid = false;
+    },
+    cancelPlacement(): void {
+      placementType = -1;
+      placementValid = false;
+    },
     start(): void {
       if (disposed) {
         return;

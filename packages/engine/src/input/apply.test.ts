@@ -29,6 +29,7 @@ function createInput(overrides: Partial<InputState> = {}): InputState {
     commandY: 0,
     stopPending: false,
     corruptPending: false,
+    escapePending: false,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,

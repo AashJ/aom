@@ -25,6 +25,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     unitType: new Uint8Array(xs.length),
     stockpiles: new Uint32Array(512),
     carried: new Uint16Array(xs.length),
+    buildProgress: new Uint16Array(xs.length),
     winner: -1,
   };
 }

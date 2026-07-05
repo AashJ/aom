@@ -13,6 +13,10 @@ export interface UnitsRenderer {
     curr: RenderSnapshot,
     alpha: number,
     heights: Float32Array,
+    ghostType: number,
+    ghostX: number,
+    ghostZ: number,
+    ghostValid: boolean,
   ): number;
 }
 
@@ -152,11 +156,12 @@ export async function createUnitsRenderer(
     size: indexData.byteLength,
     usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
   });
+  const instanceCapacity = maxInstances + 1;
   const instanceBuffer = device.createBuffer({
-    size: maxInstances * INSTANCE_STRIDE,
+    size: instanceCapacity * INSTANCE_STRIDE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const staging = new Float32Array(maxInstances * INSTANCE_FLOATS);
+  const staging = new Float32Array(instanceCapacity * INSTANCE_FLOATS);
   const typeCounts = new Uint32Array(SPRITE_CONFIGS.length);
   const typeFirstInstances = new Uint32Array(SPRITE_CONFIGS.length);
   const typeWriteOffsets = new Uint32Array(SPRITE_CONFIGS.length);
@@ -253,7 +258,19 @@ export async function createUnitsRenderer(
   );
 
   return {
-    draw(pass, queue, viewProj, prev, curr, alpha, heights): number {
+    draw(
+      pass,
+      queue,
+      viewProj,
+      prev,
+      curr,
+      alpha,
+      heights,
+      ghostType,
+      ghostX,
+      ghostZ,
+      ghostValid,
+    ): number {
       typeCounts.fill(0);
 
       for (let i = 0; i < curr.count; i += 1) {
@@ -314,6 +331,33 @@ export async function createUnitsRenderer(
         staging[offset + 9] = config.worldHeight;
       }
 
+      let ghostFirstInstance = -1;
+
+      if (ghostType >= 0) {
+        const config = SPRITE_CONFIGS[ghostType];
+        const sprite = spriteResources[ghostType];
+
+        if (config && sprite) {
+          ghostFirstInstance = totalInstances;
+
+          const offset = ghostFirstInstance * INSTANCE_FLOATS;
+
+          staging[offset] = ghostX;
+          staging[offset + 1] = heightAt(heights, ghostX, ghostZ);
+          staging[offset + 2] = ghostZ;
+          staging[offset + 3] = 0;
+          // Ghost tint is neutral; the owner slot is unused for negative hpFrac instances.
+          staging[offset + 4] = 0;
+          // Negative hpFrac is the ghost sentinel — one overloaded channel instead of a new attribute.
+          staging[offset + 5] = ghostValid ? -1 : -2;
+          staging[offset + 6] = 0;
+          staging[offset + 7] = sprite.uvFrameWidth;
+          staging[offset + 8] = config.worldHeight * sprite.aspect;
+          staging[offset + 9] = config.worldHeight;
+          totalInstances += 1;
+        }
+      }
+
       queue.writeBuffer(instanceBuffer, 0, staging, 0, totalInstances * INSTANCE_FLOATS);
       uniformStaging.set(viewProj);
       // Camera basis from the world-to-view matrix, packed as vec3 + padding each.
@@ -338,6 +382,12 @@ export async function createUnitsRenderer(
         pass.setBindGroup(0, spriteResources[type]!.bindGroup);
         // firstInstance walks the instance buffer -- 7 draws replace 1, budget yawns.
         pass.drawIndexed(indexData.length, typeCount, 0, 0, typeFirstInstances[type]!);
+      }
+
+      if (ghostFirstInstance >= 0) {
+        pass.setBindGroup(0, spriteResources[ghostType]!.bindGroup);
+        // Ghosts render with indices 0-5 only, so the negative hpFrac sentinel cannot reach ring/hp-bar geometry.
+        pass.drawIndexed(6, 1, 0, 0, ghostFirstInstance);
       }
 
       return totalInstances;

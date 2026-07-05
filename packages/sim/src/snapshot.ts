@@ -12,6 +12,7 @@ export interface RenderSnapshot {
   owner: Uint8Array;
   unitType: Uint8Array;
   hp: Uint16Array;
+  buildProgress: Uint16Array;
   carried: Uint16Array;
   stockpiles: Uint32Array;
   winner: number;
@@ -28,6 +29,7 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     owner: new Uint8Array(capacity),
     unitType: new Uint8Array(capacity),
     hp: new Uint16Array(capacity),
+    buildProgress: new Uint16Array(capacity),
     carried: new Uint16Array(capacity),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     winner: -1,
@@ -57,6 +59,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
     // The renderer picks sprites by type.
     out.unitType[i] = world.unitType[i]!;
     out.hp[i] = world.hp[i]!;
+    out.buildProgress[i] = world.buildProgress[i]!;
     out.carried[i] = world.carried[i]!;
   }
 }

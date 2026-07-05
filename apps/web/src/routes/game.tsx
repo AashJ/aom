@@ -5,6 +5,8 @@ import { Input } from "@aom/ui/components/input";
 import { Copy } from "lucide-react";
 import {
   MATCH_DRAW,
+  TYPE_BARRACKS,
+  TYPE_HOUSE,
   connectToRelay,
   createGame,
   isWebGPUSupported,
@@ -255,6 +257,8 @@ function GameComponent() {
       <canvas ref={canvasRef} className="block h-full w-full" />
       <ResourceBar game={game} />
       <PerfHud game={game} />
+      {/* Always visible in M6-4 — villager-selected gating is M6-5+ polish; costs shown are static labels, the ghost turns red when unaffordable. */}
+      <BuildBar game={game} />
       {net.desyncTick !== null && (
         <StatusPill text={`Desync detected at tick ${net.desyncTick} — match halted`} />
       )}
@@ -271,6 +275,29 @@ function GameComponent() {
       {matchWinner !== null && (
         <MatchEndScreen winner={matchWinner} selfId={room !== undefined ? net.selfId : 0} />
       )}
+    </div>
+  );
+}
+
+function BuildBar({ game }: { game: GameHandle | null }) {
+  return (
+    <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/65 px-2 py-2 shadow-lg shadow-black/30 backdrop-blur">
+      <Button
+        type="button"
+        size="sm"
+        className="rounded-md bg-sky-500 px-3 text-xs font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+        onClick={() => game?.startPlacement(TYPE_HOUSE)}
+      >
+        House 60w
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        className="rounded-md bg-sky-500 px-3 text-xs font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+        onClick={() => game?.startPlacement(TYPE_BARRACKS)}
+      >
+        Barracks 120w
+      </Button>
     </div>
   );
 }

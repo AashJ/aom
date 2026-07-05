@@ -7,6 +7,7 @@ export const COMMAND_MOVE = 0;
 export const COMMAND_STOP = 1;
 export const COMMAND_ATTACK = 2;
 export const COMMAND_GATHER = 3;
+export const COMMAND_PLACE = 4;
 
 export interface MoveCommand {
   tick: number;
@@ -56,7 +57,17 @@ export interface GatherCommand {
   targetId: number;
 }
 
-export type Command = MoveCommand | StopCommand | AttackCommand | GatherCommand;
+export interface PlaceCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_PLACE;
+  // No unitIds — placement is a player act, not a unit order; the villagers come in M6-5's Build command.
+  buildingType: number;
+  tileX: number;
+  tileZ: number;
+}
+
+export type Command = MoveCommand | StopCommand | AttackCommand | GatherCommand | PlaceCommand;
 
 export function enqueueCommand(world: World, command: Command): void {
   // Command handling is deliberately NOT zero-allocation: it runs at human click rate, not

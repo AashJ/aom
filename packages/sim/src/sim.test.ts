@@ -3,14 +3,17 @@ import {
   COMMAND_ATTACK,
   COMMAND_GATHER,
   COMMAND_MOVE,
+  COMMAND_PLACE,
   COMMAND_STOP,
   enqueueCommand,
 } from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
 import {
+  CARRY_CAPACITY,
   FOOD,
   LEASH_FACTOR,
   RESOURCE_COUNT,
+  TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_HOUSE,
   TYPE_MILITIA,
@@ -1099,6 +1102,147 @@ describe("gathering", () => {
 
     // The economy actually ran: deposits beyond the 200 starting wood.
     expect(a.stockpiles[WOOD]! + a.stockpiles[RESOURCE_COUNT + WOOD]!).toBeGreaterThan(200);
+  });
+});
+
+describe("building placement", () => {
+  test("a valid Place deducts costs and spawns a blueprint", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 5, [0]);
+    const woodBefore = world.stockpiles[WOOD]!;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_HOUSE,
+      tileX: 100,
+      tileZ: 100,
+    });
+
+    for (let t = 0; t < 2; t += 1) {
+      tickWorld(world);
+    }
+
+    const house = world.count - 1;
+
+    expect(world.stockpiles[WOOD]).toBe(woodBefore - UNIT_TYPES[TYPE_HOUSE]!.costWood);
+    expect(world.unitType[house]).toBe(TYPE_HOUSE);
+    // A blueprint: present, owned, footprint stamped — but zero progress.
+    expect(world.owner[house]).toBe(0);
+    expect(world.buildProgress[house]).toBe(0);
+    expect(world.walkable[100 * MAP_TILES + 100]).toBe(0);
+  });
+
+  test("blocked or unaffordable placements are silent no-ops with no deduction", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 5, [0]);
+    const countBefore = world.count;
+    const foodBefore = world.stockpiles[FOOD]!;
+    const woodBefore = world.stockpiles[WOOD]!;
+
+    // Blocked: overlaps the pre-placed town center footprint at the spawn corner.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_HOUSE,
+      tileX: 38,
+      tileZ: 38,
+    });
+    // Unaffordable: barracks costs 120 wood, the starting stockpile is 100.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_BARRACKS,
+      tileX: 120,
+      tileZ: 120,
+    });
+
+    for (let t = 0; t < 2; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.count).toBe(countBefore);
+    expect(world.stockpiles[FOOD]).toBe(foodBefore);
+    expect(world.stockpiles[WOOD]).toBe(woodBefore);
+    expect(world.walkable[120 * MAP_TILES + 120]).toBe(1);
+  });
+
+  test("a blueprint town center rejects deposits until construction completes", () => {
+    const world = flatWorld(7);
+    const blueprint = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, false);
+    const villager = spawnUnit(world, 110, 102, 0, 0, 0);
+    const tree = spawnUnit(world, 112, 102, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
+    const villagerIndex = resolveId(world, villager);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [villager],
+      targetId: tree,
+    });
+
+    // Long enough to fill the carry (10 strikes at a 10-tick cooldown) and try to bank it.
+    for (let t = 0; t < 300; t += 1) {
+      tickWorld(world);
+    }
+
+    // Full load, nothing banked: the blueprint failed the completeness gate and the
+    // villager clocked out to idle, keeping the carry.
+    expect(world.carried[villagerIndex]).toBe(CARRY_CAPACITY);
+    expect(world.stockpiles[WOOD]).toBe(0);
+
+    // Finish construction by hand (M6-5 gives villagers the Build verb), re-command the
+    // gather — the full carry goes straight to RETURNING and banks through the open gate.
+    world.buildProgress[resolveId(world, blueprint)] = UNIT_TYPES[TYPE_TOWN_CENTER]!.buildTicks;
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [villager],
+      targetId: tree,
+    });
+
+    for (let t = 0; t < 300; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.stockpiles[WOOD]!).toBeGreaterThanOrEqual(CARRY_CAPACITY);
+  });
+
+  test("worlds running the same Place commands stay hash-identical", () => {
+    const build = (): World => {
+      const world = flatWorld(7);
+      spawnUnits(world, 10, [0, 1]);
+      enqueueCommand(world, {
+        tick: 2,
+        issuer: 0,
+        type: COMMAND_PLACE,
+        buildingType: TYPE_HOUSE,
+        tileX: 60,
+        tileZ: 60,
+      });
+      enqueueCommand(world, {
+        tick: 2,
+        issuer: 1,
+        type: COMMAND_PLACE,
+        buildingType: TYPE_HOUSE,
+        tileX: 200,
+        tileZ: 200,
+      });
+      return world;
+    };
+    const a = build();
+    const b = build();
+
+    for (let t = 0; t < 60; t += 1) {
+      tickWorld(a);
+      tickWorld(b);
+      expect(hashWorld(a)).toBe(hashWorld(b));
+    }
   });
 });
 

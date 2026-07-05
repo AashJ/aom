@@ -186,6 +186,12 @@ export function hashWorld(world: World): number {
     }
   }
 
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.buildProgress[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // The free-handle stack decides which handle the NEXT spawn gets. Without it, a
   // divergence in death bookkeeping could hide until a later spawn surfaces it —
   // fold it so desyncs are detected at the tick they happen, not ticks later.

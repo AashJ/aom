@@ -19,6 +19,11 @@ function move(unitIds: number[], targetX: number, targetZ: number): WireCommand 
   return { type: COMMAND_MOVE, unitIds, targetX, targetZ };
 }
 
+// The wire union now includes commands without unitIds (Place); narrow before reading.
+function unitIdsOf(command: WireCommand): number[] {
+  return "unitIds" in command ? command.unitIds : [];
+}
+
 describe("sequencer", () => {
   test("orders a turn by playerId, preserving arrival order within a player", () => {
     const seq = createSequencer();
@@ -33,8 +38,8 @@ describe("sequencer", () => {
     expect(turn).toBe(0);
     expect(commands.map((c) => c.playerId)).toEqual([0, 1, 1]);
     // Player 1's two submissions must keep their arrival order (stable sort).
-    expect(commands[1]!.command.unitIds).toEqual([1]);
-    expect(commands[2]!.command.unitIds).toEqual([2]);
+    expect(unitIdsOf(commands[1]!.command)).toEqual([1]);
+    expect(unitIdsOf(commands[2]!.command)).toEqual([2]);
   });
 
   test("turn numbers are consecutive and pending drains each close", () => {

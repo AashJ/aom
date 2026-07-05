@@ -1,7 +1,7 @@
 // Load-bearing architecture rule: @aom/sim imports nothing from engine or DOM; violations
 // are bugs even when they work. See ARCHITECTURE.md determinism rules before editing sim.
 export * from "./commands";
-export { COMMAND_GATHER } from "./commands";
+export { COMMAND_GATHER, COMMAND_PLACE } from "./commands";
 export { idGeneration, idIndex, packId } from "./ecs/id";
 export {
   CARRY_CAPACITY,

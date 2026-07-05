@@ -5,6 +5,7 @@ import {
   COMMAND_ATTACK,
   COMMAND_GATHER,
   COMMAND_MOVE,
+  COMMAND_PLACE,
   COMMAND_STOP,
   type Command,
 } from "../commands";
@@ -91,6 +92,7 @@ export interface World {
   stockpiles: Uint32Array;
   unitType: Uint8Array;
   hp: Uint16Array;
+  buildProgress: Uint16Array;
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
@@ -161,6 +163,7 @@ export function createWorld(seed: number): World {
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     unitType: new Uint8Array(MAX_UNITS),
     hp: new Uint16Array(MAX_UNITS),
+    buildProgress: new Uint16Array(MAX_UNITS),
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
@@ -225,6 +228,7 @@ export function spawnUnit(
   world.owner[index] = owner;
   world.unitType[index] = type;
   world.hp[index] = UNIT_TYPES[type]!.maxHp;
+  world.buildProgress[index] = 0;
   world.attackCooldown[index] = 0;
   world.attackTarget[index] = NO_TARGET;
   world.attackOrdered[index] = 0;
@@ -290,8 +294,7 @@ export function canPlaceBuilding(
   const footprint = UNIT_TYPES[type]!.footprint;
 
   // walkable doubles as the occupancy grid: mountains, other buildings, and map edges all reject
-  // placement through one check. Units standing in the footprint are not checked; M6-4 decides
-  // that policy.
+  // placement through one check.
   for (let z = tileZ; z < tileZ + footprint; z += 1) {
     for (let x = tileX; x < tileX + footprint; x += 1) {
       if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) {
@@ -313,11 +316,17 @@ export function spawnBuilding(
   tileZ: number,
   owner: number,
   type: number,
+  complete = true,
 ): number {
   const footprint = UNIT_TYPES[type]!.footprint;
   const id = spawnUnit(world, tileX + footprint / 2, tileZ + footprint / 2, 0, 0, owner, type);
+  const index = world.count - 1;
 
-  // Buildings enter complete in M6-2; construction states arrive with M6-5.
+  // An incomplete building is a blueprint — present, footprint stamped, attackable,
+  // but functionally inert until construction finishes in M6-5.
+  world.buildProgress[index] = complete ? UNIT_TYPES[type]!.buildTicks : 0;
+  // Units standing inside a just-stamped footprint are accepted as-is for M6 — the existing
+  // same-tile movement allowance means they can always walk out.
   for (let z = tileZ; z < tileZ + footprint; z += 1) {
     for (let x = tileX; x < tileX + footprint; x += 1) {
       world.walkable[z * MAP_TILES + x] = 0;
@@ -792,7 +801,8 @@ export function tickWorld(world: World): void {
             !dropsiteStats.isDropsite ||
             world.owner[j] !== world.owner[i] ||
             world.dying[j] === 1 ||
-            world.hp[j] === 0
+            world.hp[j] === 0 ||
+            !(world.buildProgress[j]! >= UNIT_TYPES[world.unitType[j]!]!.buildTicks)
           ) {
             continue;
           }
@@ -915,7 +925,8 @@ export function tickWorld(world: World): void {
                 !dropsiteStats.isDropsite ||
                 world.owner[j] !== world.owner[i] ||
                 world.dying[j] === 1 ||
-                world.hp[j] === 0
+                world.hp[j] === 0 ||
+                !(world.buildProgress[j]! >= UNIT_TYPES[world.unitType[j]!]!.buildTicks)
               ) {
                 continue;
               }
@@ -1035,7 +1046,8 @@ export function tickWorld(world: World): void {
           !dropsiteStats.isDropsite ||
           world.owner[j] !== world.owner[i] ||
           world.dying[j] === 1 ||
-          world.hp[j] === 0
+          world.hp[j] === 0 ||
+          !(world.buildProgress[j]! >= UNIT_TYPES[world.unitType[j]!]!.buildTicks)
         ) {
           continue;
         }
@@ -1101,7 +1113,8 @@ export function tickWorld(world: World): void {
             !dropsiteStats.isDropsite ||
             world.owner[j] !== world.owner[i] ||
             world.dying[j] === 1 ||
-            world.hp[j] === 0
+            world.hp[j] === 0 ||
+            !(world.buildProgress[j]! >= UNIT_TYPES[world.unitType[j]!]!.buildTicks)
           ) {
             continue;
           }
@@ -1406,6 +1419,7 @@ function applyDeaths(world: World): void {
       world.owner[i] = world.owner[last]!;
       world.unitType[i] = world.unitType[last]!;
       world.hp[i] = world.hp[last]!;
+      world.buildProgress[i] = world.buildProgress[last]!;
       world.attackCooldown[i] = world.attackCooldown[last]!;
       world.attackTarget[i] = world.attackTarget[last]!;
       world.attackOrdered[i] = world.attackOrdered[last]!;
@@ -1587,6 +1601,26 @@ function applyPendingCommands(world: World): void {
           world.moving[index] = 0;
           world.unitField[index] = null;
         }
+      }
+    } else if (command.type === COMMAND_PLACE) {
+      const buildingType = command.buildingType;
+      const buildingStats = UNIT_TYPES[buildingType];
+      const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
+      const woodIndex = command.issuer * RESOURCE_COUNT + WOOD;
+
+      // The engine's ghost preview pre-validates, so failures here are stale-by-input-delay races —
+      // e.g. two players placing on the same tiles in one turn: the first (playerId order) wins,
+      // the second's command finds tiles occupied and dies silently. This is the desired lockstep semantics.
+      if (
+        buildingStats !== undefined &&
+        buildingStats.footprint > 0 &&
+        canPlaceBuilding(world, command.tileX, command.tileZ, buildingType) &&
+        world.stockpiles[foodIndex]! >= buildingStats.costFood &&
+        world.stockpiles[woodIndex]! >= buildingStats.costWood
+      ) {
+        world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - buildingStats.costFood;
+        world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - buildingStats.costWood;
+        spawnBuilding(world, command.tileX, command.tileZ, command.issuer, buildingType, false);
       }
     }
 

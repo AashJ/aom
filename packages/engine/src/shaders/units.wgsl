@@ -125,6 +125,13 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
     discard;
   }
 
+  if (in.hpFrac < 0.0) {
+    // Green = placeable, red = blocked/unaffordable.
+    let ok = step(-1.5, in.hpFrac);
+    let color = texel.rgb * mix(vec3f(1.2, 0.4, 0.35), vec3f(0.5, 1.1, 0.6), ok);
+    return vec4f(color * 0.55, texel.a * 0.55);
+  }
+
   // Multiply-tint keeps the sprite's own shading; 0.45 keeps faces readable while armies stay unmistakable.
   var color = texel.rgb * mix(vec3f(1.0), PLAYER_PALETTE[u32(in.owner) % 4u], 0.45);
   color = mix(color, vec3f(1.0, 0.85, 0.3), in.selected * 0.35);
