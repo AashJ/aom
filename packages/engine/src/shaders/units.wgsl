@@ -11,6 +11,9 @@ struct Uniforms {
 @group(0) @binding(2) var spriteSampler: sampler;
 @group(0) @binding(3) var spriteTex: texture_2d<f32>;
 
+const VILLAGER_ATLAS_COLUMNS = 7.0;
+const VILLAGER_ATLAS_ROWS = 1.0;
+
 struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
@@ -41,6 +44,7 @@ fn vs(
   @location(2) part: f32,
   @location(3) instancePos: vec3f,
   @location(4) selected: f32,
+  @location(5) frameIndex: f32,
 ) -> VertexOut {
   var world: vec3f;
 
@@ -60,7 +64,15 @@ fn vs(
 
   var out: VertexOut;
   out.position = u.viewProj * vec4f(world, 1.0);
-  out.uv = uv;
+  let frame = clamp(
+    floor(frameIndex + 0.5),
+    0.0,
+    VILLAGER_ATLAS_COLUMNS * VILLAGER_ATLAS_ROWS - 1.0,
+  );
+  let row = floor(frame / VILLAGER_ATLAS_COLUMNS);
+  let column = frame - row * VILLAGER_ATLAS_COLUMNS;
+
+  out.uv = (vec2f(column, row) + uv) / vec2f(VILLAGER_ATLAS_COLUMNS, VILLAGER_ATLAS_ROWS);
   out.part = part;
   out.selected = selected;
   return out;

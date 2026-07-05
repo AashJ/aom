@@ -1,7 +1,8 @@
 import { heightAt, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
-import villagerSpriteUrl from "../assets/villager.png";
+import villagerSpriteUrl from "../assets/villager-walk.png";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
+import { VILLAGER_ATLAS_COLUMNS, villagerAnimationFrame } from "./unit-animation";
 
 export interface UnitsRenderer {
   draw(
@@ -79,7 +80,8 @@ export async function createUnitsRenderer(
   heights: Float32Array,
 ): Promise<UnitsRenderer> {
   const sprite = await createSpriteTexture(device);
-  const spriteWidth = SPRITE_HEIGHT * (sprite.width / sprite.height);
+  const spriteCellWidth = sprite.width / VILLAGER_ATLAS_COLUMNS;
+  const spriteWidth = SPRITE_HEIGHT * (spriteCellWidth / sprite.height);
   const verts = [
     // local xy, uv, part (0 = sprite, 1 = ring)
     -spriteWidth * 0.5,
@@ -137,10 +139,10 @@ export async function createUnitsRenderer(
     usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
   });
   const instanceBuffer = device.createBuffer({
-    size: maxInstances * 16,
+    size: maxInstances * 20,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const staging = new Float32Array(maxInstances * 4);
+  const staging = new Float32Array(maxInstances * 5);
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -166,13 +168,14 @@ export async function createUnitsRenderer(
           ],
         },
         {
-          arrayStride: 16,
+          arrayStride: 20,
           // stepMode "instance" advances this buffer once per instance, not per vertex;
           // that is the whole trick of instancing.
           stepMode: "instance",
           attributes: [
             { format: "float32x3", offset: 0, shaderLocation: 3 },
             { format: "float32", offset: 12, shaderLocation: 4 },
+            { format: "float32", offset: 16, shaderLocation: 5 },
           ],
         },
       ],
@@ -233,15 +236,24 @@ export async function createUnitsRenderer(
         // smoothly at arbitrary display refresh rates.
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-        const offset = i * 4;
+        const offset = i * 5;
 
         staging[offset] = x;
         staging[offset + 1] = heightAt(heights, x, z);
         staging[offset + 2] = z;
         staging[offset + 3] = curr.selected[i]!;
+        staging[offset + 4] = villagerAnimationFrame({
+          prevX,
+          prevZ,
+          currX: curr.posX[i]!,
+          currZ: curr.posZ[i]!,
+          tick: curr.tick,
+          alpha,
+          unitIndex: i,
+        });
       }
 
-      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 4);
+      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 5);
       uniformStaging.set(viewProj);
       // Camera basis from the world-to-view matrix, packed as vec3 + padding each.
       uniformStaging[16] = viewProj[0]!;
