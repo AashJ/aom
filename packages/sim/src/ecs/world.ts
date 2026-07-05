@@ -3,6 +3,7 @@
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
 import {
   COMMAND_ATTACK,
+  COMMAND_BUILD,
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
@@ -14,8 +15,9 @@ import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 import { idGeneration, idIndex, packId } from "./id";
 import {
-  FOOD,
+  BUILD_PER_STRIKE,
   CARRY_CAPACITY,
+  FOOD,
   GATHER_COOLDOWN_TICKS,
   GATHER_PER_STRIKE,
   LEASH_FACTOR,
@@ -44,6 +46,7 @@ export const NO_TARGET = 0xffffffff;
 export const MODE_IDLE = 0;
 export const MODE_GATHERING = 1;
 export const MODE_RETURNING = 2;
+export const MODE_BUILDING = 3;
 // world.winner values: -1 = match ongoing, >= 0 = that player id won,
 // MATCH_DRAW = everyone is dead (mutual annihilation).
 export const MATCH_DRAW = -2;
@@ -1151,6 +1154,58 @@ export function tickWorld(world: World): void {
           world.unitField[i] = null;
         }
       }
+    } else if (world.mode[i] === MODE_BUILDING) {
+      const target = resolveId(world, world.gatherNode[i]!);
+
+      if (target < 0 || world.dying[target] === 1 || world.hp[target] === 0) {
+        world.mode[i] = MODE_IDLE;
+        world.gatherNode[i] = NO_TARGET;
+        world.gatherPosX[i] = 0;
+        world.gatherPosZ[i] = 0;
+        world.moving[i] = 0;
+        world.unitField[i] = null;
+        continue;
+      }
+
+      const siteStats = UNIT_TYPES[world.unitType[target]!]!;
+
+      if (world.buildProgress[target]! >= siteStats.buildTicks) {
+        world.mode[i] = MODE_IDLE;
+        world.gatherNode[i] = NO_TARGET;
+        world.gatherPosX[i] = 0;
+        world.gatherPosZ[i] = 0;
+        world.moving[i] = 0;
+        world.unitField[i] = null;
+        continue;
+      }
+
+      const dx = world.posX[target]! - world.posX[i]!;
+      const dz = world.posZ[target]! - world.posZ[i]!;
+      const distSq = dx * dx + dz * dz;
+      const reach = villagerReach + siteStats.bodyRadius;
+
+      if (distSq <= reach * reach) {
+        world.moving[i] = 0;
+        world.unitField[i] = null;
+
+        if (world.attackCooldown[i] === 0) {
+          const progress = world.buildProgress[target]! + BUILD_PER_STRIKE;
+
+          world.buildProgress[target] =
+            progress > siteStats.buildTicks ? siteStats.buildTicks : progress;
+          // The shared cooldown means a villager cannot hammer and chop/fight in the same breath; N builders in reach stack N strikes per cooldown window.
+          world.attackCooldown[i] = GATHER_COOLDOWN_TICKS;
+        }
+      } else {
+        const targetX = world.posX[target]!;
+        const targetZ = world.posZ[target]!;
+        const targetGoalCell = cellOf(targetX, targetZ);
+
+        // Building sites are static targets sharing cached fields.
+        if (world.unitField[i]?.goalCell !== targetGoalCell) {
+          assignFieldGoal(world, i, targetX, targetZ);
+        }
+      }
     }
   }
 
@@ -1593,6 +1648,37 @@ function applyPendingCommands(world: World): void {
           // Militia in a mixed selection are silently skipped, not treated as an error.
           if (world.unitType[index] !== TYPE_VILLAGER) continue;
           world.mode[index] = MODE_GATHERING;
+          world.gatherNode[index] = command.targetId;
+          world.gatherPosX[index] = world.posX[target]!;
+          world.gatherPosZ[index] = world.posZ[target]!;
+          world.attackTarget[index] = NO_TARGET;
+          world.attackOrdered[index] = 0;
+          world.moving[index] = 0;
+          world.unitField[index] = null;
+        }
+      }
+    } else if (command.type === COMMAND_BUILD) {
+      const target = resolveId(world, command.targetId);
+
+      if (
+        target >= 0 &&
+        world.dying[target] === 0 &&
+        world.hp[target]! > 0 &&
+        world.owner[target] === command.issuer &&
+        UNIT_TYPES[world.unitType[target]!]!.footprint > 0 &&
+        world.buildProgress[target]! < UNIT_TYPES[world.unitType[target]!]!.buildTicks
+      ) {
+        for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+          const id = command.unitIds[unitIndex]!;
+          const index = resolveId(world, id);
+
+          if (index < 0) continue;
+          // THE ownership validation - one place, every client, deterministic. The relay stays
+          // dumb; forged or mis-addressed commands die here identically everywhere.
+          if (world.owner[index] !== command.issuer) continue;
+          // Militia in a mixed selection are silently skipped, not treated as an error.
+          if (world.unitType[index] !== TYPE_VILLAGER) continue;
+          world.mode[index] = MODE_BUILDING;
           world.gatherNode[index] = command.targetId;
           world.gatherPosX[index] = world.posX[target]!;
           world.gatherPosZ[index] = world.posZ[target]!;

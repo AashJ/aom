@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   COMMAND_ATTACK,
+  COMMAND_BUILD,
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
@@ -29,6 +30,8 @@ import {
   createWorld,
   killUnit,
   MATCH_DRAW,
+  MODE_BUILDING,
+  MODE_IDLE,
   NEUTRAL_OWNER,
   NO_TARGET,
   resolveId,
@@ -1211,6 +1214,139 @@ describe("building placement", () => {
     }
 
     expect(world.stockpiles[WOOD]!).toBeGreaterThanOrEqual(CARRY_CAPACITY);
+  });
+
+  test("a commanded villager raises a blueprint to completion and clocks out", () => {
+    const world = flatWorld(42);
+    const site = spawnBuilding(world, 100, 100, 0, TYPE_HOUSE, false);
+    const villager = spawnUnit(world, 110, 102, 0, 0, 0);
+    const villagerIndex = resolveId(world, villager);
+    const siteIndex = resolveId(world, site);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager],
+      targetId: site,
+    });
+
+    for (let t = 0; t < 400; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.buildProgress[siteIndex]).toBe(UNIT_TYPES[TYPE_HOUSE]!.buildTicks);
+    // The finished site releases its builder.
+    expect(world.mode[villagerIndex]).toBe(MODE_IDLE);
+    expect(world.moving[villagerIndex]).toBe(0);
+  });
+
+  test("three builders finish strictly faster than one", () => {
+    const completionTick = (builderCount: number): number => {
+      const world = flatWorld(42);
+      const site = spawnBuilding(world, 100, 100, 0, TYPE_HOUSE, false);
+      const siteIndex = resolveId(world, site);
+      const builders: number[] = [];
+
+      for (let i = 0; i < builderCount; i += 1) {
+        builders.push(spawnUnit(world, 106, 100 + i * 2, 0, 0, 0));
+      }
+
+      enqueueCommand(world, {
+        tick: 1,
+        issuer: 0,
+        type: COMMAND_BUILD,
+        unitIds: builders,
+        targetId: site,
+      });
+
+      for (let t = 0; t < 1000; t += 1) {
+        tickWorld(world);
+        if (world.buildProgress[siteIndex]! >= UNIT_TYPES[TYPE_HOUSE]!.buildTicks) {
+          return world.tick;
+        }
+      }
+
+      throw new Error("site never completed");
+    };
+
+    expect(completionTick(3)).toBeLessThan(completionTick(1));
+  });
+
+  test("enemy or already-complete targets are no-ops; militia are silently skipped", () => {
+    const world = flatWorld(42);
+    const enemySite = spawnBuilding(world, 100, 100, 1, TYPE_HOUSE, false);
+    const doneSite = spawnBuilding(world, 120, 120, 0, TYPE_HOUSE, true);
+    const ownSite = spawnBuilding(world, 140, 140, 0, TYPE_HOUSE, false);
+    const villager = spawnUnit(world, 144, 141, 0, 0, 0);
+    const militia = spawnUnit(world, 146, 141, 0, 0, 0, TYPE_MILITIA);
+    const villagerIndex = resolveId(world, villager);
+    const militiaIndex = resolveId(world, militia);
+
+    // Helping the enemy raise their house is not a thing.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager],
+      targetId: enemySite,
+    });
+    // Neither is hammering a finished building.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager],
+      targetId: doneSite,
+    });
+
+    for (let t = 0; t < 50; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.buildProgress[resolveId(world, enemySite)]).toBe(0);
+    expect(world.mode[villagerIndex]).toBe(MODE_IDLE);
+
+    // A mixed selection on a legal site: the villager engages, the militia ignores it.
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager, militia],
+      targetId: ownSite,
+    });
+    tickWorld(world);
+
+    expect(world.mode[villagerIndex]).toBe(MODE_BUILDING);
+    expect(world.mode[militiaIndex]).toBe(MODE_IDLE);
+  });
+
+  test("a site destroyed mid-build releases its builders", () => {
+    const world = flatWorld(42);
+    const site = spawnBuilding(world, 100, 100, 0, TYPE_HOUSE, false);
+    const villager = spawnUnit(world, 104, 101, 0, 0, 0);
+    const villagerIndex = resolveId(world, villager);
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager],
+      targetId: site,
+    });
+
+    for (let t = 0; t < 30; t += 1) {
+      tickWorld(world);
+    }
+    expect(world.mode[villagerIndex]).toBe(MODE_BUILDING);
+
+    killUnit(world, resolveId(world, site));
+    for (let t = 0; t < 3; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.mode[villagerIndex]).toBe(MODE_IDLE);
+    expect(world.moving[villagerIndex]).toBe(0);
   });
 
   test("worlds running the same Place commands stay hash-identical", () => {

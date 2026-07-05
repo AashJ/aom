@@ -28,6 +28,8 @@ export const WOOD = 1;
 export const RESOURCE_COUNT = 2;
 
 // Balance-pass placeholders: 0.5 s per unit, 5 s to fill at 20 Hz.
+// Build cadence reuses GATHER_COOLDOWN_TICKS (10), so the average rate is 1 progress/tick/builder and buildTicks reads as solo builder-ticks.
+export const BUILD_PER_STRIKE = 10;
 export const CARRY_CAPACITY = 10;
 export const GATHER_PER_STRIKE = 1;
 export const GATHER_COOLDOWN_TICKS = 10;

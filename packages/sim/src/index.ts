@@ -4,6 +4,7 @@ export * from "./commands";
 export { COMMAND_GATHER, COMMAND_PLACE } from "./commands";
 export { idGeneration, idIndex, packId } from "./ecs/id";
 export {
+  BUILD_PER_STRIKE,
   CARRY_CAPACITY,
   FOOD,
   GATHER_COOLDOWN_TICKS,
@@ -30,6 +31,7 @@ export {
   killUnit,
   MATCH_DRAW,
   MAX_PLAYERS,
+  MODE_BUILDING,
   MODE_GATHERING,
   MODE_IDLE,
   MODE_RETURNING,

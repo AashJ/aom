@@ -8,6 +8,7 @@ export const COMMAND_STOP = 1;
 export const COMMAND_ATTACK = 2;
 export const COMMAND_GATHER = 3;
 export const COMMAND_PLACE = 4;
+export const COMMAND_BUILD = 5;
 
 export interface MoveCommand {
   tick: number;
@@ -67,7 +68,21 @@ export interface PlaceCommand {
   tileZ: number;
 }
 
-export type Command = MoveCommand | StopCommand | AttackCommand | GatherCommand | PlaceCommand;
+export interface BuildCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_BUILD;
+  unitIds: number[];
+  targetId: number;
+}
+
+export type Command =
+  | MoveCommand
+  | StopCommand
+  | AttackCommand
+  | GatherCommand
+  | PlaceCommand
+  | BuildCommand;
 
 export function enqueueCommand(world: World, command: Command): void {
   // Command handling is deliberately NOT zero-allocation: it runs at human click rate, not
