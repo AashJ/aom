@@ -1,4 +1,4 @@
-import { heightAt, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
+import { heightAt, UNIT_TYPES, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
 import villagerSpriteUrl from "../assets/villager-walk.png";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
@@ -128,6 +128,13 @@ export async function createUnitsRenderer(
     indices.push(i0, i1, o1, i0, o1, o0);
   }
 
+  const hpBase = verts.length / 5;
+  verts.push(-0.55, 2.35, 0, 0, 2);
+  verts.push(0.55, 2.35, 1, 0, 2);
+  verts.push(0.55, 2.5, 1, 0, 2);
+  verts.push(-0.55, 2.5, 0, 0, 2);
+  indices.push(hpBase, hpBase + 1, hpBase + 2, hpBase, hpBase + 2, hpBase + 3);
+
   const vertexData = new Float32Array(verts);
   const indexData = new Uint16Array(indices);
   const vertexBuffer = device.createBuffer({
@@ -139,10 +146,10 @@ export async function createUnitsRenderer(
     usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
   });
   const instanceBuffer = device.createBuffer({
-    size: maxInstances * 24,
+    size: maxInstances * 28,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const staging = new Float32Array(maxInstances * 6);
+  const staging = new Float32Array(maxInstances * 7);
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -168,7 +175,7 @@ export async function createUnitsRenderer(
           ],
         },
         {
-          arrayStride: 24,
+          arrayStride: 28,
           // stepMode "instance" advances this buffer once per instance, not per vertex;
           // that is the whole trick of instancing.
           stepMode: "instance",
@@ -177,6 +184,7 @@ export async function createUnitsRenderer(
             { format: "float32", offset: 12, shaderLocation: 4 },
             { format: "float32", offset: 16, shaderLocation: 5 },
             { format: "float32", offset: 20, shaderLocation: 6 },
+            { format: "float32", offset: 24, shaderLocation: 7 },
           ],
         },
       ],
@@ -239,7 +247,7 @@ export async function createUnitsRenderer(
         // smoothly at arbitrary display refresh rates.
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-        const offset = i * 6;
+        const offset = i * 7;
 
         staging[offset] = x;
         staging[offset + 1] = heightAt(heights, x, z);
@@ -255,9 +263,11 @@ export async function createUnitsRenderer(
           unitIndex: i,
         });
         staging[offset + 5] = curr.owner[i]!;
+        // Per-type max moves into the shader once a second unit type exists; snapshot would then carry unitType.
+        staging[offset + 6] = curr.hp[i]! / UNIT_TYPES[0]!.maxHp;
       }
 
-      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 6);
+      queue.writeBuffer(instanceBuffer, 0, staging, 0, curr.count * 7);
       uniformStaging.set(viewProj);
       // Camera basis from the world-to-view matrix, packed as vec3 + padding each.
       uniformStaging[16] = viewProj[0]!;

@@ -41,7 +41,8 @@ fn vs(@location(0) local: vec2f) -> VertexOut {
 
 @fragment
 fn fs() -> @location(0) vec4f {
-  let color = vec3f(1.0, 0.85, 0.3);
+  // Same expanding ring, hostile hue.
+  let color = mix(vec3f(1.0, 0.85, 0.3), vec3f(0.95, 0.25, 0.18), step(1.5, u.params.w));
   let a = (1.0 - u.params.z) * 0.9;
 
   return vec4f(color * a, a);

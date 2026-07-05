@@ -27,6 +27,7 @@ struct VertexOut {
   @location(1) part: f32,
   @location(2) selected: f32,
   @location(3) owner: f32,
+  @location(4) hpFrac: f32,
 }
 
 fn terrainHeight(worldXZ: vec2f) -> f32 {
@@ -47,17 +48,28 @@ fn terrainHeight(worldXZ: vec2f) -> f32 {
 
 @vertex
 fn vs(
-  @location(0) local: vec2f,
+  @location(0) baseLocal: vec2f,
   @location(1) uv: vec2f,
   @location(2) part: f32,
   @location(3) instancePos: vec3f,
   @location(4) selected: f32,
   @location(5) frameIndex: f32,
   @location(6) owner: f32,
+  @location(7) hpFrac: f32,
 ) -> VertexOut {
   var world: vec3f;
+  var local = baseLocal;
 
-  if (part > 0.5) {
+  if (part > 1.5) {
+    // Billboard: span the quad on the camera's right/up axes so the sprite
+    // always faces the view; feet stay anchored at the instance position.
+    let right = normalize(u.right.xyz);
+    let upAxis = normalize(u.up.xyz);
+    // Undamaged armies don't render as bars.
+    let show = 1.0 - step(0.999, hpFrac);
+    local *= show;
+    world = instancePos + right * local.x + upAxis * local.y;
+  } else if (part > 0.5) {
     // Ring verts reuse local.xy as ground-plane XZ offsets. Unselected rings
     // collapse to the instance origin (zero-area triangles rasterize nothing).
     let ringOffset = local * step(0.5, selected);
@@ -73,18 +85,23 @@ fn vs(
 
   var out: VertexOut;
   out.position = u.viewProj * vec4f(world, 1.0);
-  let frame = clamp(
-    floor(frameIndex + 0.5),
-    0.0,
-    VILLAGER_ATLAS_COLUMNS * VILLAGER_ATLAS_ROWS - 1.0,
-  );
-  let row = floor(frame / VILLAGER_ATLAS_COLUMNS);
-  let column = frame - row * VILLAGER_ATLAS_COLUMNS;
+  if (part > 1.5) {
+    out.uv = uv;
+  } else {
+    let frame = clamp(
+      floor(frameIndex + 0.5),
+      0.0,
+      VILLAGER_ATLAS_COLUMNS * VILLAGER_ATLAS_ROWS - 1.0,
+    );
+    let row = floor(frame / VILLAGER_ATLAS_COLUMNS);
+    let column = frame - row * VILLAGER_ATLAS_COLUMNS;
 
-  out.uv = (vec2f(column, row) + uv) / vec2f(VILLAGER_ATLAS_COLUMNS, VILLAGER_ATLAS_ROWS);
+    out.uv = (vec2f(column, row) + uv) / vec2f(VILLAGER_ATLAS_COLUMNS, VILLAGER_ATLAS_ROWS);
+  }
   out.part = part;
   out.selected = selected;
   out.owner = owner;
+  out.hpFrac = hpFrac;
   return out;
 }
 
@@ -94,6 +111,14 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   // only allows in uniform control flow. Ring fragments sample uv (0,0) and
   // ignore the result.
   let texel = textureSample(spriteTex, spriteSampler, in.uv);
+
+  if (in.part > 1.5) {
+    // Unlit UI, like the ring.
+    let hpFrac = in.hpFrac;
+    let filled = step(in.uv.x, hpFrac);
+    let color = mix(vec3f(0.25, 0.05, 0.05), mix(vec3f(0.85, 0.2, 0.15), vec3f(0.3, 0.8, 0.3), hpFrac), filled);
+    return vec4f(color, 1.0);
+  }
 
   if (in.part > 0.5) {
     // Rings only render when selected, so they stay a selection affordance -- owner-hued, white-lifted.

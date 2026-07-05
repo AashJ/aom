@@ -106,6 +106,7 @@ export async function createGame(
   let currSnap = createSnapshot(MAX_UNITS);
   const markerPos = new Float32Array(2);
   let markerAgeMs = Number.POSITIVE_INFINITY;
+  let markerKind = 1;
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
@@ -225,19 +226,22 @@ export async function createGame(
       }
     }
 
-    if (
-      consumeCommandInput(
-        input.state,
-        world,
-        sink,
-        selfPlayerId,
-        camera,
-        heights,
-        canvas,
-        markerPos,
-      )
-    ) {
+    const issued = consumeCommandInput(
+      input.state,
+      world,
+      sink,
+      selfPlayerId,
+      camera,
+      prevSnap,
+      currSnap,
+      alpha,
+      heights,
+      canvas,
+      markerPos,
+    );
+    if (issued !== 0) {
       markerAgeMs = 0;
+      markerKind = issued;
     }
     markerAgeMs += dtMs;
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
@@ -278,6 +282,7 @@ export async function createGame(
         markerPos[0]!,
         markerPos[1]!,
         markerAgeMs / 600,
+        markerKind,
       );
     }
     // +4 = units + minimap base + minimap footprint + minimap dots; +1 while the marker is alive.

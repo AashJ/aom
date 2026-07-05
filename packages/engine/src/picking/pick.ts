@@ -138,10 +138,13 @@ export function consumeCommandInput(
   sink: CommandSink,
   selfPlayerId: number,
   camera: Camera,
+  prev: RenderSnapshot,
+  curr: RenderSnapshot,
+  alpha: number,
   heights: Float32Array,
   canvas: HTMLCanvasElement,
   markerOut: Float32Array,
-): boolean {
+): 0 | 1 | 2 {
   if (input.stopPending) {
     input.stopPending = false;
     const unitIds: number[] = [];
@@ -162,20 +165,47 @@ export function consumeCommandInput(
   }
 
   if (!input.commandPending) {
-    return false;
+    return 0;
   }
 
   input.commandPending = false;
 
   const ndcX = (input.commandX / canvas.clientWidth) * 2 - 1;
   const ndcY = 1 - (input.commandY / canvas.clientHeight) * 2;
+  const hit = pickUnit(camera, ndcX, ndcY, prev, curr, alpha, heights);
+
+  // right-click routes by what's under the cursor — enemy = attack, everything else falls through to the move path; clicking your OWN unit is a move-to-there, matching Age of Mythology conventions.
+  if (hit >= 0 && curr.owner[hit] !== selfPlayerId) {
+    const unitIds: number[] = [];
+
+    // Allocation is fine at click rate; commands are serializable-by-construction plain data.
+    for (let i = 0; i < world.count; i += 1) {
+      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
+      // stays the authority. Selecting enemies stays allowed for inspection.
+      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
+        // Commands carry packed ids from here on.
+        unitIds.push(unitIdAt(world, i));
+      }
+    }
+
+    if (unitIds.length > 0) {
+      const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
+      const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
+      const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
+
+      sink.submitAttack(unitIds, curr.ids[hit]!);
+      markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
+      markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
+      return 2;
+    }
+  }
 
   screenRay(camera, ndcX, ndcY, rayOrigin, rayDir);
 
   if (!raycastHeightfield(heights, rayOrigin, rayDir, commandTarget)) {
     // Off-map clicks still order a move to the map edge - generous, AoM-like.
     if (!screenToGround(camera, ndcX, ndcY, commandTarget)) {
-      return false;
+      return 0;
     }
   }
 
@@ -196,14 +226,14 @@ export function consumeCommandInput(
   }
 
   if (unitIds.length === 0) {
-    return false;
+    return 0;
   }
 
   // The marker is the immediate order acknowledgement that absorbs the input delay.
   sink.submitMove(unitIds, targetX, targetZ);
   markerOut[0] = targetX;
   markerOut[1] = targetZ;
-  return true;
+  return 1;
 }
 
 export function marqueeSelect(

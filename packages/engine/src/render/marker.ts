@@ -10,6 +10,7 @@ export interface MarkerRenderer {
     x: number,
     z: number,
     progress: number,
+    kind: number,
   ): void;
 }
 
@@ -119,11 +120,12 @@ export function createMarkerRenderer(
   );
 
   return {
-    draw(pass, queue, viewProj, x, z, progress): void {
+    draw(pass, queue, viewProj, x, z, progress, kind): void {
       uniformStaging.set(viewProj);
       uniformStaging[16] = x;
       uniformStaging[17] = z;
       uniformStaging[18] = progress;
+      uniformStaging[19] = kind;
       queue.writeBuffer(uniformBuffer, 0, uniformStaging);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
