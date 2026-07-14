@@ -1,6 +1,9 @@
 const GLB_MAGIC = 0x46546c67;
+const GLB_VERSION = 2;
 const JSON_CHUNK = 0x4e4f534a;
 const BIN_CHUNK = 0x004e4942;
+
+export const MAX_MODEL_MORPH_TARGETS = 12;
 
 interface GltfAccessor {
   bufferView: number;
@@ -78,8 +81,12 @@ export interface ModelPrimitiveData {
 
 export interface ModelMaterialData {
   image: ImageBitmap | null;
-  playerColor: boolean;
-  alphaCutoff: number;
+  pixelTransform: "none" | "multiply-player-color";
+  alpha: { mode: "opaque" } | { mode: "mask"; cutoff: number };
+}
+
+export interface ClassicModelRequirements {
+  requiredNodes?: readonly string[];
 }
 
 export interface ModelKeyframeTrack {
@@ -115,6 +122,17 @@ export interface ModelAsset {
   groundOffset: number;
 }
 
+function invalidClassicModel(source: string, detail: string): never {
+  throw new Error(`Invalid Classic model ${source}: ${detail}`);
+}
+
+function requiredIndex(value: number | undefined, source: string, label: string): number {
+  if (!Number.isInteger(value) || value! < 0) {
+    invalidClassicModel(source, `${label} is missing`);
+  }
+  return value!;
+}
+
 function componentCount(type: string): number {
   switch (type) {
     case "SCALAR":
@@ -141,6 +159,238 @@ function componentSize(componentType: number): number {
       return 4;
     default:
       throw new Error(`Unsupported glTF component type: ${componentType}`);
+  }
+}
+
+function parseClassicGltfJson(jsonText: string, source: string): GltfJson {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    invalidClassicModel(source, "JSON chunk is malformed");
+  }
+
+  const gltf = parsed as Partial<GltfJson> | null;
+  if (!gltf || !Array.isArray(gltf.accessors) || !Array.isArray(gltf.bufferViews)) {
+    invalidClassicModel(source, "accessors and buffer views are required");
+  }
+  if (!Array.isArray(gltf.meshes)) invalidClassicModel(source, "meshes are required");
+  return gltf as GltfJson;
+}
+
+function classicAccessor(
+  gltf: GltfJson,
+  index: number | undefined,
+  source: string,
+  label: string,
+  type: string,
+  componentTypes: readonly number[],
+): GltfAccessor {
+  const accessor = gltf.accessors[requiredIndex(index, source, label)];
+  if (
+    !accessor ||
+    accessor.type !== type ||
+    !componentTypes.includes(accessor.componentType) ||
+    !Number.isInteger(accessor.count) ||
+    accessor.count <= 0 ||
+    !gltf.bufferViews[accessor.bufferView]
+  ) {
+    invalidClassicModel(source, `${label} must reference a ${type} accessor`);
+  }
+  return accessor;
+}
+
+function classicMaterialSemantics(
+  gltf: GltfJson,
+  materialIndex: number,
+  source: string,
+): Omit<ModelMaterialData, "image"> & { imageIndex: number | undefined } {
+  const material = gltf.materials?.[materialIndex];
+  if (!material) invalidClassicModel(source, `material ${materialIndex} is missing`);
+  const alphaMode = material.alphaMode ?? "OPAQUE";
+  if (alphaMode !== "OPAQUE" && alphaMode !== "MASK") {
+    invalidClassicModel(source, `material ${materialIndex} uses unsupported ${alphaMode} alpha`);
+  }
+  if (alphaMode === "MASK" && !Number.isFinite(material.alphaCutoff ?? 0.5)) {
+    invalidClassicModel(source, `material ${materialIndex} has an invalid alpha cutoff`);
+  }
+
+  const transform = material.name?.toLowerCase().match(/(?:pixel|color|texture)xform\d+/)?.[0];
+  if (transform !== undefined && transform !== "pixelxform1") {
+    invalidClassicModel(source, `material ${materialIndex} uses unsupported ${transform}`);
+  }
+  const textureIndex = material.pbrMetallicRoughness?.baseColorTexture?.index;
+  const imageIndex = textureIndex === undefined ? undefined : gltf.textures?.[textureIndex]?.source;
+  if (textureIndex !== undefined && (imageIndex === undefined || !gltf.images?.[imageIndex])) {
+    invalidClassicModel(source, `material ${materialIndex} has an invalid texture reference`);
+  }
+  const imageBufferView =
+    imageIndex === undefined ? undefined : gltf.images![imageIndex]!.bufferView;
+  if (
+    imageIndex !== undefined &&
+    (imageBufferView === undefined || !gltf.bufferViews[imageBufferView])
+  ) {
+    invalidClassicModel(source, `material ${materialIndex} has an invalid image buffer view`);
+  }
+
+  return {
+    imageIndex,
+    pixelTransform: transform === "pixelxform1" ? "multiply-player-color" : "none",
+    alpha:
+      alphaMode === "MASK"
+        ? { mode: "mask", cutoff: material.alphaCutoff ?? 0.5 }
+        : { mode: "opaque" },
+  };
+}
+
+function validateClassicModelContract(
+  gltf: GltfJson,
+  source: string,
+  requirements: ClassicModelRequirements,
+): void {
+  const primitives = gltf.meshes[0]?.primitives;
+  if (!primitives?.length) invalidClassicModel(source, "mesh 0 must contain visible primitives");
+
+  let morphCount: number | undefined;
+  for (let primitiveIndex = 0; primitiveIndex < primitives.length; primitiveIndex += 1) {
+    const primitive = primitives[primitiveIndex]!;
+    const prefix = `primitive ${primitiveIndex}`;
+    const positions = classicAccessor(
+      gltf,
+      primitive.attributes?.POSITION,
+      source,
+      `${prefix} POSITION`,
+      "VEC3",
+      [5126],
+    );
+    const normals = classicAccessor(
+      gltf,
+      primitive.attributes?.NORMAL,
+      source,
+      `${prefix} NORMAL`,
+      "VEC3",
+      [5126],
+    );
+    const texcoords = classicAccessor(
+      gltf,
+      primitive.attributes?.TEXCOORD_0,
+      source,
+      `${prefix} TEXCOORD_0`,
+      "VEC2",
+      [5126],
+    );
+    classicAccessor(
+      gltf,
+      primitive.indices,
+      source,
+      `${prefix} indices`,
+      "SCALAR",
+      [5121, 5123, 5125],
+    );
+    if (normals.count !== positions.count || texcoords.count !== positions.count) {
+      invalidClassicModel(source, `${prefix} vertex attribute counts do not match`);
+    }
+    classicMaterialSemantics(
+      gltf,
+      requiredIndex(primitive.material, source, `${prefix} material`),
+      source,
+    );
+
+    const targets = primitive.targets ?? [];
+    if (targets.length > MAX_MODEL_MORPH_TARGETS) {
+      invalidClassicModel(
+        source,
+        `${prefix} has ${targets.length} morph targets; the renderer supports ${MAX_MODEL_MORPH_TARGETS}`,
+      );
+    }
+    if (morphCount === undefined) morphCount = targets.length;
+    else if (morphCount !== targets.length) {
+      invalidClassicModel(source, "visible primitives must share one morph target count");
+    }
+    for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+      const target = targets[targetIndex]!;
+      const targetPositions = classicAccessor(
+        gltf,
+        target.POSITION,
+        source,
+        `${prefix} morph ${targetIndex} POSITION`,
+        "VEC3",
+        [5126],
+      );
+      const targetNormals = classicAccessor(
+        gltf,
+        target.NORMAL,
+        source,
+        `${prefix} morph ${targetIndex} NORMAL`,
+        "VEC3",
+        [5126],
+      );
+      if (targetPositions.count !== positions.count || targetNormals.count !== positions.count) {
+        invalidClassicModel(source, `${prefix} morph ${targetIndex} vertex count does not match`);
+      }
+    }
+  }
+
+  const nodes = gltf.nodes ?? [];
+  const nodeNames = new Set(nodes.map((node) => node.name?.toLowerCase()).filter(Boolean));
+  for (const requiredNode of requirements.requiredNodes ?? []) {
+    if (!nodeNames.has(requiredNode.toLowerCase())) {
+      invalidClassicModel(source, `required attachment node ${requiredNode} is missing`);
+    }
+  }
+  for (let parent = 0; parent < nodes.length; parent += 1) {
+    for (const child of nodes[parent]!.children ?? []) {
+      if (!nodes[child])
+        invalidClassicModel(source, `node ${parent} has an invalid child reference`);
+    }
+  }
+
+  if ((gltf.animations?.length ?? 0) > 1) {
+    invalidClassicModel(source, "only one animation is supported per model");
+  }
+  const animation = gltf.animations?.[0];
+  if (!animation) return;
+  for (let channelIndex = 0; channelIndex < animation.channels.length; channelIndex += 1) {
+    const channel = animation.channels[channelIndex]!;
+    const sampler = animation.samplers[channel.sampler];
+    if (!sampler)
+      invalidClassicModel(source, `animation channel ${channelIndex} sampler is missing`);
+    if (sampler.interpolation !== undefined && sampler.interpolation !== "LINEAR") {
+      invalidClassicModel(
+        source,
+        `animation channel ${channelIndex} uses unsupported ${sampler.interpolation} interpolation`,
+      );
+    }
+    const node = nodes[channel.target.node];
+    if (!node) invalidClassicModel(source, `animation channel ${channelIndex} node is missing`);
+    const path = channel.target.path;
+    if (path !== "translation" && path !== "rotation" && path !== "scale" && path !== "weights") {
+      invalidClassicModel(source, `animation channel ${channelIndex} path is unsupported`);
+    }
+    const times = classicAccessor(
+      gltf,
+      sampler.input,
+      source,
+      `animation channel ${channelIndex} input`,
+      "SCALAR",
+      [5126],
+    );
+    const outputType = path === "weights" ? "SCALAR" : path === "rotation" ? "VEC4" : "VEC3";
+    const values = classicAccessor(
+      gltf,
+      sampler.output,
+      source,
+      `animation channel ${channelIndex} output`,
+      outputType,
+      [5126],
+    );
+    if (path === "weights") {
+      if (node.mesh !== 0 || !morphCount || values.count !== times.count * morphCount) {
+        invalidClassicModel(source, "weights animation does not match visible mesh morphs");
+      }
+    } else if (values.count !== times.count) {
+      invalidClassicModel(source, `animation channel ${channelIndex} output count does not match`);
+    }
   }
 }
 
@@ -218,7 +468,10 @@ function attachNodeTrack(
   else node.scaleTrack = track;
 }
 
-export async function loadGlbModel(url: string): Promise<ModelAsset> {
+export async function loadClassicModelGlb(
+  url: string,
+  requirements: ClassicModelRequirements = {},
+): Promise<ModelAsset> {
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -226,17 +479,34 @@ export async function loadGlbModel(url: string): Promise<ModelAsset> {
   }
 
   const file = await response.arrayBuffer();
+  return parseClassicModelGlb(file, url, requirements);
+}
+
+export async function parseClassicModelGlb(
+  file: ArrayBuffer,
+  source = "<memory>",
+  requirements: ClassicModelRequirements = {},
+): Promise<ModelAsset> {
   const header = new DataView(file);
 
   if (header.byteLength < 20 || header.getUint32(0, true) !== GLB_MAGIC) {
-    throw new Error(`Invalid GLB: ${url}`);
+    invalidClassicModel(source, "GLB header is missing");
+  }
+  if (header.getUint32(4, true) !== GLB_VERSION) {
+    invalidClassicModel(source, `GLB version must be ${GLB_VERSION}`);
+  }
+  if (header.getUint32(8, true) !== file.byteLength) {
+    invalidClassicModel(source, "GLB declared length does not match the file");
   }
 
   const jsonLength = header.getUint32(12, true);
   const jsonType = header.getUint32(16, true);
 
   if (jsonType !== JSON_CHUNK) {
-    throw new Error(`GLB JSON chunk missing: ${url}`);
+    invalidClassicModel(source, "GLB JSON chunk is missing");
+  }
+  if (20 + jsonLength + 8 > file.byteLength) {
+    invalidClassicModel(source, "GLB JSON chunk lies outside the file");
   }
 
   const decodedJson = new TextDecoder().decode(new Uint8Array(file, 20, jsonLength));
@@ -244,27 +514,27 @@ export async function loadGlbModel(url: string): Promise<ModelAsset> {
   const jsonText = decodedJson
     .slice(0, paddingStart < 0 ? decodedJson.length : paddingStart)
     .trim();
-  const gltf = JSON.parse(jsonText) as GltfJson;
+  const gltf = parseClassicGltfJson(jsonText, source);
   const binaryHeaderOffset = 20 + jsonLength;
 
   if (
     binaryHeaderOffset + 8 > file.byteLength ||
     header.getUint32(binaryHeaderOffset + 4, true) !== BIN_CHUNK
   ) {
-    throw new Error(`GLB binary chunk missing: ${url}`);
+    invalidClassicModel(source, "GLB binary chunk is missing");
   }
 
   const binaryLength = header.getUint32(binaryHeaderOffset, true);
   const binaryOffset = binaryHeaderOffset + 8;
+  if (binaryOffset + binaryLength > file.byteLength) {
+    invalidClassicModel(source, "GLB binary chunk lies outside the file");
+  }
   const binary = file.slice(binaryOffset, binaryOffset + binaryLength);
+  validateClassicModelContract(gltf, source, requirements);
   const visibleMesh = gltf.meshes[0];
 
-  if (!visibleMesh) {
-    throw new Error(`GLB has no visible mesh: ${url}`);
-  }
-
   let groundY = Number.POSITIVE_INFINITY;
-  const primitives = visibleMesh.primitives.map((primitive): ModelPrimitiveData => {
+  const primitives = visibleMesh!.primitives.map((primitive): ModelPrimitiveData => {
     const positions = accessorValues(gltf, binary, primitive.attributes.POSITION!);
     const normals = accessorValues(gltf, binary, primitive.attributes.NORMAL!);
     const texcoords = accessorValues(gltf, binary, primitive.attributes.TEXCOORD_0!);
@@ -293,7 +563,7 @@ export async function loadGlbModel(url: string): Promise<ModelAsset> {
       indices: accessorIndices(gltf, binary, primitive.indices),
       morphPositions,
       morphNormals,
-      materialIndex: primitive.material ?? 0,
+      materialIndex: primitive.material!,
     };
   });
 
@@ -309,18 +579,12 @@ export async function loadGlbModel(url: string): Promise<ModelAsset> {
     });
   });
   const images = await Promise.all(imagePromises);
-  const materials = (gltf.materials ?? []).map((material): ModelMaterialData => {
-    const textureIndex = material.pbrMetallicRoughness?.baseColorTexture?.index;
-    const imageIndex =
-      textureIndex === undefined ? undefined : gltf.textures?.[textureIndex]?.source;
+  const materials = (gltf.materials ?? []).map((_, materialIndex): ModelMaterialData => {
+    const { imageIndex, ...semantics } = classicMaterialSemantics(gltf, materialIndex, source);
 
     return {
       image: imageIndex === undefined ? null : (images[imageIndex] ?? null),
-      playerColor: material.name?.toLowerCase().includes("pixelxform1") ?? false,
-      // OPAQUE materials must ignore texture alpha. Classic's converted body
-      // textures retain legacy data in that channel, so treating it as opacity
-      // removes the villager's skin/body geometry.
-      alphaCutoff: material.alphaMode === "MASK" ? (material.alphaCutoff ?? 0.5) : -1,
+      ...semantics,
     };
   });
   const sourceNodes = gltf.nodes ?? [];
@@ -350,6 +614,12 @@ export async function loadGlbModel(url: string): Promise<ModelAsset> {
       const sampler = animation.samplers[channel.sampler]!;
       const times = accessorValues(gltf, binary, sampler.input);
       const values = accessorValues(gltf, binary, sampler.output);
+
+      for (let frame = 0; frame < times.length; frame += 1) {
+        if (!Number.isFinite(times[frame]) || (frame > 0 && times[frame]! <= times[frame - 1]!)) {
+          invalidClassicModel(source, "animation input times must be finite and increasing");
+        }
+      }
 
       if (times.length > 0) duration = Math.max(duration, times[times.length - 1]!);
 

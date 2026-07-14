@@ -2,7 +2,7 @@ import { UNIT_TYPES, heightAt, type RenderSnapshot } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import * as mat4 from "../math/mat4";
 import modelsWgsl from "../shaders/models.wgsl?raw";
-import { loadGlbModel, type ModelAsset } from "./glb";
+import { loadClassicModelGlb, type ModelAsset } from "./glb";
 import {
   MAX_MORPH_TARGETS,
   sampleModelAnimation,
@@ -15,6 +15,8 @@ const INSTANCE_FLOATS = 37;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
 const VERTEX_FLOATS = 8;
 const VERTEX_STRIDE = VERTEX_FLOATS * 4;
+const MATERIAL_ALPHA_MASK = 1 << 0;
+const MATERIAL_MULTIPLY_PLAYER_COLOR = 1 << 1;
 const MOVING_EPSILON_SQ = 1e-8;
 
 interface GpuModelPrimitive {
@@ -136,10 +138,15 @@ function uploadModel(
     const material = asset.materials[primitive.materialIndex]!;
     const materialData = new ArrayBuffer(16);
     const materialView = new DataView(materialData);
+    const materialFlags =
+      (material.alpha.mode === "mask" ? MATERIAL_ALPHA_MASK : 0) |
+      (material.pixelTransform === "multiply-player-color"
+        ? MATERIAL_MULTIPLY_PLAYER_COLOR
+        : 0);
     materialView.setUint32(0, vertexCount, true);
     materialView.setUint32(4, morphCount, true);
-    materialView.setFloat32(8, material.playerColor ? 1 : 0, true);
-    materialView.setFloat32(12, material.alphaCutoff, true);
+    materialView.setUint32(8, materialFlags, true);
+    materialView.setFloat32(12, material.alpha.mode === "mask" ? material.alpha.cutoff : 0, true);
     const materialBuffer = device.createBuffer({
       size: materialData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -177,7 +184,18 @@ export async function createModelRenderer(
   maxInstances: number,
 ): Promise<ModelRenderer> {
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
-  const assets = await Promise.all(MODEL_CONFIGS.map((config) => loadGlbModel(config.url)));
+  const assets = await Promise.all(
+    MODEL_CONFIGS.map((config, modelIndex) =>
+      loadClassicModelGlb(config.url, {
+        requiredNodes: [
+          ...(config.attachment ? [config.attachment.targetNode] : []),
+          ...MODEL_CONFIGS.flatMap((owner) =>
+            owner.attachment?.modelIndex === modelIndex ? [owner.attachment.hotspotNode] : [],
+          ),
+        ],
+      }),
+    ),
+  );
   const module = device.createShaderModule({ code: modelsWgsl });
   const uniformStaging = new Float32Array(16);
   const uniformBuffer = device.createBuffer({
@@ -249,13 +267,15 @@ export async function createModelRenderer(
 
     const model = models[modelIndex]!;
     const attachmentModel = models[attachment.modelIndex]!;
-    model.attachmentTargetIndex =
-      model.asset.nodeIndexByName.get(attachment.targetNode.toLowerCase()) ?? -1;
-    const hotspotIndex =
-      attachmentModel.asset.nodeIndexByName.get(attachment.hotspotNode.toLowerCase()) ?? -1;
+    model.attachmentTargetIndex = model.asset.nodeIndexByName.get(
+      attachment.targetNode.toLowerCase(),
+    )!;
+    const hotspotIndex = attachmentModel.asset.nodeIndexByName.get(
+      attachment.hotspotNode.toLowerCase(),
+    )!;
     sampleModelAnimation(attachmentModel.asset, 0, hotspotIndex, hotspotState);
     const inverse = mat4.create();
-    if (hotspotIndex >= 0 && mat4.invert(inverse, hotspotState.nodeMatrix)) {
+    if (mat4.invert(inverse, hotspotState.nodeMatrix)) {
       model.attachmentInverse = inverse;
     }
   }

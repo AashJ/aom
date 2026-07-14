@@ -5,9 +5,12 @@ struct Globals {
 struct Material {
   vertexCount: u32,
   morphCount: u32,
-  playerColor: f32,
+  flags: u32,
   alphaCutoff: f32,
 }
+
+const MATERIAL_ALPHA_MASK = 1u;
+const MATERIAL_MULTIPLY_PLAYER_COLOR = 2u;
 
 struct MorphValues {
   values: array<vec4f>,
@@ -93,21 +96,22 @@ fn vs(
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
   let texel = textureSample(modelTexture, modelSampler, in.uv);
+  let usesAlphaMask = (material.flags & MATERIAL_ALPHA_MASK) != 0u;
 
-  if (material.alphaCutoff >= 0.0 && texel.a < material.alphaCutoff) {
+  if (usesAlphaMask && texel.a < material.alphaCutoff) {
     discard;
   }
 
   // glTF OPAQUE materials ignore base-color alpha. The Classic textures also
   // use that channel for legacy material masks, not visibility.
-  let opacity = select(1.0, texel.a, material.alphaCutoff >= 0.0);
+  let opacity = select(1.0, texel.a, usesAlphaMask);
 
   let sunDirection = normalize(vec3f(-0.45, 0.8, -0.4));
   let diffuse = max(0.0, dot(normalize(in.normal), sunDirection));
   let lighting = 0.58 + diffuse * 0.62;
   var color = texel.rgb;
 
-  if (material.playerColor > 0.5) {
+  if ((material.flags & MATERIAL_MULTIPLY_PLAYER_COLOR) != 0u) {
     color *= mix(vec3f(1.0), PLAYER_PALETTE[u32(in.owner) % 4u], 0.72);
   }
 

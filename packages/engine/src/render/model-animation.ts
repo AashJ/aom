@@ -1,6 +1,6 @@
-import type { ModelAsset, ModelKeyframeTrack } from "./glb";
+import { MAX_MODEL_MORPH_TARGETS, type ModelAsset, type ModelKeyframeTrack } from "./glb";
 
-export const MAX_MORPH_TARGETS = 12;
+export const MAX_MORPH_TARGETS = MAX_MODEL_MORPH_TARGETS;
 
 export interface ModelAnimationState {
   weights: Float32Array;
@@ -119,7 +119,7 @@ export function sampleModelAnimation(
   const morphTrack = asset.morphTrack;
   if (morphTrack && morphTrack.times.length > 0) {
     const [from, to, alpha] = frameSpan(morphTrack.times, currentSampleTime);
-    const count = Math.min(MAX_MORPH_TARGETS, morphTrack.targetCount);
+    const count = morphTrack.targetCount;
 
     for (let target = 0; target < count; target += 1) {
       const a = morphTrack.weights[from * morphTrack.targetCount + target]!;
