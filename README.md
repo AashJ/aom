@@ -1,16 +1,12 @@
 # AoM Online
 
-An experimental browser RTS inspired by *Age of Mythology*. It explores using AI models to recreate the behavior and feel of legacy software through iterative implementation.
-
-## Built with
-
-TypeScript, Bun, React, TanStack Router, Tailwind CSS, WebGPU, Hono, WebSockets, and Turborepo.
+A recreation of *Age of Mythology* in the browser. It is an experiment in using AI models to recreate the behavior and feel of legacy software through iterative implementation.
 
 ## Architecture
 
-- `apps/web` — React shell and HUD
-- `apps/server` — Bun/Hono multiplayer server
-- `packages/engine` — custom WebGPU renderer, input, and game loop
+- `apps/web` — browser shell and HUD
+- `apps/server` — multiplayer room server
+- `packages/engine` — renderer, input, and game loop
 - `packages/sim` — deterministic 20 Hz simulation
 - `packages/relay` — lockstep networking and desync detection
 - `packages/ui` — shared UI components
