@@ -2,7 +2,12 @@ import { UNIT_TYPES, VERTS_PER_ROW, heightAt, type RenderSnapshot } from "@aom/s
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
-import { UNIT_PRESENTATIONS, type StaticSpritePresentation } from "./unit-presentation";
+import {
+  resolveStaticSpritePresentation,
+  staticSpriteColumns,
+  UNIT_PRESENTATIONS,
+  type StaticSpritePresentation,
+} from "./unit-presentation";
 
 const INSTANCE_FLOATS = 15;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
@@ -146,6 +151,7 @@ export async function createStaticSpriteRenderer(
   const resources = images.map((image, type): SpriteResources | null => {
     const presentation = UNIT_PRESENTATIONS[type]!;
     if (!image || presentation.kind !== "sprite") return null;
+    const columns = staticSpriteColumns(presentation);
     const texture = device.createTexture({
       size: [image.width, image.height],
       format: "rgba8unorm",
@@ -160,8 +166,8 @@ export async function createStaticSpriteRenderer(
       { width: image.width, height: image.height },
     );
     return {
-      aspect: image.width / presentation.columns / image.height,
-      uvFrameWidth: 1 / presentation.columns,
+      aspect: image.width / columns / image.height,
+      uvFrameWidth: 1 / columns,
       uvFrameHeight: 1,
       bindGroup: device.createBindGroup({
         layout: bindGroupLayout,
@@ -259,13 +265,13 @@ export async function createStaticSpriteRenderer(
         const stats = UNIT_TYPES[type]!;
         const buildFrac =
           stats.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / stats.buildTicks) : 1;
-        let frame = 0;
-        if (presentation.staticFrames === "variation") {
-          frame = curr.ids[i]! % presentation.columns;
-        } else if (presentation.staticFrames === "depletion") {
-          const depletionFrame = Math.floor((1 - curr.hp[i]! / stats.maxHp) * presentation.columns);
-          frame = Math.min(presentation.columns - 1, Math.max(0, depletionFrame));
-        }
+        const hpFrac = curr.hp[i]! / stats.maxHp;
+        const resolved = resolveStaticSpritePresentation(
+          presentation,
+          curr.ids[i]!,
+          hpFrac,
+          buildFrac,
+        );
         const instanceIndex = writeOffsets[type]!;
         writeOffsets[type] = instanceIndex + 1;
         stage(
@@ -275,9 +281,9 @@ export async function createStaticSpriteRenderer(
           z,
           curr.selected[i]!,
           curr.owner[i]!,
-          curr.hp[i]! / stats.maxHp,
-          buildFrac,
-          frame,
+          hpFrac,
+          resolved.buildFrac,
+          resolved.frame,
           terrainHeights,
         );
       }

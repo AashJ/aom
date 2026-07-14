@@ -11,6 +11,7 @@ struct Material {
 
 const MATERIAL_ALPHA_MASK = 1u;
 const MATERIAL_MULTIPLY_PLAYER_COLOR = 2u;
+const MODEL_MORPH_TARGET_COUNT = 20u;
 
 struct MorphValues {
   values: array<vec4f>,
@@ -52,20 +53,24 @@ fn vs(
   @location(6) morph0: vec4f,
   @location(7) morph1: vec4f,
   @location(8) morph2: vec4f,
-  @location(9) local0: vec4f,
-  @location(10) local1: vec4f,
-  @location(11) local2: vec4f,
-  @location(12) local3: vec4f,
+  @location(9) morph3: vec4f,
+  @location(10) morph4: vec4f,
+  @location(11) local0: vec4f,
+  @location(12) local1: vec4f,
+  @location(13) local2: vec4f,
+  @location(14) local3: vec4f,
 ) -> VertexOut {
-  let weights = array<f32, 12>(
+  let weights = array<f32, MODEL_MORPH_TARGET_COUNT>(
     morph0.x, morph0.y, morph0.z, morph0.w,
     morph1.x, morph1.y, morph1.z, morph1.w,
     morph2.x, morph2.y, morph2.z, morph2.w,
+    morph3.x, morph3.y, morph3.z, morph3.w,
+    morph4.x, morph4.y, morph4.z, morph4.w,
   );
   var position = basePosition;
   var normal = baseNormal;
 
-  for (var morphTarget = 0u; morphTarget < 12u; morphTarget += 1u) {
+  for (var morphTarget = 0u; morphTarget < MODEL_MORPH_TARGET_COUNT; morphTarget += 1u) {
     if (morphTarget < material.morphCount) {
       let offset = morphTarget * material.vertexCount + vertexIndex;
       position += morphPositions.values[offset].xyz * weights[morphTarget];

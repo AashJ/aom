@@ -8,12 +8,18 @@ import {
   sampleModelAnimation,
   type ModelAnimationState,
 } from "./model-animation";
-import { MODEL_CONFIGS } from "./model-assets";
+import { MODEL_CONFIGS, MODEL_INDEX } from "./model-assets";
+import {
+  MODEL_INSTANCE_ATTRIBUTES,
+  MODEL_INSTANCE_FLOATS,
+  MODEL_INSTANCE_MATRIX_OFFSET,
+  MODEL_INSTANCE_MORPH_OFFSET,
+  MODEL_INSTANCE_STRIDE,
+  modelIndexUploadData,
+} from "./model-gpu-layout";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import { modelAnimationTime, resolveModelPresentation } from "./unit-presentation";
 
-const INSTANCE_FLOATS = 37;
-const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
 const VERTEX_FLOATS = 8;
 const VERTEX_STRIDE = VERTEX_FLOATS * 4;
 const MATERIAL_ALPHA_MASK = 1 << 0;
@@ -104,8 +110,9 @@ function uploadModel(
       size: vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
+    const indexData = modelIndexUploadData(primitive.indices);
     const indexBuffer = device.createBuffer({
-      size: primitive.indices.byteLength,
+      size: indexData.byteLength,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
     });
     const morphCount = primitive.morphPositions.length;
@@ -141,9 +148,7 @@ function uploadModel(
     const materialView = new DataView(materialData);
     const materialFlags =
       (material.alpha.mode === "mask" ? MATERIAL_ALPHA_MASK : 0) |
-      (material.pixelTransform === "multiply-player-color"
-        ? MATERIAL_MULTIPLY_PLAYER_COLOR
-        : 0);
+      (material.pixelTransform === "multiply-player-color" ? MATERIAL_MULTIPLY_PLAYER_COLOR : 0);
     materialView.setUint32(0, vertexCount, true);
     materialView.setUint32(4, morphCount, true);
     materialView.setUint32(8, materialFlags, true);
@@ -154,7 +159,7 @@ function uploadModel(
     });
 
     device.queue.writeBuffer(vertexBuffer, 0, vertexData);
-    device.queue.writeBuffer(indexBuffer, 0, primitive.indices);
+    device.queue.writeBuffer(indexBuffer, 0, indexData);
     device.queue.writeBuffer(morphPositionBuffer, 0, morphPositions);
     device.queue.writeBuffer(morphNormalBuffer, 0, morphNormals);
     device.queue.writeBuffer(materialBuffer, 0, materialData);
@@ -186,12 +191,12 @@ export async function createModelRenderer(
 ): Promise<ModelRenderer> {
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   const assets = await Promise.all(
-    MODEL_CONFIGS.map((config, modelIndex) =>
+    MODEL_CONFIGS.map((config) =>
       loadClassicModelGlb(config.url, {
         requiredNodes: [
           ...(config.attachment ? [config.attachment.targetNode] : []),
           ...MODEL_CONFIGS.flatMap((owner) =>
-            owner.attachment?.modelIndex === modelIndex ? [owner.attachment.hotspotNode] : [],
+            owner.attachment?.model === config.key ? [owner.attachment.hotspotNode] : [],
           ),
         ],
       }),
@@ -217,20 +222,9 @@ export async function createModelRenderer(
           ],
         },
         {
-          arrayStride: INSTANCE_STRIDE,
+          arrayStride: MODEL_INSTANCE_STRIDE,
           stepMode: "instance",
-          attributes: [
-            { format: "float32x3", offset: 0, shaderLocation: 3 },
-            { format: "float32x2", offset: 12, shaderLocation: 4 },
-            { format: "float32x4", offset: 20, shaderLocation: 5 },
-            { format: "float32x4", offset: 36, shaderLocation: 6 },
-            { format: "float32x4", offset: 52, shaderLocation: 7 },
-            { format: "float32x4", offset: 68, shaderLocation: 8 },
-            { format: "float32x4", offset: 84, shaderLocation: 9 },
-            { format: "float32x4", offset: 100, shaderLocation: 10 },
-            { format: "float32x4", offset: 116, shaderLocation: 11 },
-            { format: "float32x4", offset: 132, shaderLocation: 12 },
-          ],
+          attributes: [...MODEL_INSTANCE_ATTRIBUTES],
         },
       ],
     },
@@ -267,7 +261,7 @@ export async function createModelRenderer(
     if (!attachment) continue;
 
     const model = models[modelIndex]!;
-    const attachmentModel = models[attachment.modelIndex]!;
+    const attachmentModel = models[MODEL_INDEX[attachment.model]]!;
     model.attachmentTargetIndex = model.asset.nodeIndexByName.get(
       attachment.targetNode.toLowerCase(),
     )!;
@@ -283,10 +277,10 @@ export async function createModelRenderer(
 
   const instanceCapacity = maxInstances * 2;
   const instanceBuffer = device.createBuffer({
-    size: instanceCapacity * INSTANCE_STRIDE,
+    size: instanceCapacity * MODEL_INSTANCE_STRIDE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  const staging = new Float32Array(instanceCapacity * INSTANCE_FLOATS);
+  const staging = new Float32Array(instanceCapacity * MODEL_INSTANCE_FLOATS);
   const counts = new Uint32Array(MODEL_CONFIGS.length);
   const firstInstances = new Uint32Array(MODEL_CONFIGS.length);
   const writeOffsets = new Uint32Array(MODEL_CONFIGS.length);
@@ -320,9 +314,13 @@ export async function createModelRenderer(
         );
         if (!presentation) continue;
 
-        counts[presentation.modelIndex] = counts[presentation.modelIndex]! + 1;
-        const attachment = MODEL_CONFIGS[presentation.modelIndex]!.attachment;
-        if (attachment) counts[attachment.modelIndex] = counts[attachment.modelIndex]! + 1;
+        const modelIndex = MODEL_INDEX[presentation.model];
+        counts[modelIndex] = counts[modelIndex]! + 1;
+        const attachment = MODEL_CONFIGS[modelIndex]!.attachment;
+        if (attachment) {
+          const attachmentIndex = MODEL_INDEX[attachment.model];
+          counts[attachmentIndex] = counts[attachmentIndex]! + 1;
+        }
       }
 
       let totalInstances = 0;
@@ -351,7 +349,7 @@ export async function createModelRenderer(
         const typeStats = UNIT_TYPES[curr.unitType[i]!]!;
         const buildFrac =
           typeStats.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / typeStats.buildTicks) : 1;
-        const modelIndex = presentation.modelIndex;
+        const modelIndex = MODEL_INDEX[presentation.model];
         const model = models[modelIndex]!;
         const modelConfig = MODEL_CONFIGS[modelIndex]!;
         const prevFacingX = aligned ? prev.facingX[i]! : curr.facingX[i]!;
@@ -377,7 +375,7 @@ export async function createModelRenderer(
         );
         sampleModelAnimation(model.asset, animationTime, -1, animationState);
         const instanceIndex = writeOffsets[modelIndex]!;
-        const offset = instanceIndex * INSTANCE_FLOATS;
+        const offset = instanceIndex * MODEL_INSTANCE_FLOATS;
         writeOffsets[modelIndex] = instanceIndex + 1;
         staging[offset] = x;
         staging[offset + 1] =
@@ -389,8 +387,8 @@ export async function createModelRenderer(
         staging[offset + 6] = curr.owner[i]!;
         staging[offset + 7] = buildFrac;
         staging[offset + 8] = 0;
-        staging.set(animationState.weights, offset + 9);
-        staging.set(animationState.nodeMatrix, offset + 21);
+        staging.set(animationState.weights, offset + MODEL_INSTANCE_MORPH_OFFSET);
+        staging.set(animationState.nodeMatrix, offset + MODEL_INSTANCE_MATRIX_OFFSET);
 
         const attachment = modelConfig.attachment;
         if (!attachment || model.attachmentTargetIndex < 0 || !model.attachmentInverse) continue;
@@ -406,9 +404,10 @@ export async function createModelRenderer(
           attachmentAnimationState.nodeMatrix,
           model.attachmentInverse,
         );
-        const attachmentIndex = writeOffsets[attachment.modelIndex]!;
-        const attachmentOffset = attachmentIndex * INSTANCE_FLOATS;
-        writeOffsets[attachment.modelIndex] = attachmentIndex + 1;
+        const attachmentModelIndex = MODEL_INDEX[attachment.model];
+        const attachmentIndex = writeOffsets[attachmentModelIndex]!;
+        const attachmentOffset = attachmentIndex * MODEL_INSTANCE_FLOATS;
+        writeOffsets[attachmentModelIndex] = attachmentIndex + 1;
         staging[attachmentOffset] = x;
         staging[attachmentOffset + 1] = heightAt(heights, x, z) + model.asset.groundOffset;
         staging[attachmentOffset + 2] = z;
@@ -418,12 +417,16 @@ export async function createModelRenderer(
         staging[attachmentOffset + 6] = curr.owner[i]!;
         staging[attachmentOffset + 7] = buildFrac;
         staging[attachmentOffset + 8] = 0;
-        staging.fill(0, attachmentOffset + 9, attachmentOffset + 21);
-        staging.set(attachmentMatrix, attachmentOffset + 21);
+        staging.fill(
+          0,
+          attachmentOffset + MODEL_INSTANCE_MORPH_OFFSET,
+          attachmentOffset + MODEL_INSTANCE_MATRIX_OFFSET,
+        );
+        staging.set(attachmentMatrix, attachmentOffset + MODEL_INSTANCE_MATRIX_OFFSET);
       }
 
       if (totalInstances === 0) return statistics;
-      queue.writeBuffer(instanceBuffer, 0, staging, 0, totalInstances * INSTANCE_FLOATS);
+      queue.writeBuffer(instanceBuffer, 0, staging, 0, totalInstances * MODEL_INSTANCE_FLOATS);
       uniformStaging.set(viewProj);
       queue.writeBuffer(uniformBuffer, 0, uniformStaging);
       pass.setPipeline(pipeline);

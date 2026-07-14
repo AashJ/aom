@@ -3,7 +3,7 @@ const GLB_VERSION = 2;
 const JSON_CHUNK = 0x4e4f534a;
 const BIN_CHUNK = 0x004e4942;
 
-export const MAX_MODEL_MORPH_TARGETS = 12;
+export const MAX_MODEL_MORPH_TARGETS = 20;
 
 interface GltfAccessor {
   bufferView: number;

@@ -15,6 +15,6 @@ export interface IconConfig {
 export const TYPE_ICONS: ReadonlyMap<number, IconConfig> = new Map([
   [TYPE_VILLAGER, { url: villagerUrl, columns: 1 }],
   [TYPE_MILITIA, { url: militiaUrl, columns: 7 }],
-  [TYPE_HOUSE, { url: houseUrl, columns: 1 }],
+  [TYPE_HOUSE, { url: houseUrl, columns: 6 }],
   [TYPE_BARRACKS, { url: barracksUrl, columns: 1 }],
 ]);

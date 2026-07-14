@@ -119,13 +119,13 @@ describe("Classic model GLB contract", () => {
     await expect(
       parseClassicModelGlb(
         classicFixture((gltf) => {
-          gltf.meshes[0]!.primitives[0]!.targets = Array.from({ length: 13 }, () => ({
+          gltf.meshes[0]!.primitives[0]!.targets = Array.from({ length: 21 }, () => ({
             POSITION: 0,
             NORMAL: 0,
           }));
         }),
         "fixture",
       ),
-    ).rejects.toThrow("has 13 morph targets; the renderer supports 12");
+    ).rejects.toThrow("has 21 morph targets; the renderer supports 20");
   });
 });
