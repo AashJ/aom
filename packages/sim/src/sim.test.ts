@@ -51,6 +51,7 @@ import {
 import { hashWorld } from "./hash";
 import { createSnapshot, writeSnapshot } from "./snapshot";
 import { computeWalkable, MAP_TILES, VERTS_PER_ROW, WALKABLE_MAX_SLOPE } from "./terrain";
+import { updateVisibility, VIS_EXPLORED, VIS_VISIBLE } from "./visibility";
 
 function distance(world: World, a: number, b: number): number {
   const dx = world.posX[a]! - world.posX[b]!;
@@ -168,6 +169,24 @@ describe("sim", () => {
     writeSnapshot(world, snapshot);
 
     expect(snapshot.selected[5]).toBe(0);
+  });
+
+  test("visibility becomes explored after a unit leaves", () => {
+    const world = flatWorld(42);
+
+    spawnUnit(world, 20.5, 20.5, 0, 0, 0);
+    updateVisibility(world);
+
+    const slot = world.playerSlotById[0]!;
+    const tile = slot * MAP_TILES * MAP_TILES + 20 * MAP_TILES + 20;
+
+    expect(world.visibility[tile]).toBe(VIS_VISIBLE);
+
+    world.posX[0] = 100.5;
+    world.posZ[0] = 100.5;
+    updateVisibility(world);
+
+    expect(world.visibility[tile]).toBe(VIS_EXPLORED);
   });
 });
 
@@ -834,7 +853,7 @@ describe("buildings and walkability", () => {
     // the soldier stops at the unwalkable footprint edge, outside its 1.2
     // reach of the CENTER, and orbits forever.
     const tc = spawnBuilding(world, 100, 100, 1, TYPE_TOWN_CENTER);
-    const soldier = spawnUnit(world, 90, 102, 0, 0, 0);
+    const soldier = spawnUnit(world, 93, 102, 0, 0, 0);
     world.contested = true;
 
     enqueueCommand(world, {
@@ -1121,8 +1140,8 @@ describe("building placement", () => {
       issuer: 0,
       type: COMMAND_PLACE,
       buildingType: TYPE_HOUSE,
-      tileX: 100,
-      tileZ: 100,
+      tileX: 45,
+      tileZ: 45,
     });
 
     for (let t = 0; t < 2; t += 1) {
@@ -1136,7 +1155,7 @@ describe("building placement", () => {
     // A blueprint: present, owned, footprint stamped — but zero progress.
     expect(world.owner[house]).toBe(0);
     expect(world.buildProgress[house]).toBe(0);
-    expect(world.walkable[100 * MAP_TILES + 100]).toBe(0);
+    expect(world.walkable[45 * MAP_TILES + 45]).toBe(0);
   });
 
   test("blocked or unaffordable placements are silent no-ops with no deduction", () => {
@@ -1161,8 +1180,8 @@ describe("building placement", () => {
       issuer: 0,
       type: COMMAND_PLACE,
       buildingType: TYPE_BARRACKS,
-      tileX: 120,
-      tileZ: 120,
+      tileX: 45,
+      tileZ: 45,
     });
 
     for (let t = 0; t < 2; t += 1) {
@@ -1172,7 +1191,7 @@ describe("building placement", () => {
     expect(world.count).toBe(countBefore);
     expect(world.stockpiles[FOOD]).toBe(foodBefore);
     expect(world.stockpiles[WOOD]).toBe(woodBefore);
-    expect(world.walkable[120 * MAP_TILES + 120]).toBe(1);
+    expect(world.walkable[45 * MAP_TILES + 45]).toBe(1);
   });
 
   test("a blueprint town center rejects deposits until construction completes", () => {
@@ -1360,16 +1379,16 @@ describe("building placement", () => {
         issuer: 0,
         type: COMMAND_PLACE,
         buildingType: TYPE_HOUSE,
-        tileX: 60,
-        tileZ: 60,
+        tileX: 45,
+        tileZ: 45,
       });
       enqueueCommand(world, {
         tick: 2,
         issuer: 1,
         type: COMMAND_PLACE,
         buildingType: TYPE_HOUSE,
-        tileX: 200,
-        tileZ: 200,
+        tileX: 209,
+        tileZ: 209,
       });
       return world;
     };
@@ -1642,7 +1661,7 @@ describe("combat", () => {
     expect(world.posX[0]!).toBeGreaterThan(101.5);
   });
 
-  test("an ordered attack chases far beyond aggro range", () => {
+  test("an attack order against an unseen target is rejected", () => {
     const world = flatWorld(42);
     const hunterId = spawnUnit(world, 50, 100, 0, 0, 0);
     const preyId = spawnUnit(world, 120, 100, 0, 0, 1);
@@ -1657,17 +1676,51 @@ describe("combat", () => {
       targetId: preyId,
     });
 
-    for (let t = 0; t < 800 && world.winner === -1; t += 1) {
+    for (let t = 0; t < 2; t += 1) {
       tickWorld(world);
     }
 
-    // The duel is symmetric (the prey fights back on arrival), so the result
-    // may be a win OR a mutual-annihilation draw — the property under test is
-    // that contact happened at all across 70 units: an auto-acquire leash
-    // would have ended this chase 56 units short of the prey.
-    expect(world.winner).not.toBe(-1);
-    void hunterId;
-    void preyId;
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+  });
+
+  test("an ordered attacker searches the last-seen position and resumes on reveal", () => {
+    const world = flatWorld(42);
+    const hunterId = spawnUnit(world, 50, 100, 0, 0, 0, TYPE_MILITIA);
+    const targetId = spawnBuilding(world, 56, 99, 1, TYPE_HOUSE);
+    const target = resolveId(world, targetId);
+    world.contested = true;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [hunterId],
+      targetId,
+    });
+    tickWorld(world);
+    tickWorld(world);
+
+    expect(world.attackTarget[0]).toBe(targetId);
+    expect(world.moveTargetX[0]).toBe(57);
+
+    world.posX[target] = 120;
+    tickWorld(world);
+    expect(world.attackTarget[0]).toBe(targetId);
+    expect(world.moveTargetX[0]).toBe(57);
+
+    const revealedX = world.posX[0]! + 6;
+    world.posX[target] = revealedX;
+    tickWorld(world);
+    expect(world.attackTarget[0]).toBe(targetId);
+    expect(world.moveTargetX[0]).toBe(revealedX);
+
+    world.posX[target] = 120;
+    for (let t = 0; t < 80 && world.attackTarget[0] !== NO_TARGET; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.attackTarget[0]).toBe(NO_TARGET);
+    expect(Math.abs(world.posX[0]! - revealedX)).toBeLessThanOrEqual(2);
   });
 
   test("a symmetric duel double-KOs into a draw, not an eternal stalemate", () => {

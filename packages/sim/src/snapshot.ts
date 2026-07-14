@@ -1,6 +1,7 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
 import { RESOURCE_COUNT } from "./ecs/types";
 import { unitIdAt, type World } from "./ecs/world";
+import { isEntityVisibleTo, VISIBILITY_TILES } from "./visibility";
 
 export interface RenderSnapshot {
   tick: number;
@@ -8,6 +9,8 @@ export interface RenderSnapshot {
   ids: Uint32Array;
   posX: Float32Array;
   posZ: Float32Array;
+  visible: Uint8Array;
+  fog: Uint8Array;
   selected: Uint8Array;
   owner: Uint8Array;
   unitType: Uint8Array;
@@ -27,6 +30,8 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     ids: new Uint32Array(capacity),
     posX: new Float32Array(capacity),
     posZ: new Float32Array(capacity),
+    visible: new Uint8Array(capacity),
+    fog: new Uint8Array(VISIBILITY_TILES),
     selected: new Uint8Array(capacity),
     owner: new Uint8Array(capacity),
     unitType: new Uint8Array(capacity),
@@ -40,13 +45,21 @@ export function createSnapshot(capacity: number): RenderSnapshot {
   };
 }
 
-export function writeSnapshot(world: World, out: RenderSnapshot): void {
+export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): void {
   out.tick = world.tick;
   out.count = world.count;
   // HP bars and the win banner are 4a/4b consumers.
   out.winner = world.winner;
   // Full copy each write: 2 KB at 20 Hz is negligible.
   out.stockpiles.set(world.stockpiles);
+  const viewerSlot = world.playerSlotById[viewerId]!;
+
+  if (viewerSlot >= 0) {
+    const start = viewerSlot * VISIBILITY_TILES;
+    out.fog.set(world.visibility.subarray(start, start + VISIBILITY_TILES));
+  } else {
+    out.fog.fill(0);
+  }
 
   for (let i = 0; i < world.count; i += 1) {
     // The renderer will use id equality to decide interpolate-vs-snap once swap-remove exists;
@@ -56,6 +69,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
     // while sim keeps f64.
     out.posX[i] = world.posX[i]!;
     out.posZ[i] = world.posZ[i]!;
+    out.visible[i] = isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
     // Copies selected, not selectable; selectable only means the unit may be selected.
     out.selected[i] = world.selected[i]!;
     // Renderer tints by owner in the next chunk.

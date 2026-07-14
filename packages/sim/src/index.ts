@@ -47,6 +47,7 @@ export {
 export { buildFlowField, cellOf, type FlowField } from "./flow";
 export * from "./hash";
 export * from "./snapshot";
+export * from "./visibility";
 export * from "./math/prng";
 export {
   MAP_TILES,

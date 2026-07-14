@@ -3,6 +3,7 @@
 // until a second type actually needs it.
 export interface UnitTypeStats {
   maxHp: number;
+  lineOfSight: number;
   attackDamage: number;
   attackRange: number;
   aggroRange: number;
@@ -49,6 +50,7 @@ export const TYPE_BARRACKS = 6;
 export const UNIT_TYPES: readonly UnitTypeStats[] = [
   {
     maxHp: 40,
+    lineOfSight: 8,
     attackDamage: 5,
     attackRange: 1.2,
     aggroRange: 10,
@@ -69,6 +71,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
   {
     // Differentiation is a future balance pass.
     maxHp: 40,
+    lineOfSight: 10,
     attackDamage: 5,
     attackRange: 1.2,
     aggroRange: 10,
@@ -87,6 +90,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
   {
     // HP is the remaining stock; depletion is death, and swap-remove already handles it.
     maxHp: 150,
+    lineOfSight: 0,
     attackDamage: 0,
     attackRange: 0,
     aggroRange: 0,
@@ -104,6 +108,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
   },
   {
     maxHp: 100,
+    lineOfSight: 0,
     attackDamage: 0,
     attackRange: 0,
     aggroRange: 0,
@@ -121,6 +126,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
   },
   {
     maxHp: 2400,
+    lineOfSight: 14,
     attackDamage: 0,
     attackRange: 0,
     aggroRange: 0,
@@ -138,6 +144,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
   },
   {
     maxHp: 600,
+    lineOfSight: 6,
     attackDamage: 0,
     attackRange: 0,
     aggroRange: 0,
@@ -155,6 +162,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
   },
   {
     maxHp: 1200,
+    lineOfSight: 10,
     attackDamage: 0,
     attackRange: 0,
     aggroRange: 0,

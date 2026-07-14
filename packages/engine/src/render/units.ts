@@ -275,6 +275,7 @@ export async function createUnitsRenderer(
       typeCounts.fill(0);
 
       for (let i = 0; i < curr.count; i += 1) {
+        if (curr.visible[i] === 0) continue;
         typeCounts[curr.unitType[i]!] = typeCounts[curr.unitType[i]!]! + 1;
       }
 
@@ -287,6 +288,8 @@ export async function createUnitsRenderer(
       }
 
       for (let i = 0; i < curr.count; i += 1) {
+        if (curr.visible[i] === 0) continue;
+
         // Swap-remove reorders dense slots when units die. Interpolating across an
         // identity change would smear one unit's position toward another's; snap instead,
         // one imperceptible frame.

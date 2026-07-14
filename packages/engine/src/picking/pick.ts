@@ -45,6 +45,8 @@ export function pickUnit(
   let best = -1;
 
   for (let i = 0; i < curr.count; i += 1) {
+    if (curr.visible[i] === 0) continue;
+
     // Swap-remove reorders dense slots when units die. Interpolating across an
     // identity change would smear one unit's position toward another's; snap instead,
     // one imperceptible frame.
@@ -310,6 +312,8 @@ export function marqueeSelect(
   const clientHeight = canvas.clientHeight;
 
   for (let i = 0; i < curr.count; i += 1) {
+    if (curr.visible[i] === 0) continue;
+
     const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
     const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
     const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;

@@ -13,7 +13,9 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 
 **Milestone 5 (feature-complete; networked exit run pending):** players & combat — the first game. Ownership, command validation, damage, death, and a winner. Chosen over the old "fog + economy" sketch because both of those _require_ ownership and entity lifecycle, and combat is the smallest increment that makes the sandbox a playable 1v1. See its section below.
 
-**Milestone 6 (current focus):** economy & buildings — the full loop. Gather → stockpile → build → train → fight. The design bet: nearly everything reuses M5 machinery (resource nodes are entities, gathering and construction are the strike seam with different effects, the unit-type table becomes the content spine). See its section below.
+**Milestone 6 (complete):** economy & buildings — the full loop. Gather → stockpile → build → train → fight. The design bet held: nearly everything reuses M5 machinery (resource nodes are entities, gathering and construction are the strike seam with different effects, the unit-type table becomes the content spine). See its section below.
+
+**Milestone 7 (current focus):** fog of war — deterministic visibility becomes gameplay state, while WebGPU owns only presentation. Unexplored terrain is black, explored terrain remains dim, and current vision gates enemies, neutral resources, picking, commands, acquisition, and the minimap. See its section below.
 
 ---
 
@@ -503,14 +505,120 @@ Scope: villagers gather food and wood into per-player stockpiles; players place 
 - Farms (renewable food) and the gold/favor resources — rows in existing tables when wanted.
 - Production queues, rally points, cancel-refunds, repair — UX depth on the single-slot skeleton.
 - Forests as movement blockers (walkability stamping exists; applying it to trees is a choice about map feel).
+- Resource-carry visuals — add resource-specific props held by villagers while hauling, then replace them with full gather/carry/deposit animation sets during the broader animation pass; do not use floating UI badges.
 - Garrison, gates, walls — the buildings-as-walkability system supports them structurally; each is its own design pass.
 - Where the build-bar UI system goes long-term (`@aom/ui` shadcn components vs. bespoke game chrome).
 
 ---
 
+## Milestone 7 — fog of war: scouting becomes gameplay
+
+Scope: each player begins with only the area around their starting force revealed; moving units and completed buildings reveal a circular tile radius; explored terrain remains known but dim; enemy units, enemy buildings, and neutral resource nodes exist on screen, in picking, and on the minimap only while currently visible. No terrain-height or forest occlusion, allies/shared vision, stealth, detection, last-seen building ghosts, or server-side anti-cheat. After M7, scouting and surprise attacks are real decisions instead of role-play on a fully revealed board.
+
+### Decisions
+
+| Decision           | Choice                                                                                  | Rationale                                                                                                                                                                                                                                                                                                        |
+| ------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authority          | **The deterministic sim owns visibility; GPU fog is presentation only**                 | Visibility changes command validity and combat acquisition, so a compute-only mask would let clients disagree about gameplay. Every client computes every active player's mask from the same hashed world.                                                                                                       |
+| Grid/state         | **One 256×256 byte grid per active player: unseen (0), explored (1), visible (2)**      | Tile resolution matches movement, placement, and terrain lookup. The persistent explored bit is history-dependent and therefore joins `hashWorld`; a viewer's 64 KB grid is copied through the existing snapshot boundary.                                                                                       |
+| Player ids         | **Dense visibility slots mapped from real server player ids**                           | Lobby churn can produce non-contiguous ids. `spawnUnits(world, count, ownerIds)` registers distinct ids into `playerSlotById`/`playerIds` instead of allocating a 256-player fog atlas.                                                                                                                          |
+| Vision sources     | **Per-type circular `lineOfSight` stamped by live owned units and completed buildings** | Sight becomes content data alongside range and footprint. Neutral nodes provide none; foundations provide none until complete; M7 deliberately ignores height, forests, and buildings as occluders.                                                                                                              |
+| Entity visibility  | **Unit center tile; any visible footprint tile for buildings**                          | Mobile entities remain cheap to test, while a large building becomes targetable when the player can see any part of it. Own entities remain visible by construction because they are vision sources.                                                                                                             |
+| Hidden information | **No entity memory in M7**                                                              | Explored terrain persists, but enemies and resources disappear outside current vision. Last-seen silhouettes require per-viewer remembered entity snapshots and stale-state rules; that is a separate information-design pass.                                                                                   |
+| Ordered pursuit    | **Explicit attacks investigate the last-seen position; auto-targets drop immediately**  | A visible `Attack` records the target position in the existing move target. If sight is lost, an ordered attacker goes there without tracking the hidden live position; it resumes if the target is revealed, otherwise clears on arrival. Auto-acquired targets return to normal acquisition as soon as hidden. |
+| Presentation       | **Upload authoritative bytes once per sim tick; compute shader softens edges**          | `FogRenderer` converts the hard tile mask into a filtered GPU texture. Terrain and minimap sample it; units, dots, and picking use the snapshot's authoritative per-entity visibility rather than reading GPU state back.                                                                                        |
+| Security           | **Visual/gameplay fog, not cheat hardening**                                            | Lockstep clients still hold the full world. Preventing memory inspection requires a server-authoritative visibility architecture and is explicitly outside M7.                                                                                                                                                   |
+
+### Sim additions
+
+- `packages/sim/src/visibility.ts`: `updateVisibility(world)` downgrades visible tiles to explored, then stamps every valid vision source; `isEntityVisibleTo(world, playerId, entityIndex)` is the single command/combat visibility test; `isFootprintVisibleTo(world, playerId, tileX, tileZ, size)` prevents placement from consulting hidden occupancy.
+- `World` gains `playerIds`, `playerSlotById`, `playerCount`, and `visibility`; `UnitTypeStats` gains `lineOfSight`. Visibility updates before command application each tick so validation sees the current positions from the last completed movement step.
+- `COMMAND_ATTACK` is accepted only while its target is visible to the issuer, and `COMMAND_PLACE` requires its full footprint to be currently visible. Combat acquisition ignores hidden candidates. Explicit targets that disappear use the already-hashed `moveTargetX/Z` as the last-seen position; no new pursuit component is introduced.
+- `hashWorld` includes player-slot registration and the complete visibility grids because explored history affects later snapshots and commands.
+- `RenderSnapshot` gains a viewer-specific `fog` grid plus `visible` per entity. `writeSnapshot(world, out, viewerId)` copies one player mask and resolves entity visibility once so every engine consumer agrees.
+
+### Engine/render changes
+
+- `packages/engine/src/render/fog.ts` owns the raw visibility texture, filtered texture, compute pipeline, and tick-latched upload. `packages/engine/src/shaders/fog.wgsl` performs presentation-only edge softening.
+- `TerrainRenderer` samples the filtered mask: unseen is near-black, explored is desaturated/dim, visible is unchanged. Placement preview and authoritative application both require the full footprint to be currently visible, preventing hidden buildings or walkability from becoming a scouting oracle.
+- `UnitsRenderer`, `pickUnit`, and `marqueeSelect` skip entities whose snapshot `visible` byte is zero. An already-selected enemy that disappears renders nothing and cannot receive a new command; its client-local selection bit may remain until the next selection replacement without leaking position.
+- `MinimapRenderer` applies the same fog states to its terrain texture and emits dots only for visible entities. The camera footprint remains visible because it is local UI, not world information.
+- Device loss recreates `FogRenderer` with the other GPU-owned renderers. No new WebGPU optional feature is required; compute and storage textures are core WebGPU.
+
+### Performance budgets (adds)
+
+| Metric                                            | Budget                                        |
+| ------------------------------------------------- | --------------------------------------------- |
+| Visibility update, 1k entities / 8 active players | < 1 ms typical; zero allocation               |
+| Viewer fog snapshot copy                          | 64 KB/tick; < 0.05 ms                         |
+| Fog upload + compute                              | < 0.2 ms GPU, only when snapshot tick changes |
+| Render-loop allocations                           | 0; no GPU readback                            |
+
+### Milestone 7 — sequential build order
+
+1. **Visibility state.** Player-slot mapping, per-type sight, three-state grids, deterministic stamping, hashing. _Verify: two worlds reveal identical masks; explored tiles persist after a scout leaves; non-contiguous player ids map correctly._
+2. **Gameplay authority.** Attack/placement validation, acquisition gating, explicit last-seen pursuit, and hidden-target release. _Verify: forged blind attacks and placements are no-ops; preview cannot probe hidden occupancy; auto-targets never see through fog; explicit orders investigate but never track hidden coordinates._
+3. **Snapshot + interaction.** Viewer fog and per-entity visibility, hidden-unit filtering in click/marquee/command routing. _Verify: hidden enemies cannot be selected or commanded; own units remain controllable._
+4. **World presentation.** Raw upload, compute-softened mask, terrain states, device-loss recreation. _Verify: black → explored → visible transitions have stable soft edges while moving a scout._
+5. **Minimap + entity presentation.** Filter world sprites and minimap dots through the same snapshot truth. _Verify: no enemy/resource dot or sprite leaks outside current vision; camera footprint stays visible._
+6. **Networked exit run.** Scout, lose/reacquire targets, destroy nodes/buildings under fog, and finish a match. _Verify: hashes remain silent, full tick stays within budget, and no visual/input surface reveals hidden live state._
+
+**Exit criteria:** two networked players can scout, surprise, retreat into fog, investigate last-seen positions, and complete an economic match with identical hashes; terrain, sprites, picking, commands, acquisition, and minimap all agree on visibility with no hidden-position leaks.
+
+### M7 open questions (parked, on purpose)
+
+- Last-seen enemy building/resource silhouettes and stale destruction/depletion semantics.
+- Terrain, forest, wall, or elevation-based line-of-sight occlusion.
+- Allied/shared vision, spies, stealth, and detection.
+- Server-authoritative visibility if competitive cheat resistance ever justifies abandoning pure lockstep knowledge.
+
+---
+
+## Milestone 8 — AoM progression foundation: resources and rules data
+
+Scope: establish the shared simulation state required for an original-AoM-style Greek Archaic → Classical progression slice without implementing age advancement itself yet. The economy expands from Food/Wood to the canonical Food/Wood/Gold/Favor ledger; finite Gold Mines reuse the existing resource-node gathering loop; every player gains authoritative age and god-progression state; and content receives data-driven availability requirements so later age advancement can unlock units and buildings without command-specific conditionals.
+
+### Decisions
+
+| Decision           | Choice                                                                                       | Rationale                                                                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Initial culture    | **One Greek vertical slice first**                                                           | Greek prayer is the simplest later Favor loop, and finishing one culture end to end exposes the real extension points before Egyptian/Norse asymmetry multiplies unfinished systems.                                     |
+| Resource ledger    | **Food, Wood, Gold, Favor are fixed deterministic resource ids**                             | Costs, carrying, stockpiles, snapshots, hashes, and UI all need one stable ordering. Gold behaves like a gathered material; Favor shares the ledger but is generated by culture mechanics rather than neutral map nodes. |
+| Gold               | **Finite neutral Gold Mines reuse entity HP as remaining stock**                             | Trees and berry bushes already prove the gather/deplete/swap-remove model. A `resource = GOLD` content row adds the third material without a second economy state machine.                                               |
+| Player progression | **The sim owns per-player age, major god, and chosen minor gods**                            | These values determine legal production and construction, so they are hashed gameplay state. Every player begins in the Archaic Age; actual advancement and minor-god choice commands land in the next milestone slice.  |
+| Availability rules | **Content data declares required age and prerequisites; one sim query answers availability** | Build menus, training UI, and authoritative command validation must agree. Centralizing the rule prevents separate UI and command conditionals from drifting as the tech tree grows.                                     |
+| Snapshot boundary  | **Expose the viewing player's progression alongside the four-resource ledger**               | The engine and React UI remain snapshot consumers. They should not inspect `World` to decide which actions appear, even before the age-up UI exists.                                                                     |
+| Determinism        | **New progression state and all four stockpiles join `hashWorld`**                           | Age and god choices affect future legal commands. A disagreement must be reported when state changes, not later when one client accepts production that another rejects.                                                 |
+
+### Simulation changes
+
+- Extend the resource ids and `RESOURCE_COUNT` to `FOOD`, `WOOD`, `GOLD`, and `FAVOR`; preserve the existing owner-major stockpile layout and carried-resource representation.
+- Add a Gold Mine content type and seeded symmetric placement. Gathering, depletion, retargeting, hauling, and deposit continue through the existing villager state machine.
+- Add per-player progression state for current age, selected major god, and minor-god choices by age. Initialize players to Archaic with no minor gods chosen.
+- Extend content rules with required age and prerequisite metadata. Authoritative Place/Train validation and UI availability consume the same sim-owned query; locked content remains a silent deterministic no-op if forged onto the command stream.
+- Include progression state in `hashWorld`; extend `RenderSnapshot` with viewer age/god progression and the expanded stockpile copy.
+
+### Sequential build order
+
+1. **Four-resource ledger.** Add Gold/Favor ids, costs, stockpiles, carrying, hashing, and snapshots while preserving Food/Wood behavior. _Verify: existing economy tests remain unchanged in meaning; non-contiguous player ids receive isolated four-resource rows; every resource change affects the hash._
+2. **Gold Mines.** Add seeded symmetric mines through the resource-node path. _Verify: villagers mine, haul, deposit, deplete, and retarget with the same deterministic behavior as trees and berries._
+3. **Player progression state.** Add Archaic age and god-selection storage per active player, hashing, and viewer snapshots. _Verify: worlds initialize and hash identically; state remains attached to real player ids regardless of dense visibility slots._
+4. **Availability rules.** Add required-age/prerequisite content metadata and one shared sim query used by command validation and UI consumers. _Verify: forged locked Place/Train commands are no-ops and visible menus report the same result._
+
+**Exit criteria:** a networked match has deterministic Food/Wood/Gold/Favor ledgers, mineable finite Gold deposits, hashed per-player Archaic/god state, and a single authoritative availability rule ready for Town Center age advancement. No age-up command, minor-god choice UI, Temple prayer, myth unit, hero, or god power is included in this slice.
+
+### Deferred directly to the next progression slices
+
+- Town Center age-up research, costs/timing, prerequisite buildings, and minor-god choice.
+- Greek Temple construction and Villager prayer as the first Favor-generation mechanic.
+- The first Classical human unit, Greek hero, myth unit, and single-use god power.
+- Infantry/cavalry/archer counters, armor and damage classes, and deterministic ranged projectiles.
+
+---
+
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation (instanced skinning; blocked on the asset-pipeline question; the villager sprite atlas landed early and keeps serving — M6's building/node art extends the same atlas) → M7 fog of war (compute shader; acquisition + minimap + rendering all consult it) → ranged units + deterministic projectiles → matchmaking/persistence in `apps/server`, and onward.
+M2 real unit meshes + animation remains deferred (instanced skinning; blocked on the asset-pipeline question; the current atlas keeps serving) → Town Center age advancement + Greek Favor/myth slice → combat classes + deterministic projectiles → settlements/map control → matchmaking/persistence in `apps/server`, and onward.
 
 ## Open questions (parked, on purpose)
 

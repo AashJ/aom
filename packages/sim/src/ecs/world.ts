@@ -14,6 +14,12 @@ import {
 import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
+import {
+  isEntityVisibleTo,
+  isFootprintVisibleTo,
+  updateVisibility,
+  VISIBILITY_TILES,
+} from "../visibility";
 import { idGeneration, idIndex, packId } from "./id";
 import {
   BUILD_PER_STRIKE,
@@ -93,6 +99,10 @@ export interface World {
   // Actual player ids, which are NOT guaranteed contiguous - lobby churn skips numbers;
   // 255 owners is plenty.
   owner: Uint8Array;
+  playerIds: Uint8Array;
+  playerSlotById: Int16Array;
+  playerCount: number;
+  visibility: Uint8Array;
   stockpiles: Uint32Array;
   unitType: Uint8Array;
   hp: Uint16Array;
@@ -146,8 +156,10 @@ export function createWorld(seed: number): World {
   const heights = generateHeightmap(seed);
   const walkable = computeWalkable(heights);
   const slotOf = new Int32Array(MAX_UNITS);
+  const playerSlotById = new Int16Array(256);
 
   slotOf.fill(-1);
+  playerSlotById.fill(-1);
 
   return {
     tick: 0,
@@ -167,6 +179,10 @@ export function createWorld(seed: number): World {
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
     owner: new Uint8Array(MAX_UNITS),
+    playerIds: new Uint8Array(MAX_PLAYERS),
+    playerSlotById,
+    playerCount: 0,
+    visibility: new Uint8Array(MAX_PLAYERS * VISIBILITY_TILES),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     unitType: new Uint8Array(MAX_UNITS),
     hp: new Uint16Array(MAX_UNITS),
@@ -219,6 +235,18 @@ export function spawnUnit(
 ): number {
   if (world.count >= MAX_UNITS) {
     throw new RangeError("World unit capacity exceeded.");
+  }
+
+  if (owner !== NEUTRAL_OWNER && world.playerSlotById[owner] === -1) {
+    if (world.playerCount >= MAX_PLAYERS) {
+      throw new RangeError("World player capacity exceeded.");
+    }
+
+    const playerSlot = world.playerCount;
+
+    world.playerIds[playerSlot] = owner;
+    world.playerSlotById[owner] = playerSlot;
+    world.playerCount += 1;
   }
 
   const index = world.count;
@@ -604,10 +632,14 @@ export function spawnResourceNodes(world: World): void {
 }
 
 export function tickWorld(world: World): void {
-  // 1. Apply commands at the start of the tick.
+  // 1. Visibility reads positions from the last completed movement step. Command
+  // validation and combat below therefore consult the same authoritative mask.
+  updateVisibility(world);
+
+  // 2. Apply commands at the start of the tick.
   applyPendingCommands(world);
 
-  // 2. Build a spatial grid from start-of-tick positions.
+  // 3. Build a spatial grid from start-of-tick positions.
   world.cellCount.fill(0, 0, GRID_CELLS);
 
   for (let i = 0; i < world.count; i += 1) {
@@ -640,7 +672,7 @@ export function tickWorld(world: World): void {
     world.cellCount[cell] = world.cellCount[cell]! + 1;
   }
 
-  // 3. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
+  // 4. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
@@ -656,19 +688,38 @@ export function tickWorld(world: World): void {
 
     if (world.attackTarget[i] !== NO_TARGET) {
       const target = resolveId(world, world.attackTarget[i]!);
+      const targetVisible = target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
 
-      if (target < 0) {
-        world.attackTarget[i] = NO_TARGET;
-        world.attackOrdered[i] = 0;
-        world.moving[i] = 0;
-        world.unitField[i] = null;
+      if (!targetVisible) {
+        const lastDx = world.moveTargetX[i]! - world.posX[i]!;
+        const lastDz = world.moveTargetZ[i]! - world.posZ[i]!;
+        const arrivedAtLastSeen =
+          lastDx * lastDx + lastDz * lastDz <= FINAL_APPROACH_DIST * FINAL_APPROACH_DIST;
+
+        if (world.attackOrdered[i] === 1 && !arrivedAtLastSeen) {
+          // Explicit AoM-style pursuit investigates the last visible position without
+          // reading the target's live hidden coordinates. Existing moveTargetX/Z are
+          // the memory; no separate pursuit component is needed.
+          world.moving[i] = 1;
+        } else {
+          world.attackTarget[i] = NO_TARGET;
+          world.attackOrdered[i] = 0;
+          world.moving[i] = 0;
+          world.unitField[i] = null;
+        }
       } else {
-        const dx = world.posX[target]! - world.posX[i]!;
-        const dz = world.posZ[target]! - world.posZ[i]!;
+        const targetX = world.posX[target]!;
+        const targetZ = world.posZ[target]!;
+        const dx = targetX - world.posX[i]!;
+        const dz = targetZ - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
         const targetStats = UNIT_TYPES[world.unitType[target]!]!;
         const surfaceAttackRange = stats.attackRange + targetStats.bodyRadius;
         const attackRangeSq = surfaceAttackRange * surfaceAttackRange;
+
+        // Always refresh the memory while visible, including while already in strike range.
+        world.moveTargetX[i] = targetX;
+        world.moveTargetZ[i] = targetZ;
 
         // Range checks use target surface reach; large footprints are unwalkable, so center-range
         // melee would stop outside valid strike distance and orbit.
@@ -685,9 +736,6 @@ export function tickWorld(world: World): void {
           const leashRangeSq = leashRange * leashRange;
 
           if (world.attackOrdered[i] === 1 || distSq <= leashRangeSq) {
-            const targetX = world.posX[target]!;
-            const targetZ = world.posZ[target]!;
-
             // STATIC targets - nodes and buildings - have goal cells that never move, so every
             // worker/attacker heading there shares one cached field. UNIT targets keep direct
             // seek: they move every tick, straight-line pursuit self-corrects, and per-tick
@@ -756,6 +804,10 @@ export function tickWorld(world: World): void {
               continue;
             }
 
+            if (!isEntityVisibleTo(world, world.owner[i]!, j)) {
+              continue;
+            }
+
             const dx = world.posX[j]! - x;
             const dz = world.posZ[j]! - z;
             const distSq = dx * dx + dz * dz;
@@ -786,7 +838,7 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 4. Economy reads the same fresh grid as combat and writes moveTarget/moving for
+  // 5. Economy reads the same fresh grid as combat and writes moveTarget/moving for
   // movement to consume - the third costume for chase/strike.
   const villagerReach = UNIT_TYPES[TYPE_VILLAGER]!.attackRange;
   const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
@@ -1217,7 +1269,7 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 5. Production countdown - spawns append at world.count and must not be iterated this tick.
+  // 6. Production countdown - spawns append at world.count and must not be iterated this tick.
   const producedThrough = world.count;
 
   for (let i = 0; i < producedThrough; i += 1) {
@@ -1240,7 +1292,7 @@ export function tickWorld(world: World): void {
     );
   }
 
-  // 6. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
+  // 7. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
   const step = UNIT_SPEED * TICK_S;
 
   for (let i = 0; i < world.count; i += 1) {
@@ -1365,7 +1417,7 @@ export function tickWorld(world: World): void {
     world.pushZ[i] = pushZ + separationZ;
   }
 
-  // 7. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
+  // 8. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
     if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
       // Mobile units flowed around static sources during compute; the source itself never moves.
@@ -1640,7 +1692,8 @@ function applyPendingCommands(world: World): void {
       if (
         target >= 0 &&
         world.owner[target] !== NEUTRAL_OWNER &&
-        world.owner[target] !== command.issuer
+        world.owner[target] !== command.issuer &&
+        isEntityVisibleTo(world, command.issuer, target)
       ) {
         for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
           const id = command.unitIds[unitIndex]!;
@@ -1657,6 +1710,8 @@ function applyPendingCommands(world: World): void {
           world.gatherPosZ[index] = 0;
           world.attackTarget[index] = command.targetId;
           world.attackOrdered[index] = 1;
+          world.moveTargetX[index] = world.posX[target]!;
+          world.moveTargetZ[index] = world.posZ[target]!;
           world.moving[index] = 0;
           world.unitField[index] = null;
         }
@@ -1787,6 +1842,13 @@ function applyPendingCommands(world: World): void {
       if (
         buildingStats !== undefined &&
         buildingStats.footprint > 0 &&
+        isFootprintVisibleTo(
+          world,
+          command.issuer,
+          command.tileX,
+          command.tileZ,
+          buildingStats.footprint,
+        ) &&
         canPlaceBuilding(world, command.tileX, command.tileZ, buildingType) &&
         world.stockpiles[foodIndex]! >= buildingStats.costFood &&
         world.stockpiles[woodIndex]! >= buildingStats.costWood

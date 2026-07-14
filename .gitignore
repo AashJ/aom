@@ -1,19 +1,40 @@
 # Dependencies
-node_modules
+node_modules/
+.bun/
 .pnp
-.pnp.js
+.pnp.*
 
 # Build outputs
-dist
-build
+dist/
+build/
+out/
 *.tsbuildinfo
 
 # Generated files
 apps/web/src/routeTree.gen.ts
 
-# Environment variables
+# Environment variables and local secrets
 .env
-.env*.local
+.env.*
+!.env.example
+!.env.*.example
+
+# Testing
+coverage/
+.nyc_output/
+
+# Tool caches
+.turbo/
+.nx/
+.cache/
+.vite/
+
+# Deployment and local runtime state
+.alchemy/
+.vercel/
+.netlify/
+.wrangler/
+.dev.vars*
 
 # IDEs and editors
 .vscode/*
@@ -28,27 +49,16 @@ apps/web/src/routeTree.gen.ts
 .DS_Store
 
 # Logs
-logs
+logs/
 *.log
+bun-error.log*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# Turbo
-.turbo
-.nx
-
-# Better-T-Stack
-.alchemy
-
-# Testing
-coverage
-.nyc_output
-
-# Misc
+# Temporary archives and directories
 *.tgz
-.cache
-tmp
-temp
+tmp/
+temp/

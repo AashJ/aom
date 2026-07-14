@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createSnapshot,
   createWorld,
+  MAP_TILES,
   setSelected,
   spawnBuilding,
   spawnUnit,
@@ -86,6 +87,8 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     ids: Uint32Array.from(xs.map((_, i) => i)),
     posX: new Float32Array(xs),
     posZ: new Float32Array(zs),
+    visible: new Uint8Array(xs.length).fill(1),
+    fog: new Uint8Array(MAP_TILES * MAP_TILES),
     selected: new Uint8Array(xs.length),
     owner: new Uint8Array(xs.length),
     hp: new Uint16Array(xs.length),
@@ -115,6 +118,17 @@ describe("pickUnit", () => {
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
     const snap = snapshot([], []);
 
+    updateMatrices(camera, 16 / 9);
+
+    expect(pickUnit(camera, 0, 0, snap, snap, 0, heights)).toBe(-1);
+  });
+
+  test("ignores an entity hidden by the viewer snapshot", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const snap = snapshot([camera.target[0]!], [camera.target[2]!]);
+
+    snap.visible[0] = 0;
     updateMatrices(camera, 16 / 9);
 
     expect(pickUnit(camera, 0, 0, snap, snap, 0, heights)).toBe(-1);

@@ -9,6 +9,7 @@ struct DotUniforms {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var samp: sampler;
 @group(0) @binding(2) var tex: texture_2d<f32>;
+@group(0) @binding(3) var fogTex: texture_2d<f32>;
 @group(0) @binding(0) var<uniform> u2: DotUniforms;
 
 // Keep in sync with units.wgsl.
@@ -60,7 +61,13 @@ fn vs(@builtin(vertex_index) i: u32) -> VertexOut {
 
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
-  return textureSample(tex, samp, in.uv);
+  let terrain = textureSample(tex, samp, in.uv);
+  let fog = textureSample(fogTex, samp, in.uv).rg;
+  let luminance = dot(terrain.rgb, vec3f(0.2126, 0.7152, 0.0722));
+  let explored = mix(vec3f(luminance), terrain.rgb, 0.45) * 0.55;
+  let color = mix(explored * fog.x, terrain.rgb, fog.y);
+
+  return vec4f(color, terrain.a);
 }
 
 @vertex

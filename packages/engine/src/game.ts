@@ -4,14 +4,18 @@ import {
   createWorld,
   FOOD,
   hashWorld,
+  MAP_TILES,
   MAX_UNITS,
   RESOURCE_COUNT,
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
+  TYPE_TOWN_CENTER,
   TYPE_VILLAGER,
   unitIdAt,
   UNIT_TYPES,
+  updateVisibility,
+  VIS_VISIBLE,
   WOOD,
   writeSnapshot,
 } from "@aom/sim";
@@ -32,6 +36,7 @@ import type { NetSession } from "./net/relay";
 import { createLoopbackSink } from "./net/sink";
 import { consumeCommandInput, consumeSelectionInput } from "./picking/pick";
 import { createGpuTimer } from "./render/gpu-timer";
+import { createFogRenderer } from "./render/fog";
 import { createMarkerRenderer } from "./render/marker";
 import { createMinimapRenderer } from "./render/minimap";
 import { SPRITE_CONFIGS } from "./render/sprites";
@@ -115,6 +120,7 @@ export async function createGame(
         units = nextUnits;
         minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
         marker = createMarkerRenderer(nextGpu.device, nextGpu.format, heights);
+        fog = createFogRenderer(nextGpu.device);
         gpuTimer = createGpuTimer(nextGpu.device);
         passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
         recreateDepthTexture();
@@ -141,7 +147,17 @@ export async function createGame(
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
   spawnUnits(world, 15, beginInfo ? beginInfo.players.map((p) => p.id) : [0]);
+
+  for (let i = 0; i < world.count; i += 1) {
+    if (world.owner[i] !== selfPlayerId || world.unitType[i] !== TYPE_TOWN_CENTER) continue;
+
+    vec3.set(camera.goalTarget, world.posX[i]!, camera.goalTarget[1]!, world.posZ[i]!);
+    vec3.copy(camera.target, camera.goalTarget);
+    break;
+  }
+
   spawnResourceNodes(world); // Fixed call order after armies - rng stream and handle ids must match on every client.
+  updateVisibility(world);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
   const unitDrawCallSeen = new Uint8Array(SPRITE_CONFIGS.length);
@@ -155,12 +171,13 @@ export async function createGame(
   let lastProducerId = -1;
   let lastProducerType = -1;
   let lastProducerComplete = false;
-  writeSnapshot(world, prevSnap);
-  writeSnapshot(world, currSnap);
+  writeSnapshot(world, prevSnap, selfPlayerId);
+  writeSnapshot(world, currSnap, selfPlayerId);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
   let units = await createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let marker = createMarkerRenderer(gpu.device, gpu.format, heights);
+  let fog = createFogRenderer(gpu.device);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
 
@@ -232,7 +249,7 @@ export async function createGame(
     const tmp = prevSnap;
     prevSnap = currSnap;
     currSnap = tmp;
-    writeSnapshot(world, currSnap);
+    writeSnapshot(world, currSnap, selfPlayerId);
     // Max-since-emit, reset by the collector.
     statsCollector.frameGauges.tickMsMax = Math.max(
       statsCollector.frameGauges.tickMsMax,
@@ -295,9 +312,31 @@ export async function createGame(
           const affordable =
             (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementStats.costFood &&
             (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementStats.costWood;
+          let footprintVisible = hitGround;
+
+          if (footprintVisible) {
+            const footprint = placementStats.footprint;
+
+            for (let z = placementTile[1]!; z < placementTile[1]! + footprint; z += 1) {
+              for (let x = placementTile[0]!; x < placementTile[0]! + footprint; x += 1) {
+                if (
+                  x < 0 ||
+                  x >= MAP_TILES ||
+                  z < 0 ||
+                  z >= MAP_TILES ||
+                  currSnap.fog[z * MAP_TILES + x] !== VIS_VISIBLE
+                ) {
+                  footprintVisible = false;
+                  break;
+                }
+              }
+
+              if (!footprintVisible) break;
+            }
+          }
 
           placementValid =
-            hitGround &&
+            footprintVisible &&
             canPlaceBuilding(world, placementTile[0]!, placementTile[1]!, placementType) &&
             affordable;
         } else {
@@ -415,6 +454,7 @@ export async function createGame(
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 
     const encoder = gpu.device.createCommandEncoder();
+    const fogView = fog.update(encoder, gpu.device.queue, currSnap.fog, currSnap.tick);
     const pass = encoder.beginRenderPass(passDescriptor);
     const visibleChunks = terrain.draw(
       pass,
@@ -422,6 +462,7 @@ export async function createGame(
       camera.viewProj,
       camera.frustum,
       input.state.debugOverlay,
+      fogView,
     );
     const placementStats = UNIT_TYPES[placementType];
     const ghostType = placementStats ? placementType : -1;
@@ -443,6 +484,8 @@ export async function createGame(
     unitDrawCallSeen.fill(0);
     let unitDrawCalls = 0;
     for (let i = 0; i < currSnap.count; i += 1) {
+      if (currSnap.visible[i] === 0) continue;
+
       const unitType = currSnap.unitType[i]!;
 
       if (unitDrawCallSeen[unitType] === 0) {
@@ -459,6 +502,7 @@ export async function createGame(
       prevSnap,
       currSnap,
       alpha,
+      fogView,
     );
     if (markerAgeMs < 600) {
       marker.draw(

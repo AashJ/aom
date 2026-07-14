@@ -5,6 +5,8 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var walkTex: texture_2d<f32>;
+@group(0) @binding(2) var fogSampler: sampler;
+@group(0) @binding(3) var fogTex: texture_2d<f32>;
 
 const SUN_DIR = vec3f(0.466, 0.828, 0.311);
 
@@ -55,6 +57,12 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   }
 
   color *= 0.45 + 0.55 * max(dot(normal, SUN_DIR), 0.0);
+
+  let fog = textureSample(fogTex, fogSampler, clamp(in.worldPos.xz / 256.0, vec2f(0.0), vec2f(1.0))).rg;
+  let luminance = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+  let exploredColor = mix(vec3f(luminance), color, 0.45) * 0.55;
+
+  color = mix(exploredColor * fog.x, color, fog.y);
 
   return vec4f(color, 1.0);
 }

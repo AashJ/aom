@@ -20,6 +20,7 @@ export interface TerrainRenderer {
     viewProj: Float32Array,
     frustum: Frustum,
     debugOverlay: boolean,
+    fogView: GPUTextureView,
   ): number;
   readonly chunkBounds: readonly TerrainChunkBounds[];
 }
@@ -46,6 +47,10 @@ export function createTerrainRenderer(
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
   });
   const walkData = new Uint8Array(MAP_TILES * MAP_TILES);
+  const fogSampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+  });
 
   for (let i = 0; i < walkData.length; i += 1) {
     walkData[i] = walkable[i] === 1 ? 255 : 0;
@@ -162,17 +167,27 @@ export function createTerrainRenderer(
     primitive: { topology: "triangle-list", cullMode: "back" },
     depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
   });
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: walkTexture.createView() },
-    ],
-  });
+  const bindGroupLayout = pipeline.getBindGroupLayout(0);
+  const walkView = walkTexture.createView();
+  let boundFogView: GPUTextureView | null = null;
+  let bindGroup: GPUBindGroup | null = null;
 
   return {
     chunkBounds,
-    draw(pass, queue, viewProj, frustum, debugOverlay): number {
+    draw(pass, queue, viewProj, frustum, debugOverlay, fogView): number {
+      if (fogView !== boundFogView) {
+        bindGroup = device.createBindGroup({
+          layout: bindGroupLayout,
+          entries: [
+            { binding: 0, resource: { buffer: uniformBuffer } },
+            { binding: 1, resource: walkView },
+            { binding: 2, resource: fogSampler },
+            { binding: 3, resource: fogView },
+          ],
+        });
+        boundFogView = fogView;
+      }
+
       staging.set(viewProj);
       staging[16] = debugOverlay ? 1 : 0;
       queue.writeBuffer(uniformBuffer, 0, staging);

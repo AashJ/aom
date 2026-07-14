@@ -22,6 +22,7 @@ export interface MinimapRenderer {
     prev: RenderSnapshot,
     curr: RenderSnapshot,
     alpha: number,
+    fogView: GPUTextureView,
   ): void;
 }
 
@@ -207,14 +208,10 @@ export function createMinimapRenderer(
     primitive: { topology: "triangle-list" },
     depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: "always" },
   });
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: sampler },
-      { binding: 2, resource: texture.createView() },
-    ],
-  });
+  const bindGroupLayout = pipeline.getBindGroupLayout(0);
+  const terrainView = texture.createView();
+  let boundFogView: GPUTextureView | null = null;
+  let bindGroup: GPUBindGroup | null = null;
   const dotBindGroup = device.createBindGroup({
     layout: dotPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: dotUniformBuffer } }],
@@ -228,7 +225,20 @@ export function createMinimapRenderer(
   );
 
   return {
-    draw(pass, queue, canvasWidth, canvasHeight, camera, prev, curr, alpha): void {
+    draw(pass, queue, canvasWidth, canvasHeight, camera, prev, curr, alpha, fogView): void {
+      if (fogView !== boundFogView) {
+        bindGroup = device.createBindGroup({
+          layout: bindGroupLayout,
+          entries: [
+            { binding: 0, resource: { buffer: uniformBuffer } },
+            { binding: 1, resource: sampler },
+            { binding: 2, resource: terrainView },
+            { binding: 3, resource: fogView },
+          ],
+        });
+        boundFogView = fogView;
+      }
+
       minimapRectPx(canvasWidth, canvasHeight, minimapRectScratch);
       const minPxX = minimapRectScratch[0]!;
       const minPxY = minimapRectScratch[3]!;
@@ -280,7 +290,11 @@ export function createMinimapRenderer(
         pass.draw(5);
       }
 
+      let dotCount = 0;
+
       for (let i = 0; i < curr.count; i += 1) {
+        if (curr.visible[i] === 0) continue;
+
         // Swap-remove reorders dense slots when units die. Interpolating across an
         // identity change would smear one unit's position toward another's; snap instead,
         // one imperceptible frame.
@@ -289,7 +303,7 @@ export function createMinimapRenderer(
         const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-        const offset = i * 4;
+        const offset = dotCount * 4;
 
         worldToMinimapUnit(x, z, dotStaging, offset);
         dotStaging[offset] = rectMinX + dotStaging[offset]! * rectWidth;
@@ -297,16 +311,17 @@ export function createMinimapRenderer(
         dotStaging[offset + 2] = curr.selected[i]!;
         // Neutral resource nodes keep owner 255 so the shader paints them as map features.
         dotStaging[offset + 3] = curr.owner[i]!;
+        dotCount += 1;
       }
 
       dotUniform[0] = (2.5 * 2) / canvasWidth;
       dotUniform[1] = (2.5 * 2) / canvasHeight;
-      queue.writeBuffer(dotBuffer, 0, dotStaging, 0, curr.count * 4);
+      queue.writeBuffer(dotBuffer, 0, dotStaging, 0, dotCount * 4);
       queue.writeBuffer(dotUniformBuffer, 0, dotUniform);
       pass.setPipeline(dotPipeline);
       pass.setBindGroup(0, dotBindGroup);
       pass.setVertexBuffer(0, dotBuffer);
-      pass.draw(6, curr.count);
+      pass.draw(6, dotCount);
     },
   };
 }

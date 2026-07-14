@@ -5,6 +5,7 @@
 // cellCount/cellStart/cellUnits/pushX/pushZ and flow caches unitField/fieldCache,
 // which are rebuilt or derived from hashed state (moveTargets + walkable).
 import type { World } from "./ecs/world";
+import { VISIBILITY_TILES } from "./visibility";
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -28,6 +29,26 @@ export function hashWorld(world: World): number {
   word = world.nextHandle >>> 0;
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
+
+  // Visibility is authoritative gameplay state: it gates targeting, placement, and
+  // automatic acquisition, so a disagreement must be caught at the revealing tick.
+  word = world.playerCount >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
+  for (let i = 0; i < world.playerCount; i += 1) {
+    word = world.playerIds[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  const visibilityLength = world.playerCount * VISIBILITY_TILES;
+
+  for (let i = 0; i < visibilityLength; i += 1) {
+    word = world.visibility[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
 
   // heights are static after creation and seed-derived; rehashing constants buys nothing.
   const arrays = [
