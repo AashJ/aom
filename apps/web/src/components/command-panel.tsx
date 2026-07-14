@@ -18,9 +18,6 @@ import { ClassicHudPanel } from "./classic-hud-panel";
 export function CommandPanel({ game }: { game: GameHandle | null }) {
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
   const [resources, setResources] = useState({ food: 0, wood: 0, gold: 0, favor: 0 });
-  const [progress, setProgress] = useState(-1);
-  const [queueLength, setQueueLength] = useState(0);
-  const producerId = selection?.producerId ?? -1;
 
   useEffect(() => {
     if (!game) {
@@ -38,34 +35,14 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     };
   }, [game]);
 
-  useEffect(() => {
-    setProgress(-1);
-    setQueueLength(0);
-
-    if (!game || producerId === -1) {
-      return;
-    }
-
-    const syncQueue = () => {
-      setProgress(game.producerProgress());
-      setQueueLength(game.producerQueueLength());
-    };
-
-    syncQueue();
-
-    const interval = window.setInterval(syncQueue, 100);
-
-    return () => window.clearInterval(interval);
-  }, [game, producerId]);
-
   if (!game) {
     return null;
   }
 
   const house = UNIT_TYPES[TYPE_HOUSE]!;
   const barracks = UNIT_TYPES[TYPE_BARRACKS]!;
-  const trained =
-    selection && selection.producerId !== -1 ? UNIT_TYPES[selection.producerType]!.trains : -1;
+  const producer = selection?.producer ?? null;
+  const trained = producer ? UNIT_TYPES[producer.type]!.trains : -1;
   const trainedStats = trained !== -1 ? UNIT_TYPES[trained]! : null;
 
   const trainedLabel = trained === TYPE_VILLAGER ? "Villager" : "Militia";
@@ -113,30 +90,27 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
             </>
           )}
 
-          {selection &&
-            selection.producerId !== -1 &&
-            selection.producerComplete &&
-            trainedStats && (
-              <CommandTile
-                icon={TYPE_ICONS.get(trained)}
-                label={trainedLabel}
-                costFood={trainedStats.costFood}
-                costWood={trainedStats.costWood}
-                costGold={trainedStats.costGold}
-                costFavor={trainedStats.costFavor}
-                disabled={
-                  resources.food < trainedStats.costFood ||
-                  resources.wood < trainedStats.costWood ||
-                  resources.gold < trainedStats.costGold ||
-                  resources.favor < trainedStats.costFavor
-                }
-                // Population cap is enforced by the sim; impossible orders die silently.
-                onClick={() => game.trainSelected(trained)}
-              />
-            )}
+          {selection && producer && producer.complete && trainedStats && (
+            <CommandTile
+              icon={TYPE_ICONS.get(trained)}
+              label={trainedLabel}
+              costFood={trainedStats.costFood}
+              costWood={trainedStats.costWood}
+              costGold={trainedStats.costGold}
+              costFavor={trainedStats.costFavor}
+              disabled={
+                resources.food < trainedStats.costFood ||
+                resources.wood < trainedStats.costWood ||
+                resources.gold < trainedStats.costGold ||
+                resources.favor < trainedStats.costFavor
+              }
+              // Population cap is enforced by the sim; impossible orders die silently.
+              onClick={() => game.trainSelected(trained)}
+            />
+          )}
         </div>
 
-        {selection && selection.producerId !== -1 && !selection.producerComplete && (
+        {producer && !producer.complete && (
           <div className="absolute inset-x-3 bottom-3 font-serif text-base text-[#eee9d7] italic [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] sm:text-sm">
             Under construction…
           </div>
@@ -147,8 +121,8 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         <ProductionQueue
           icon={TYPE_ICONS.get(trained)}
           label={trainedLabel}
-          length={queueLength}
-          progress={progress}
+          length={producer?.queueLength ?? 0}
+          progress={producer?.progress ?? 0}
         />
       )}
     </>

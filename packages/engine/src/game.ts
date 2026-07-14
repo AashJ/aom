@@ -57,10 +57,14 @@ const placementHit = vec3.create();
 export interface SelectionSummary {
   // Selected OWN villagers - the build menu gate.
   villagers: number;
-  // FIRST selected own production building (packed id), -1 when none.
-  producerId: number;
-  producerType: number;
-  producerComplete: boolean;
+  // FIRST selected own production building, null when none.
+  producer: {
+    id: number;
+    type: number;
+    complete: boolean;
+    queueLength: number;
+    progress: number;
+  } | null;
 }
 
 export interface GameHandle {
@@ -70,8 +74,6 @@ export interface GameHandle {
   startPlacement(buildingType: number): void;
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
-  producerProgress(): number;
-  producerQueueLength(): number;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
   onMatchEnd(cb: (winner: number) => void): () => void;
   onStats(cb: StatsCallback): () => void;
@@ -173,10 +175,7 @@ export async function createGame(
   let placementType = -1;
   const placementTile = new Int32Array(2);
   let placementValid = false;
-  let lastVillagers = 0;
-  let lastProducerId = -1;
-  let lastProducerType = -1;
-  let lastProducerComplete = false;
+  let lastSelection: SelectionSummary = { villagers: 0, producer: null };
   writeSnapshot(world, prevSnap, selfPlayerId);
   writeSnapshot(world, currSnap, selfPlayerId);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
@@ -469,10 +468,8 @@ export async function createGame(
         input.state.escapePending = false;
       }
     }
-    let nextVillagers = 0;
-    let nextProducerId = -1;
-    let nextProducerType = -1;
-    let nextProducerComplete = false;
+    let villagers = 0;
+    let producer: SelectionSummary["producer"] = null;
 
     for (let i = 0; i < world.count; i += 1) {
       if (world.selected[i] !== 1 || world.owner[i] !== selfPlayerId) {
@@ -483,34 +480,35 @@ export async function createGame(
       const unitStats = UNIT_TYPES[unitType]!;
 
       if (unitType === TYPE_VILLAGER) {
-        nextVillagers += 1;
+        villagers += 1;
       }
 
-      if (nextProducerId === -1 && unitStats.trains >= 0) {
-        nextProducerId = unitIdAt(world, i);
-        nextProducerType = unitType;
-        nextProducerComplete = world.buildProgress[i]! >= unitStats.buildTicks;
+      if (producer === null && unitStats.trains >= 0) {
+        const remaining = world.trainRemaining[i]!;
+
+        producer = {
+          id: unitIdAt(world, i),
+          type: unitType,
+          complete: world.buildProgress[i]! >= unitStats.buildTicks,
+          queueLength: world.trainQueueLength[i]!,
+          progress: remaining > 0 ? 1 - remaining / UNIT_TYPES[world.trainType[i]!]!.buildTicks : 0,
+        };
       }
     }
 
+    const lastProducer = lastSelection.producer;
     if (
-      nextVillagers !== lastVillagers ||
-      nextProducerId !== lastProducerId ||
-      nextProducerType !== lastProducerType ||
-      nextProducerComplete !== lastProducerComplete
+      villagers !== lastSelection.villagers ||
+      producer?.id !== lastProducer?.id ||
+      producer?.type !== lastProducer?.type ||
+      producer?.complete !== lastProducer?.complete ||
+      producer?.queueLength !== lastProducer?.queueLength ||
+      producer?.progress !== lastProducer?.progress
     ) {
-      lastVillagers = nextVillagers;
-      lastProducerId = nextProducerId;
-      lastProducerType = nextProducerType;
-      lastProducerComplete = nextProducerComplete;
+      lastSelection = { villagers, producer };
 
       for (const cb of selectionCbs) {
-        cb({
-          villagers: lastVillagers,
-          producerId: lastProducerId,
-          producerType: lastProducerType,
-          producerComplete: lastProducerComplete,
-        });
+        cb(lastSelection);
       }
     }
 
@@ -732,40 +730,9 @@ export async function createGame(
         return;
       }
     },
-    producerProgress(): number {
-      for (let i = 0; i < currSnap.count; i += 1) {
-        if (currSnap.ids[i] !== lastProducerId) {
-          continue;
-        }
-
-        const remaining = currSnap.trainRemaining[i]!;
-
-        if (remaining > 0) {
-          return 1 - remaining / UNIT_TYPES[currSnap.trainType[i]!]!.buildTicks;
-        }
-
-        return -1;
-      }
-
-      return -1;
-    },
-    producerQueueLength(): number {
-      for (let i = 0; i < currSnap.count; i += 1) {
-        if (currSnap.ids[i] === lastProducerId) {
-          return currSnap.trainQueueLength[i]!;
-        }
-      }
-
-      return 0;
-    },
     onSelection(cb: (sel: SelectionSummary) => void): () => void {
       selectionCbs.add(cb);
-      cb({
-        villagers: lastVillagers,
-        producerId: lastProducerId,
-        producerType: lastProducerType,
-        producerComplete: lastProducerComplete,
-      });
+      cb(lastSelection);
       return () => selectionCbs.delete(cb);
     },
     start(): void {
