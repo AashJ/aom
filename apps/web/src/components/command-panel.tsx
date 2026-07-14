@@ -9,6 +9,7 @@ import {
   type IconConfig,
   type SelectionSummary,
 } from "@aom/engine";
+import { ClassicHudPanel } from "./classic-hud-panel";
 
 export function CommandPanel({ game }: { game: GameHandle | null }) {
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
@@ -48,90 +49,85 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     return () => window.clearInterval(interval);
   }, [game, producerId]);
 
-  if (!game || !selection || (selection.villagers === 0 && selection.producerId === -1)) {
+  if (!game) {
     return null;
   }
 
   const house = UNIT_TYPES[TYPE_HOUSE]!;
   const barracks = UNIT_TYPES[TYPE_BARRACKS]!;
-  const trained = selection.producerId !== -1 ? UNIT_TYPES[selection.producerType]!.trains : -1;
+  const trained =
+    selection && selection.producerId !== -1 ? UNIT_TYPES[selection.producerType]!.trains : -1;
   const trainedStats = trained !== -1 ? UNIT_TYPES[trained]! : null;
 
   return (
-    <div className="fixed bottom-4 left-4 rounded-lg border-2 border-amber-900/70 bg-gradient-to-b from-stone-900/95 to-stone-950/95 p-2 shadow-xl shadow-black/50 ring-1 ring-amber-500/20 ring-inset backdrop-blur">
-      <div className="flex flex-col gap-2">
-        {selection.villagers > 0 && (
-          <div>
-            <div className="mb-1 font-serif text-[10px] tracking-[0.2em] text-amber-200/60 uppercase">
-              Build
-            </div>
-            <div className="flex gap-2">
-              <CommandTile
-                icon={TYPE_ICONS.get(TYPE_HOUSE)}
-                label="House"
-                costFood={house.costFood}
-                costWood={house.costWood}
-                costGold={house.costGold}
-                costFavor={house.costFavor}
-                disabled={
-                  resources.food < house.costFood ||
-                  resources.wood < house.costWood ||
-                  resources.gold < house.costGold ||
-                  resources.favor < house.costFavor
-                }
-                onClick={() => game.startPlacement(TYPE_HOUSE)}
-              />
-              <CommandTile
-                icon={TYPE_ICONS.get(TYPE_BARRACKS)}
-                label="Barracks"
-                costFood={barracks.costFood}
-                costWood={barracks.costWood}
-                costGold={barracks.costGold}
-                costFavor={barracks.costFavor}
-                disabled={
-                  resources.food < barracks.costFood ||
-                  resources.wood < barracks.costWood ||
-                  resources.gold < barracks.costGold ||
-                  resources.favor < barracks.costFavor
-                }
-                onClick={() => game.startPlacement(TYPE_BARRACKS)}
-              />
-            </div>
-          </div>
+    <ClassicHudPanel
+      as="section"
+      ariaLabel="Commands"
+      className="fixed bottom-0 left-32 z-10 h-[9.625rem] w-48 select-none sm:left-36 sm:h-[8.375rem] sm:w-60"
+    >
+      <div className="relative grid grid-cols-3 content-start gap-1 px-3 pt-3 sm:grid-cols-5 sm:pt-2.5">
+        {selection && selection.villagers > 0 && (
+          <>
+            <CommandTile
+              icon={TYPE_ICONS.get(TYPE_HOUSE)}
+              label="House"
+              costFood={house.costFood}
+              costWood={house.costWood}
+              costGold={house.costGold}
+              costFavor={house.costFavor}
+              disabled={
+                resources.food < house.costFood ||
+                resources.wood < house.costWood ||
+                resources.gold < house.costGold ||
+                resources.favor < house.costFavor
+              }
+              onClick={() => game.startPlacement(TYPE_HOUSE)}
+            />
+            <CommandTile
+              icon={TYPE_ICONS.get(TYPE_BARRACKS)}
+              label="Barracks"
+              costFood={barracks.costFood}
+              costWood={barracks.costWood}
+              costGold={barracks.costGold}
+              costFavor={barracks.costFavor}
+              disabled={
+                resources.food < barracks.costFood ||
+                resources.wood < barracks.costWood ||
+                resources.gold < barracks.costGold ||
+                resources.favor < barracks.costFavor
+              }
+              onClick={() => game.startPlacement(TYPE_BARRACKS)}
+            />
+          </>
         )}
 
-        {selection.producerId !== -1 && (
-          <div>
-            <div className="mb-1 font-serif text-[10px] tracking-[0.2em] text-amber-200/60 uppercase">
-              Train
-            </div>
-            {selection.producerComplete && trainedStats ? (
-              <div className="flex gap-2">
-                <CommandTile
-                  icon={TYPE_ICONS.get(trained)}
-                  label={trained === TYPE_VILLAGER ? "Villager" : "Militia"}
-                  costFood={trainedStats.costFood}
-                  costWood={trainedStats.costWood}
-                  costGold={trainedStats.costGold}
-                  costFavor={trainedStats.costFavor}
-                  disabled={
-                    resources.food < trainedStats.costFood ||
-                    resources.wood < trainedStats.costWood ||
-                    resources.gold < trainedStats.costGold ||
-                    resources.favor < trainedStats.costFavor
-                  }
-                  progress={progress}
-                  // Population cap is enforced by the sim; impossible orders die silently.
-                  onClick={() => game.trainSelected(trained)}
-                />
-              </div>
-            ) : (
-              <div className="text-xs text-stone-500 italic">Under construction…</div>
-            )}
-          </div>
+        {selection && selection.producerId !== -1 && selection.producerComplete && trainedStats && (
+          <CommandTile
+            icon={TYPE_ICONS.get(trained)}
+            label={trained === TYPE_VILLAGER ? "Villager" : "Militia"}
+            costFood={trainedStats.costFood}
+            costWood={trainedStats.costWood}
+            costGold={trainedStats.costGold}
+            costFavor={trainedStats.costFavor}
+            disabled={
+              resources.food < trainedStats.costFood ||
+              resources.wood < trainedStats.costWood ||
+              resources.gold < trainedStats.costGold ||
+              resources.favor < trainedStats.costFavor
+            }
+            progress={progress}
+            // Population cap is enforced by the sim; impossible orders die silently.
+            onClick={() => game.trainSelected(trained)}
+          />
         )}
       </div>
-    </div>
+
+      {selection && selection.producerId !== -1 && !selection.producerComplete && (
+        <div className="absolute inset-x-3 bottom-3 font-serif text-base text-[#eee9d7] italic [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] sm:text-sm">
+          Under construction…
+        </div>
+      )}
+    </ClassicHudPanel>
   );
 }
 
@@ -156,54 +152,44 @@ function CommandTile({
   progress?: number;
   onClick(): void;
 }) {
+  const costLabel = [
+    costFood > 0 ? `${costFood} food` : null,
+    costWood > 0 ? `${costWood} wood` : null,
+    costGold > 0 ? `${costGold} gold` : null,
+    costFavor > 0 ? `${costFavor} favor` : null,
+  ]
+    .filter((cost): cost is string => cost !== null)
+    .join(", ");
+  const accessibleLabel = costLabel ? `${label} — ${costLabel}` : label;
+
   return (
     <button
       type="button"
-      title={label}
+      title={accessibleLabel}
+      aria-label={accessibleLabel}
       disabled={disabled}
-      className="relative h-16 w-16 overflow-hidden rounded-md border border-amber-700/50 bg-stone-800/80 shadow-inner hover:border-amber-400/80 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale disabled:hover:border-amber-700/50 disabled:hover:brightness-100"
+      className="relative size-12 overflow-hidden border border-[#19130d] bg-[#17130f] [box-shadow:inset_0_0_0_1px_#c9b86f,inset_0_0_0_3px_#5e4b28,inset_0_0_7px_rgb(0_0_0/90%),0_1px_0_rgb(235_226_183/45%)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78] enabled:hover:brightness-115 enabled:active:translate-y-px disabled:cursor-not-allowed disabled:brightness-50 disabled:grayscale sm:size-10"
       onClick={onClick}
     >
+      <span
+        aria-hidden="true"
+        className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
+      />
       <div
-        className="absolute top-1 left-0 h-10 w-full"
+        aria-hidden="true"
+        className="absolute inset-0.5 bg-left bg-no-repeat"
         style={{
           backgroundImage: icon ? `url(${icon.url})` : undefined,
           backgroundSize: icon ? `${icon.columns * 100}% 100%` : undefined,
-          backgroundPosition: "left center",
-          backgroundRepeat: "no-repeat",
         }}
       />
 
-      <div className="absolute top-1 right-1 flex flex-col items-end gap-0.5">
-        {costFood > 0 && (
-          <span className="rounded bg-amber-500/90 px-1 text-[9px] leading-3 font-bold text-stone-950">
-            {costFood}
-          </span>
-        )}
-        {costWood > 0 && (
-          <span className="rounded bg-orange-900/90 px-1 text-[9px] leading-3 font-bold text-orange-100">
-            {costWood}
-          </span>
-        )}
-        {costGold > 0 && (
-          <span className="rounded bg-yellow-500/90 px-1 text-[9px] leading-3 font-bold text-yellow-950">
-            {costGold}
-          </span>
-        )}
-        {costFavor > 0 && (
-          <span className="rounded bg-violet-700/90 px-1 text-[9px] leading-3 font-bold text-violet-100">
-            {costFavor}
-          </span>
-        )}
-      </div>
-
-      <div className="absolute right-0 bottom-1 left-0 bg-stone-950/75 px-0.5 text-center text-[9px] leading-3 text-amber-100">
-        {label}
-      </div>
-
       {progress !== undefined && progress >= 0 && (
-        <div className="absolute inset-x-0 bottom-0 h-1 bg-stone-950/80">
-          <div className="h-full bg-amber-400" style={{ width: `${progress * 100}%` }} />
+        <div className="absolute inset-x-1 bottom-1 h-1 border border-black/80 bg-[#211a12]">
+          <div
+            className="h-full bg-[#d5bb5a] shadow-[inset_0_1px_0_rgb(255_246_171/65%)]"
+            style={{ width: `${progress * 100}%` }}
+          />
         </div>
       )}
     </button>
