@@ -15,7 +15,7 @@ import * as vec3 from "../math/vec3";
 import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
 import type { CommandSink } from "../net/sink";
-import { SPRITE_CONFIGS } from "../render/sprites";
+import { UNIT_PRESENTATIONS } from "../render/unit-presentation";
 
 // Mobile-unit rings remain deliberately generous compared with their simulation bodies.
 const MIN_PICK_HALF_WIDTH = 0.5;
@@ -58,12 +58,12 @@ export function pickUnit(
     const y = heightAt(heights, x, z);
     const type = curr.unitType[i]!;
     const stats = UNIT_TYPES[type]!;
-    const config = SPRITE_CONFIGS[type]!;
+    const presentation = UNIT_PRESENTATIONS[type]!;
     const halfWidth = Math.max(MIN_PICK_HALF_WIDTH, stats.bodyRadius);
     const minX = x - halfWidth;
     const maxX = x + halfWidth;
     const minY = y;
-    const maxY = y + config.worldHeight - config.bottomPadding;
+    const maxY = y + presentation.worldHeight - presentation.bottomPadding;
     const minZ = z - halfWidth;
     const maxZ = z + halfWidth;
     // IEEE +/-Infinity from 1/0 makes parallel slab tests work without branches.
@@ -324,8 +324,9 @@ export function marqueeSelect(
     const x = prevX + (curr.posX[i]! - prevX) * alpha;
     const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
     const type = curr.unitType[i]!;
-    const config = SPRITE_CONFIGS[type]!;
-    const y = heightAt(heights, x, z) + (config.worldHeight - config.bottomPadding) * 0.5;
+    const presentation = UNIT_PRESENTATIONS[type]!;
+    const y =
+      heightAt(heights, x, z) + (presentation.worldHeight - presentation.bottomPadding) * 0.5;
     const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
     const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
     const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;

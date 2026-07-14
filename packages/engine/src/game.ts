@@ -43,7 +43,7 @@ import { createGpuTimer } from "./render/gpu-timer";
 import { createFogRenderer } from "./render/fog";
 import { createMarkerRenderer } from "./render/marker";
 import { createMinimapRenderer } from "./render/minimap";
-import { SPRITE_CONFIGS } from "./render/sprites";
+import { UNIT_PRESENTATIONS } from "./render/unit-presentation";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
@@ -168,7 +168,7 @@ export async function createGame(
   updateVisibility(world);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
-  const unitDrawCallSeen = new Uint8Array(SPRITE_CONFIGS.length);
+  const unitDrawCallSeen = new Uint8Array(UNIT_PRESENTATIONS.length);
   const markerPos = new Float32Array(2);
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
