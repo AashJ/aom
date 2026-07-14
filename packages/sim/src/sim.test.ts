@@ -6,6 +6,7 @@ import {
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_STOP,
+  COMMAND_TRAIN,
   enqueueCommand,
 } from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
@@ -20,6 +21,7 @@ import {
   TYPE_MILITIA,
   TYPE_TOWN_CENTER,
   TYPE_TREE,
+  TYPE_VILLAGER,
   UNIT_TYPES,
   WOOD,
 } from "./ecs/types";
@@ -1379,6 +1381,187 @@ describe("building placement", () => {
       tickWorld(b);
       expect(hashWorld(a)).toBe(hashWorld(b));
     }
+  });
+});
+
+describe("production", () => {
+  test("a town center trains a villager that spawns adjacent on walkable ground", () => {
+    const world = flatWorld(42);
+    const tc = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
+    const tcIndex = resolveId(world, tc);
+    world.stockpiles[FOOD] = 200;
+    const countBefore = world.count;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: tc,
+      unitType: TYPE_VILLAGER,
+    });
+
+    for (let t = 0; t < 50; t += 1) {
+      tickWorld(world);
+    }
+
+    // Mid-countdown: cost is already banked against the promise, no unit yet.
+    expect(world.stockpiles[FOOD]).toBe(200 - UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+    expect(world.trainRemaining[tcIndex]!).toBeGreaterThan(0);
+    expect(world.count).toBe(countBefore);
+
+    for (let t = 0; t < 100; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.count).toBe(countBefore + 1);
+    const unit = world.count - 1;
+    expect(world.unitType[unit]).toBe(TYPE_VILLAGER);
+    expect(world.owner[unit]).toBe(0);
+    // Adjacent to the TC and standing on open ground, never inside the footprint.
+    const dx = world.posX[unit]! - world.posX[tcIndex]!;
+    const dz = world.posZ[unit]! - world.posZ[tcIndex]!;
+    expect(Math.sqrt(dx * dx + dz * dz)).toBeLessThan(6);
+    expect(
+      world.walkable[Math.floor(world.posZ[unit]!) * MAP_TILES + Math.floor(world.posX[unit]!)],
+    ).toBe(1);
+  });
+
+  test("the single slot rejects a second order until the first completes", () => {
+    const world = flatWorld(42);
+    const tc = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
+    world.stockpiles[FOOD] = 1000;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: tc,
+      unitType: TYPE_VILLAGER,
+    });
+    enqueueCommand(world, {
+      tick: 2,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: tc,
+      unitType: TYPE_VILLAGER,
+    });
+
+    for (let t = 0; t < 20; t += 1) {
+      tickWorld(world);
+    }
+
+    // Only ONE villager was paid for; the busy slot swallowed the second order.
+    expect(world.stockpiles[FOOD]).toBe(1000 - UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+
+    // A free slot accepts again.
+    for (let t = 0; t < 150; t += 1) {
+      tickWorld(world);
+    }
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: tc,
+      unitType: TYPE_VILLAGER,
+    });
+    tickWorld(world);
+
+    expect(world.stockpiles[FOOD]).toBe(1000 - 2 * UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+  });
+
+  test("the pop cap counts in-flight production as promised units", () => {
+    const world = flatWorld(42);
+    // Two complete TCs: cap 30. 29 villagers: one promise fits, two would overshoot.
+    const tcA = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
+    const tcB = spawnBuilding(world, 120, 120, 0, TYPE_TOWN_CENTER, true);
+
+    for (let i = 0; i < 29; i += 1) {
+      spawnUnit(world, 60 + (i % 6) * 2, 60 + Math.floor(i / 6) * 2, 0, 0, 0);
+    }
+
+    world.stockpiles[FOOD] = 1000;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: tcA,
+      unitType: TYPE_VILLAGER,
+    });
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: tcB,
+      unitType: TYPE_VILLAGER,
+    });
+
+    for (let t = 0; t < 3; t += 1) {
+      tickWorld(world);
+    }
+
+    // 29 standing + 1 promise = 30 = cap; the second TC's order must be refused
+    // even though ITS slot is free — otherwise both complete and pop lands at 31.
+    expect(world.stockpiles[FOOD]).toBe(1000 - UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+    expect(world.trainRemaining[resolveId(world, tcB)]).toBe(0);
+  });
+
+  test("wrong producers and blueprints are silent no-ops; barracks trains militia", () => {
+    const world = flatWorld(42);
+    const barracks = spawnBuilding(world, 100, 100, 0, TYPE_BARRACKS, true);
+    const house = spawnBuilding(world, 120, 120, 0, TYPE_HOUSE, true);
+    const blueprintTc = spawnBuilding(world, 140, 140, 0, TYPE_TOWN_CENTER, false);
+    world.stockpiles[FOOD] = 500;
+    world.stockpiles[WOOD] = 500;
+    const countBefore = world.count;
+
+    // Barracks don't make villagers, houses make nothing, blueprints make nothing.
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: barracks,
+      unitType: TYPE_VILLAGER,
+    });
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: house,
+      unitType: TYPE_MILITIA,
+    });
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: blueprintTc,
+      unitType: TYPE_VILLAGER,
+    });
+
+    for (let t = 0; t < 5; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.stockpiles[FOOD]).toBe(500);
+    expect(world.stockpiles[WOOD]).toBe(500);
+
+    // The legal order: militia from a finished barracks, food AND wood deducted.
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_TRAIN,
+      buildingId: barracks,
+      unitType: TYPE_MILITIA,
+    });
+
+    for (let t = 0; t < 200; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.stockpiles[FOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costFood);
+    expect(world.stockpiles[WOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costWood);
+    expect(world.count).toBe(countBefore + 1);
+    expect(world.unitType[world.count - 1]).toBe(TYPE_MILITIA);
   });
 });
 

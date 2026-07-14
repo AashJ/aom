@@ -13,6 +13,8 @@ export interface RenderSnapshot {
   unitType: Uint8Array;
   hp: Uint16Array;
   buildProgress: Uint16Array;
+  trainType: Uint8Array;
+  trainRemaining: Uint16Array;
   carried: Uint16Array;
   stockpiles: Uint32Array;
   winner: number;
@@ -30,6 +32,8 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     unitType: new Uint8Array(capacity),
     hp: new Uint16Array(capacity),
     buildProgress: new Uint16Array(capacity),
+    trainType: new Uint8Array(capacity),
+    trainRemaining: new Uint16Array(capacity),
     carried: new Uint16Array(capacity),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     winner: -1,
@@ -60,6 +64,9 @@ export function writeSnapshot(world: World, out: RenderSnapshot): void {
     out.unitType[i] = world.unitType[i]!;
     out.hp[i] = world.hp[i]!;
     out.buildProgress[i] = world.buildProgress[i]!;
+    // Production progress for the build-bar UI.
+    out.trainType[i] = world.trainType[i]!;
+    out.trainRemaining[i] = world.trainRemaining[i]!;
     out.carried[i] = world.carried[i]!;
   }
 }

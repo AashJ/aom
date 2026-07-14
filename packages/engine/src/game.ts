@@ -9,6 +9,8 @@ import {
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
+  TYPE_VILLAGER,
+  unitIdAt,
   UNIT_TYPES,
   WOOD,
   writeSnapshot,
@@ -43,12 +45,24 @@ const placementRayOrigin = vec3.create();
 const placementRayDir = vec3.create();
 const placementHit = vec3.create();
 
+export interface SelectionSummary {
+  // Selected OWN villagers - the build menu gate.
+  villagers: number;
+  // FIRST selected own production building (packed id), -1 when none.
+  producerId: number;
+  producerType: number;
+  producerComplete: boolean;
+}
+
 export interface GameHandle {
   start(): void;
   stop(): void;
   dispose(): void;
   startPlacement(buildingType: number): void;
   cancelPlacement(): void;
+  trainSelected(unitType: number): void;
+  producerProgress(): number;
+  onSelection(cb: (sel: SelectionSummary) => void): () => void;
   onMatchEnd(cb: (winner: number) => void): () => void;
   onStats(cb: StatsCallback): () => void;
 }
@@ -66,6 +80,7 @@ export async function createGame(
   let loop: ReturnType<typeof createFrameLoop>;
   const session = options.session ?? null;
   const matchEndCbs = new Set<(winner: number) => void>();
+  const selectionCbs = new Set<(sel: SelectionSummary) => void>();
   let matchEnded = false;
 
   function handleDeviceLost(): void {
@@ -125,7 +140,7 @@ export async function createGame(
   // Init handoff: createWorld(seed) derives terrain from the same seed the sim owns,
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
-  spawnUnits(world, 1_000, beginInfo ? beginInfo.players.map((p) => p.id) : [0]);
+  spawnUnits(world, 15, beginInfo ? beginInfo.players.map((p) => p.id) : [0]);
   spawnResourceNodes(world); // Fixed call order after armies - rng stream and handle ids must match on every client.
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
@@ -136,6 +151,10 @@ export async function createGame(
   let placementType = -1;
   const placementTile = new Int32Array(2);
   let placementValid = false;
+  let lastVillagers = 0;
+  let lastProducerId = -1;
+  let lastProducerType = -1;
+  let lastProducerComplete = false;
   writeSnapshot(world, prevSnap);
   writeSnapshot(world, currSnap);
   let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
@@ -347,6 +366,51 @@ export async function createGame(
         input.state.escapePending = false;
       }
     }
+    let nextVillagers = 0;
+    let nextProducerId = -1;
+    let nextProducerType = -1;
+    let nextProducerComplete = false;
+
+    for (let i = 0; i < world.count; i += 1) {
+      if (world.selected[i] !== 1 || world.owner[i] !== selfPlayerId) {
+        continue;
+      }
+
+      const unitType = world.unitType[i]!;
+      const unitStats = UNIT_TYPES[unitType]!;
+
+      if (unitType === TYPE_VILLAGER) {
+        nextVillagers += 1;
+      }
+
+      if (nextProducerId === -1 && unitStats.trains >= 0) {
+        nextProducerId = unitIdAt(world, i);
+        nextProducerType = unitType;
+        nextProducerComplete = world.buildProgress[i]! >= unitStats.buildTicks;
+      }
+    }
+
+    if (
+      nextVillagers !== lastVillagers ||
+      nextProducerId !== lastProducerId ||
+      nextProducerType !== lastProducerType ||
+      nextProducerComplete !== lastProducerComplete
+    ) {
+      lastVillagers = nextVillagers;
+      lastProducerId = nextProducerId;
+      lastProducerType = nextProducerType;
+      lastProducerComplete = nextProducerComplete;
+
+      for (const cb of selectionCbs) {
+        cb({
+          villagers: lastVillagers,
+          producerId: lastProducerId,
+          producerType: lastProducerType,
+          producerComplete: lastProducerComplete,
+        });
+      }
+    }
+
     markerAgeMs += dtMs;
     colorAttachment.view = gpu.context.getCurrentTexture().createView();
 
@@ -416,6 +480,31 @@ export async function createGame(
     const stockpileBase = selfPlayerId * RESOURCE_COUNT;
     statsCollector.frameGauges.food = currSnap.stockpiles[stockpileBase + FOOD] ?? 0;
     statsCollector.frameGauges.wood = currSnap.stockpiles[stockpileBase + WOOD] ?? 0;
+    let pop = 0;
+    let popCap = 0;
+
+    for (let i = 0; i < currSnap.count; i += 1) {
+      if (currSnap.owner[i] !== selfPlayerId) {
+        continue;
+      }
+
+      const unitStats = UNIT_TYPES[currSnap.unitType[i]!]!;
+
+      if (unitStats.footprint === 0) {
+        pop += 1;
+      }
+
+      if (currSnap.trainRemaining[i]! > 0) {
+        pop += 1;
+      }
+
+      if (unitStats.footprint > 0 && currSnap.buildProgress[i]! >= unitStats.buildTicks) {
+        popCap += unitStats.popBonus;
+      }
+    }
+
+    statsCollector.frameGauges.pop = pop;
+    statsCollector.frameGauges.popCap = popCap;
     statsCollector.frameGauges.pingMs = session ? session.pingMs() : 0;
     pass.end();
     gpuTimer.afterPass(encoder);
@@ -488,6 +577,7 @@ export async function createGame(
     loop.stop();
     unobserveResize();
     input.detach();
+    selectionCbs.clear();
     depthTexture?.destroy();
     gpu.device.destroy();
   }
@@ -511,6 +601,50 @@ export async function createGame(
     cancelPlacement(): void {
       placementType = -1;
       placementValid = false;
+    },
+    trainSelected(unitType: number): void {
+      for (let i = 0; i < world.count; i += 1) {
+        if (world.selected[i] !== 1 || world.owner[i] !== selfPlayerId) {
+          continue;
+        }
+
+        const unitStats = UNIT_TYPES[world.unitType[i]!]!;
+
+        if (unitStats.trains !== unitType || world.buildProgress[i]! < unitStats.buildTicks) {
+          continue;
+        }
+
+        // Preview-validation only — the sim revalidates authoritatively at application.
+        sink.submitTrain(unitIdAt(world, i), unitType);
+        return;
+      }
+    },
+    producerProgress(): number {
+      for (let i = 0; i < currSnap.count; i += 1) {
+        if (currSnap.ids[i] !== lastProducerId) {
+          continue;
+        }
+
+        const remaining = currSnap.trainRemaining[i]!;
+
+        if (remaining > 0) {
+          return 1 - remaining / UNIT_TYPES[currSnap.trainType[i]!]!.buildTicks;
+        }
+
+        return -1;
+      }
+
+      return -1;
+    },
+    onSelection(cb: (sel: SelectionSummary) => void): () => void {
+      selectionCbs.add(cb);
+      cb({
+        villagers: lastVillagers,
+        producerId: lastProducerId,
+        producerType: lastProducerType,
+        producerComplete: lastProducerComplete,
+      });
+      return () => selectionCbs.delete(cb);
     },
     start(): void {
       if (disposed) {

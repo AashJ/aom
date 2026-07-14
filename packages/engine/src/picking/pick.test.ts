@@ -74,6 +74,7 @@ function recordingSink(): CommandSink & { calls: string[]; targetIds: number[] }
       targetIds.push(targetId);
     },
     submitPlace: () => calls.push("place"),
+    submitTrain: () => calls.push("train"),
   };
 }
 
@@ -92,6 +93,8 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     stockpiles: new Uint32Array(512),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
+    trainType: new Uint8Array(xs.length),
+    trainRemaining: new Uint16Array(xs.length),
     winner: -1,
   };
 }

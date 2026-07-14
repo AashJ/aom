@@ -11,6 +11,7 @@ import {
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_STOP,
+  COMMAND_TRAIN,
   enqueueCommand,
   type World,
 } from "@aom/sim";
@@ -26,6 +27,7 @@ export interface CommandSink {
   submitAttack(unitIds: number[], targetId: number): void;
   submitGather(unitIds: number[], targetId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
+  submitTrain(buildingId: number, unitType: number): void;
   submitPlace(buildingType: number, tileX: number, tileZ: number): void;
 }
 
@@ -79,6 +81,16 @@ export function createLoopbackSink(world: World): CommandSink {
         type: COMMAND_BUILD,
         unitIds,
         targetId,
+      });
+    },
+    submitTrain(buildingId: number, unitType: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        // Single-player is player 0 and owns everything spawned by default.
+        issuer: 0,
+        type: COMMAND_TRAIN,
+        buildingId,
+        unitType,
       });
     },
     submitPlace(buildingType: number, tileX: number, tileZ: number): void {

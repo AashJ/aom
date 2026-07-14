@@ -19,6 +19,8 @@ export interface UnitTypeStats {
   costWood: number;
   buildTicks: number;
   popBonus: number;
+  // Unit type this building produces; -1 = not a producer. Single-slot, no queues in M6.
+  trains: number;
   isDropsite: boolean;
 }
 
@@ -55,10 +57,13 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     resource: -1,
     bodyRadius: 0.3,
     footprint: 0,
-    costFood: 0,
+    // For trainable units, costFood/costWood are the train price and buildTicks
+    // is the train duration (5 s at 20 Hz), the same columns buildings use for construction.
+    costFood: 50,
     costWood: 0,
-    buildTicks: 0,
+    buildTicks: 100,
     popBonus: 0,
+    trains: -1,
     isDropsite: false,
   },
   {
@@ -72,10 +77,11 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     resource: -1,
     bodyRadius: 0.3,
     footprint: 0,
-    costFood: 0,
-    costWood: 0,
-    buildTicks: 0,
+    costFood: 60,
+    costWood: 20,
+    buildTicks: 160,
     popBonus: 0,
+    trains: -1,
     isDropsite: false,
   },
   {
@@ -93,6 +99,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     costWood: 0,
     buildTicks: 0,
     popBonus: 0,
+    trains: -1,
     isDropsite: false,
   },
   {
@@ -109,6 +116,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     costWood: 0,
     buildTicks: 0,
     popBonus: 0,
+    trains: -1,
     isDropsite: false,
   },
   {
@@ -125,6 +133,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     costWood: 300,
     buildTicks: 300,
     popBonus: 15,
+    trains: TYPE_VILLAGER,
     isDropsite: true,
   },
   {
@@ -141,6 +150,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     costWood: 60,
     buildTicks: 120,
     popBonus: 10,
+    trains: -1,
     isDropsite: false,
   },
   {
@@ -157,6 +167,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     costWood: 120,
     buildTicks: 200,
     popBonus: 0,
+    trains: TYPE_MILITIA,
     isDropsite: false,
   },
 ];

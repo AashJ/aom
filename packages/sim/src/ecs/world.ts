@@ -8,6 +8,7 @@ import {
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_STOP,
+  COMMAND_TRAIN,
   type Command,
 } from "../commands";
 import { buildFlowField, cellOf, type FlowField } from "../flow";
@@ -96,6 +97,9 @@ export interface World {
   unitType: Uint8Array;
   hp: Uint16Array;
   buildProgress: Uint16Array;
+  // Single-slot production: trainRemaining > 0 means the slot is busy; trainType is only meaningful then.
+  trainType: Uint8Array;
+  trainRemaining: Uint16Array;
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
@@ -167,6 +171,8 @@ export function createWorld(seed: number): World {
     unitType: new Uint8Array(MAX_UNITS),
     hp: new Uint16Array(MAX_UNITS),
     buildProgress: new Uint16Array(MAX_UNITS),
+    trainType: new Uint8Array(MAX_UNITS),
+    trainRemaining: new Uint16Array(MAX_UNITS),
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
@@ -232,6 +238,8 @@ export function spawnUnit(
   world.unitType[index] = type;
   world.hp[index] = UNIT_TYPES[type]!.maxHp;
   world.buildProgress[index] = 0;
+  world.trainType[index] = 0;
+  world.trainRemaining[index] = 0;
   world.attackCooldown[index] = 0;
   world.attackTarget[index] = NO_TARGET;
   world.attackOrdered[index] = 0;
@@ -1209,7 +1217,30 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 5. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
+  // 5. Production countdown - spawns append at world.count and must not be iterated this tick.
+  const producedThrough = world.count;
+
+  for (let i = 0; i < producedThrough; i += 1) {
+    // A building destroyed mid-train just loses the countdown - no refund, accepted M6 simplification.
+    if (world.trainRemaining[i] === 0 || world.dying[i] === 1 || world.hp[i] === 0) continue;
+    world.trainRemaining[i] = world.trainRemaining[i]! - 1;
+    if (world.trainRemaining[i] !== 0) continue;
+    // South edge first, then walkableCellNear's spiral - deterministic and footprint-safe.
+    const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
+    const cell = walkableCellNear(world, world.posX[i]!, world.posZ[i]! + footprint / 2 + 1);
+
+    spawnUnit(
+      world,
+      (cell % MAP_TILES) + 0.5,
+      Math.floor(cell / MAP_TILES) + 0.5,
+      0,
+      0,
+      world.owner[i]!,
+      world.trainType[i]!,
+    );
+  }
+
+  // 6. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
   const step = UNIT_SPEED * TICK_S;
 
   for (let i = 0; i < world.count; i += 1) {
@@ -1334,7 +1365,7 @@ export function tickWorld(world: World): void {
     world.pushZ[i] = pushZ + separationZ;
   }
 
-  // 6. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
+  // 7. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
     if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
       // Mobile units flowed around static sources during compute; the source itself never moves.
@@ -1475,6 +1506,8 @@ function applyDeaths(world: World): void {
       world.unitType[i] = world.unitType[last]!;
       world.hp[i] = world.hp[last]!;
       world.buildProgress[i] = world.buildProgress[last]!;
+      world.trainType[i] = world.trainType[last]!;
+      world.trainRemaining[i] = world.trainRemaining[last]!;
       world.attackCooldown[i] = world.attackCooldown[last]!;
       world.attackTarget[i] = world.attackTarget[last]!;
       world.attackOrdered[i] = world.attackOrdered[last]!;
@@ -1686,6 +1719,60 @@ function applyPendingCommands(world: World): void {
           world.attackOrdered[index] = 0;
           world.moving[index] = 0;
           world.unitField[index] = null;
+        }
+      }
+    } else if (command.type === COMMAND_TRAIN) {
+      const building = resolveId(world, command.buildingId);
+
+      if (
+        building >= 0 &&
+        world.dying[building] === 0 &&
+        world.hp[building]! > 0 &&
+        world.owner[building] === command.issuer
+      ) {
+        const producerStats = UNIT_TYPES[world.unitType[building]!]!;
+
+        if (
+          // trains >= 0 first: a forged unitType of -1 must die here, not index UNIT_TYPES[-1] below.
+          producerStats.trains >= 0 &&
+          producerStats.trains === command.unitType &&
+          world.buildProgress[building]! >= producerStats.buildTicks &&
+          world.trainRemaining[building] === 0
+        ) {
+          const unitStats = UNIT_TYPES[command.unitType]!;
+          const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
+          const woodIndex = command.issuer * RESOURCE_COUNT + WOOD;
+
+          if (
+            world.stockpiles[foodIndex]! >= unitStats.costFood &&
+            world.stockpiles[woodIndex]! >= unitStats.costWood
+          ) {
+            let pop = 0;
+            let popCap = 0;
+
+            // Command-rate scan is cheap, and counting promises here keeps cap validation local.
+            for (let j = 0; j < world.count; j += 1) {
+              if (world.owner[j] !== command.issuer || world.dying[j] === 1 || world.hp[j] === 0) {
+                continue;
+              }
+
+              const js = UNIT_TYPES[world.unitType[j]!]!;
+
+              if (js.footprint === 0) pop += 1;
+              // An in-flight train slot is a promised unit; counting it stops two buildings from overshooting the cap in the same turn.
+              if (world.trainRemaining[j]! > 0) pop += 1;
+              if (js.footprint > 0 && world.buildProgress[j]! >= js.buildTicks) {
+                popCap += js.popBonus;
+              }
+            }
+
+            if (pop + 1 <= popCap) {
+              world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - unitStats.costFood;
+              world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - unitStats.costWood;
+              world.trainType[building] = command.unitType;
+              world.trainRemaining[building] = unitStats.buildTicks;
+            }
+          }
         }
       }
     } else if (command.type === COMMAND_PLACE) {

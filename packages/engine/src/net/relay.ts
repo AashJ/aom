@@ -13,6 +13,7 @@ import {
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_STOP,
+  COMMAND_TRAIN,
 } from "@aom/sim";
 import type { CommandSink } from "./sink";
 
@@ -88,6 +89,15 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_BUILD, unitIds, targetId }],
+      });
+    },
+
+    submitTrain(buildingId: number, unitType: number): void {
+      // No tick stamping here: the sequencer's turn assignment IS the execution time, unlike the loopback sink.
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TRAIN, buildingId, unitType }],
       });
     },
 
