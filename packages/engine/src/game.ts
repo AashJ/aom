@@ -604,9 +604,7 @@ export async function createGame(
         pop += 1;
       }
 
-      if (currSnap.trainRemaining[i]! > 0) {
-        pop += 1;
-      }
+      pop += currSnap.trainQueueLength[i]!;
 
       if (unitStats.footprint > 0 && currSnap.buildProgress[i]! >= unitStats.buildTicks) {
         popCap += unitStats.popBonus;

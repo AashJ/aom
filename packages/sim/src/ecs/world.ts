@@ -45,6 +45,7 @@ export const TICK_HZ = 20;
 export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
+export const MAX_TRAIN_QUEUE = 15;
 // Players use real ids < 256, but stockpiles index by actual id; a 256-wide
 // four-resource array is 4 KB, cheaper than an id-to-slot map.
 export const NEUTRAL_OWNER = 255;
@@ -121,9 +122,11 @@ export interface World {
   unitType: Uint8Array;
   hp: Uint16Array;
   buildProgress: Uint16Array;
-  // Single-slot production: trainRemaining > 0 means the slot is busy; trainType is only meaningful then.
+  // Producers currently train one unit type, so the FIFO is a count; trainType/trainRemaining
+  // describe the active front item and trainQueueLength includes it.
   trainType: Uint8Array;
   trainRemaining: Uint16Array;
+  trainQueueLength: Uint8Array;
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
@@ -204,6 +207,7 @@ export function createWorld(seed: number): World {
     buildProgress: new Uint16Array(MAX_UNITS),
     trainType: new Uint8Array(MAX_UNITS),
     trainRemaining: new Uint16Array(MAX_UNITS),
+    trainQueueLength: new Uint8Array(MAX_UNITS),
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
@@ -314,6 +318,7 @@ export function spawnUnit(
   world.buildProgress[index] = 0;
   world.trainType[index] = 0;
   world.trainRemaining[index] = 0;
+  world.trainQueueLength[index] = 0;
   world.attackCooldown[index] = 0;
   world.attackTarget[index] = NO_TARGET;
   world.attackOrdered[index] = 0;
@@ -1435,11 +1440,12 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 6. Production countdown - spawns append at world.count and must not be iterated this tick.
+  // 6. Production countdown - queued units train sequentially, and completed spawns append at
+  // world.count without being iterated this tick.
   const producedThrough = world.count;
 
   for (let i = 0; i < producedThrough; i += 1) {
-    // A building destroyed mid-train just loses the countdown - no refund, accepted M6 simplification.
+    // A building destroyed mid-train loses its entire queue with no refund.
     if (world.trainRemaining[i] === 0 || world.dying[i] === 1 || world.hp[i] === 0) continue;
     world.trainRemaining[i] = world.trainRemaining[i]! - 1;
     if (world.trainRemaining[i] !== 0) continue;
@@ -1456,6 +1462,14 @@ export function tickWorld(world: World): void {
       world.owner[i]!,
       world.trainType[i]!,
     );
+
+    world.trainQueueLength[i] = world.trainQueueLength[i]! - 1;
+
+    if (world.trainQueueLength[i]! > 0) {
+      world.trainRemaining[i] = UNIT_TYPES[world.trainType[i]!]!.buildTicks;
+    } else {
+      world.trainType[i] = 0;
+    }
   }
 
   // 7. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
@@ -1732,6 +1746,7 @@ function applyDeaths(world: World): void {
       world.buildProgress[i] = world.buildProgress[last]!;
       world.trainType[i] = world.trainType[last]!;
       world.trainRemaining[i] = world.trainRemaining[last]!;
+      world.trainQueueLength[i] = world.trainQueueLength[last]!;
       world.attackCooldown[i] = world.attackCooldown[last]!;
       world.attackTarget[i] = world.attackTarget[last]!;
       world.attackOrdered[i] = world.attackOrdered[last]!;
@@ -1964,7 +1979,7 @@ function applyPendingCommands(world: World): void {
           producerStats.trains >= 0 &&
           producerStats.trains === command.unitType &&
           world.buildProgress[building]! >= producerStats.buildTicks &&
-          world.trainRemaining[building] === 0
+          world.trainQueueLength[building]! < MAX_TRAIN_QUEUE
         ) {
           const unitStats = UNIT_TYPES[command.unitType]!;
           const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
@@ -1990,8 +2005,9 @@ function applyPendingCommands(world: World): void {
               const js = UNIT_TYPES[world.unitType[j]!]!;
 
               if (js.footprint === 0) pop += 1;
-              // An in-flight train slot is a promised unit; counting it stops two buildings from overshooting the cap in the same turn.
-              if (world.trainRemaining[j]! > 0) pop += 1;
+              // Every queued order is a promised unit; counting the whole queue stops one or
+              // several buildings from overshooting the cap in the same turn.
+              pop += world.trainQueueLength[j]!;
               if (js.footprint > 0 && world.buildProgress[j]! >= js.buildTicks) {
                 popCap += js.popBonus;
               }
@@ -2002,8 +2018,13 @@ function applyPendingCommands(world: World): void {
               world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - unitStats.costWood;
               world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - unitStats.costGold;
               world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - unitStats.costFavor;
-              world.trainType[building] = command.unitType;
-              world.trainRemaining[building] = unitStats.buildTicks;
+
+              if (world.trainQueueLength[building] === 0) {
+                world.trainType[building] = command.unitType;
+                world.trainRemaining[building] = unitStats.buildTicks;
+              }
+
+              world.trainQueueLength[building] = world.trainQueueLength[building]! + 1;
             }
           }
         }

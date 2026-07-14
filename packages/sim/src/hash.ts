@@ -219,13 +219,17 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
-  // An in-flight production countdown is sim state like any other.
+  // In-flight production and every promised queue slot are sim state like any other.
   for (let i = 0; i < world.count; i += 1) {
     word = world.trainType[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
     word = world.trainRemaining[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.trainQueueLength[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

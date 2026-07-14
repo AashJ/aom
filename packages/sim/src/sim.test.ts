@@ -35,6 +35,7 @@ import {
   createWorld,
   killUnit,
   MATCH_DRAW,
+  MAX_TRAIN_QUEUE,
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_IDLE,
@@ -388,6 +389,16 @@ describe("packed entity ids", () => {
 
     const before = hashWorld(world);
     world.facing[2] = 4;
+
+    expect(hashWorld(world)).not.toBe(before);
+  });
+
+  test("production queue changes are visible to the state hash", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 10);
+
+    const before = hashWorld(world);
+    world.trainQueueLength[0] = 2;
 
     expect(hashWorld(world)).not.toBe(before);
   });
@@ -1600,10 +1611,12 @@ describe("production", () => {
     ).toBe(1);
   });
 
-  test("the single slot rejects a second order until the first completes", () => {
+  test("orders queue and train sequentially", () => {
     const world = flatWorld(42);
     const tc = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
+    const tcIndex = resolveId(world, tc);
     world.stockpiles[FOOD] = 1000;
+    const countBefore = world.count;
 
     enqueueCommand(world, {
       tick: 1,
@@ -1624,26 +1637,54 @@ describe("production", () => {
       tickWorld(world);
     }
 
-    // Only ONE villager was paid for; the busy slot swallowed the second order.
-    expect(world.stockpiles[FOOD]).toBe(1000 - UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+    expect(world.stockpiles[FOOD]).toBe(1000 - 2 * UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+    expect(world.trainQueueLength[tcIndex]).toBe(2);
+    expect(world.count).toBe(countBefore);
 
-    // A free slot accepts again.
-    for (let t = 0; t < 150; t += 1) {
+    for (let t = 0; t < 100; t += 1) {
       tickWorld(world);
     }
-    enqueueCommand(world, {
-      tick: world.tick,
-      issuer: 0,
-      type: COMMAND_TRAIN,
-      buildingId: tc,
-      unitType: TYPE_VILLAGER,
-    });
-    tickWorld(world);
 
-    expect(world.stockpiles[FOOD]).toBe(1000 - 2 * UNIT_TYPES[TYPE_VILLAGER]!.costFood);
+    expect(world.count).toBe(countBefore + 1);
+    expect(world.trainQueueLength[tcIndex]).toBe(1);
+    expect(world.trainRemaining[tcIndex]).toBeGreaterThan(0);
+
+    for (let t = 0; t < 100; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.count).toBe(countBefore + 2);
+    expect(world.trainQueueLength[tcIndex]).toBe(0);
+    expect(world.trainRemaining[tcIndex]).toBe(0);
   });
 
-  test("the pop cap counts in-flight production as promised units", () => {
+  test("a building queue holds at most fifteen units", () => {
+    const world = flatWorld(42);
+    const tc = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
+    spawnBuilding(world, 120, 120, 0, TYPE_TOWN_CENTER, true);
+    const tcIndex = resolveId(world, tc);
+    world.stockpiles[FOOD] = 1000;
+
+    for (let i = 0; i < MAX_TRAIN_QUEUE + 1; i += 1) {
+      enqueueCommand(world, {
+        tick: 1,
+        issuer: 0,
+        type: COMMAND_TRAIN,
+        buildingId: tc,
+        unitType: TYPE_VILLAGER,
+      });
+    }
+
+    tickWorld(world);
+    tickWorld(world);
+
+    expect(world.trainQueueLength[tcIndex]).toBe(MAX_TRAIN_QUEUE);
+    expect(world.stockpiles[FOOD]).toBe(
+      1000 - MAX_TRAIN_QUEUE * UNIT_TYPES[TYPE_VILLAGER]!.costFood,
+    );
+  });
+
+  test("the pop cap counts queued production as promised units", () => {
     const world = flatWorld(42);
     // Two complete TCs: cap 30. 29 villagers: one promise fits, two would overshoot.
     const tcA = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);

@@ -105,6 +105,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     buildProgress: new Uint16Array(xs.length),
     trainType: new Uint8Array(xs.length),
     trainRemaining: new Uint16Array(xs.length),
+    trainQueueLength: new Uint8Array(xs.length),
     winner: -1,
   };
 }
