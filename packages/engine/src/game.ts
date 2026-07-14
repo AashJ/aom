@@ -579,9 +579,9 @@ export async function createGame(
         markerKind,
       );
     }
-    // +3 = minimap base + minimap footprint + minimap dots; units draw once per occupied sprite bucket.
+    // +4 = minimap frame + base + footprint + dots; units draw once per occupied sprite bucket.
     statsCollector.frameGauges.drawCalls =
-      visibleChunks + unitDrawCalls + 3 + (markerAgeMs < 600 ? 1 : 0);
+      visibleChunks + unitDrawCalls + 4 + (markerAgeMs < 600 ? 1 : 0);
     statsCollector.frameGauges.instances = instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;

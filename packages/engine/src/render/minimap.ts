@@ -104,13 +104,15 @@ export function buildMinimapTexels(heights: Float32Array): Uint8Array {
       const high = smoothstep01(6, 11, y);
       const steep = 1 - smoothstep01(0.65, 0.85, normalY);
       const light = 0.45 + 0.55 * Math.max(normalX * SUN_X + normalY * SUN_Y + normalZ * SUN_Z, 0);
-      let r = mix(mix(0.16, 0.24, dry), 0.35, high);
-      let g = mix(mix(0.23, 0.27, dry), 0.33, high);
-      let b = mix(mix(0.13, 0.15, dry), 0.28, high);
+      // The classic minimap exaggerates terrain families so the map reads at a glance:
+      // deep olive lowlands, ochre dry ground, and warm stone on high or steep terrain.
+      let r = mix(mix(0.12, 0.3, dry), 0.42, high);
+      let g = mix(mix(0.25, 0.32, dry), 0.37, high);
+      let b = mix(mix(0.08, 0.12, dry), 0.25, high);
 
-      r = mix(r, 0.35, steep) * light;
-      g = mix(g, 0.33, steep) * light;
-      b = mix(b, 0.28, steep) * light;
+      r = mix(r, 0.42, steep) * light;
+      g = mix(g, 0.37, steep) * light;
+      b = mix(b, 0.25, steep) * light;
 
       // Same linear-value convention the terrain fragment writes to the non-srgb swapchain,
       // so the minimap matches the world's look.
@@ -169,6 +171,15 @@ export function createMinimapRenderer(
     // Overlay: always passes depth and draws over the world because it is drawn last.
     depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: "always" },
   });
+  // Classic AOM sets the map into a broad, beveled stone-and-bronze diamond. The frame
+  // extends beyond the interactive terrain rect, so input mapping remains unchanged.
+  const framePipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module, entryPoint: "vs_frame" },
+    fragment: { module, entryPoint: "fs_frame", targets: [{ format }] },
+    primitive: { topology: "triangle-list" },
+    depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: "always" },
+  });
   // Footprint pipeline: camera frustum outline in minimap NDC space.
   const footprintPipeline = device.createRenderPipeline({
     layout: "auto",
@@ -216,6 +227,10 @@ export function createMinimapRenderer(
     layout: dotPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: dotUniformBuffer } }],
   });
+  const frameBindGroup = device.createBindGroup({
+    layout: framePipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+  });
 
   device.queue.writeTexture(
     { texture },
@@ -257,6 +272,9 @@ export function createMinimapRenderer(
       const rectHeight = rectMaxY - rectMinY;
 
       queue.writeBuffer(uniformBuffer, 0, rect);
+      pass.setPipeline(framePipeline);
+      pass.setBindGroup(0, frameBindGroup);
+      pass.draw(6);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
       pass.draw(6);
@@ -314,8 +332,11 @@ export function createMinimapRenderer(
         dotCount += 1;
       }
 
-      dotUniform[0] = (2.5 * 2) / canvasWidth;
-      dotUniform[1] = (2.5 * 2) / canvasHeight;
+      // Scale pips with the minimap instead of physical pixels. This preserves the chunky
+      // classic look on both standard and high-density displays.
+      const dotHalfSizePx = (maxPxX - minPxX) * 0.01;
+      dotUniform[0] = (dotHalfSizePx * 2) / canvasWidth;
+      dotUniform[1] = (dotHalfSizePx * 2) / canvasHeight;
       queue.writeBuffer(dotBuffer, 0, dotStaging, 0, dotCount * 4);
       queue.writeBuffer(dotUniformBuffer, 0, dotUniform);
       pass.setPipeline(dotPipeline);

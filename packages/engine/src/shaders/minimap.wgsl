@@ -59,12 +59,57 @@ fn vs(@builtin(vertex_index) i: u32) -> VertexOut {
   return out;
 }
 
+struct FrameOut {
+  @builtin(position) position: vec4f,
+  @location(0) local: vec2f,
+}
+
+@vertex
+fn vs_frame(@builtin(vertex_index) i: u32) -> FrameOut {
+  // The terrain diamond ends at Manhattan radius 0.5. Extending the frame to 0.555
+  // leaves a broad enough bevel to match the classic HUD without changing hit testing.
+  var corners = array<vec2f, 6>(
+    vec2f(0.5, 1.055),
+    vec2f(1.055, 0.5),
+    vec2f(0.5, -0.055),
+    vec2f(0.5, -0.055),
+    vec2f(-0.055, 0.5),
+    vec2f(0.5, 1.055),
+  );
+  let local = corners[i];
+
+  var out: FrameOut;
+  out.position = vec4f(mix(u.rect.xy, u.rect.zw, local), 0.0, 1.0);
+  out.local = local;
+  return out;
+}
+
+@fragment
+fn fs_frame(in: FrameOut) -> @location(0) vec4f {
+  let diamondRadius = abs(in.local.x - 0.5) + abs(in.local.y - 0.5);
+  let bevel = clamp((diamondRadius - 0.5) / 0.055, 0.0, 1.0);
+  let innerBronze = vec3f(0.16, 0.105, 0.045);
+  let agedGold = vec3f(0.68, 0.54, 0.25);
+  let limestone = vec3f(0.78, 0.72, 0.52);
+  let outerBronze = vec3f(0.20, 0.135, 0.055);
+  var color = mix(innerBronze, agedGold, smoothstep(0.0, 0.22, bevel));
+
+  color = mix(color, limestone, smoothstep(0.22, 0.48, bevel));
+  color = mix(color, agedGold, smoothstep(0.58, 0.75, bevel));
+  color = mix(color, outerBronze, smoothstep(0.78, 1.0, bevel));
+
+  // Light from the upper-left gives each edge the chunky carved bevel of the original UI.
+  let directionalLight = 0.88 + (in.local.y - in.local.x) * 0.12;
+  let stoneGrain = sin((in.local.x + in.local.y) * 170.0) * 0.018;
+  return vec4f(color * directionalLight + vec3f(stoneGrain), 1.0);
+}
+
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
   let terrain = textureSample(tex, samp, in.uv);
   let fog = textureSample(fogTex, samp, in.uv).rg;
   let luminance = dot(terrain.rgb, vec3f(0.2126, 0.7152, 0.0722));
-  let explored = mix(vec3f(luminance), terrain.rgb, 0.45) * 0.55;
+  let explored = mix(vec3f(luminance), terrain.rgb, 0.42) * 0.58;
   let color = mix(explored * fog.x, terrain.rgb, fog.y);
 
   return vec4f(color, terrain.a);
@@ -77,7 +122,7 @@ fn vs_line(@location(0) pos: vec2f) -> @builtin(position) vec4f {
 
 @fragment
 fn fs_line() -> @location(0) vec4f {
-  return vec4f(0.92, 0.95, 1.0, 1.0);
+  return vec4f(1.0, 0.88, 0.42, 1.0);
 }
 
 struct DotOut {
@@ -112,10 +157,10 @@ fn vs_dot(
 
 @fragment
 fn fs_dot(in: DotOut) -> @location(0) vec4f {
-  // Dots are 2-3 px, pure dark hues vanish on the terrain texture.
+  // Pure dark hues vanish on the terrain texture, so classic-style pips get a white lift.
   let owner = u32(in.owner);
   // Neutral resources read as map features, not a fourth player.
-  let base = select(mix(PLAYER_PALETTE[owner % 4u], vec3f(1.0), 0.25), vec3f(0.25, 0.5, 0.2), owner == 255u);
+  let base = select(mix(PLAYER_PALETTE[owner % 4u], vec3f(1.0), 0.32), vec3f(0.28, 0.56, 0.18), owner == 255u);
   let highlight = vec3f(1.0, 0.85, 0.3);
   return vec4f(mix(base, highlight, in.selected), 1.0);
 }
