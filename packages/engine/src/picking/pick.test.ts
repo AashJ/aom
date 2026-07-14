@@ -8,6 +8,7 @@ import {
   spawnBuilding,
   spawnUnit,
   TYPE_HOUSE,
+  TYPE_TOWN_CENTER,
   VERTS_PER_ROW,
   type RenderSnapshot,
   writeSnapshot,
@@ -88,6 +89,11 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     ids: Uint32Array.from(xs.map((_, i) => i)),
     posX: new Float32Array(xs),
     posZ: new Float32Array(zs),
+    facing: new Uint16Array(xs.length),
+    moving: new Uint8Array(xs.length),
+    mode: new Uint8Array(xs.length),
+    gatherTargetType: new Uint8Array(xs.length).fill(255),
+    actionCooldown: new Uint16Array(xs.length),
     visible: new Uint8Array(xs.length).fill(1),
     fog: new Uint8Array(MAP_TILES * MAP_TILES),
     selected: new Uint8Array(xs.length),
@@ -150,6 +156,26 @@ describe("pickUnit", () => {
     updateMatrices(camera, 16 / 9);
 
     expect(pickUnit(camera, 0, 0, snap, snap, 0, heights)).toBe(1);
+  });
+
+  test("picks a town center across its visible building bounds", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const x = camera.target[0]!;
+    const z = camera.target[2]!;
+    const snap = snapshot([x], [z]);
+
+    snap.unitType[0] = TYPE_TOWN_CENTER;
+    updateMatrices(camera, 16 / 9);
+
+    // Aim high on the building facade, well outside the old universal 2.2-high pick box.
+    const y = 4;
+    const m = camera.viewProj;
+    const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+    const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+    const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+
+    expect(pickUnit(camera, cx / cw, cy / cw, snap, snap, 0, heights)).toBe(0);
   });
 
   test("marquee selects all units in the viewport", () => {

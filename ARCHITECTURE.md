@@ -593,7 +593,7 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 ### Simulation changes
 
 - Extend the resource ids and `RESOURCE_COUNT` to `FOOD`, `WOOD`, `GOLD`, and `FAVOR`; preserve the existing owner-major stockpile layout and carried-resource representation.
-- Add a Gold Mine content type and seeded symmetric placement. Gathering, depletion, retargeting, hauling, and deposit continue through the existing villager state machine.
+- Add a Gold Mine content type and current-map constrained starting/medium/far placements. Counts, geometric ranges, and Gold-Mine-to-Gold-Mine spacing are map content rather than universal engine rules; trees and berries require only a two-tile non-overlap gap. Placement is seeded but not mirrored, with reachability retained only to reject sealed terrain pockets. Gathering, depletion, retargeting, hauling, and deposit continue through the existing villager state machine.
 - Add per-player progression state for current age, selected major god, and minor-god choices by age. Initialize players to Archaic with no minor gods chosen.
 - Extend content rules with required age and prerequisite metadata. Authoritative Place/Train validation and UI availability consume the same sim-owned query; locked content remains a silent deterministic no-op if forged onto the command stream.
 - Include progression state in `hashWorld`; extend `RenderSnapshot` with viewer age/god progression and the expanded stockpile copy.
@@ -601,7 +601,7 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 ### Sequential build order
 
 1. **Four-resource ledger (complete).** Gold/Favor ids, cost columns, stockpiles, carrying, hashing, snapshots, and HUD counters now preserve the existing Food/Wood behavior while establishing the full ledger. _Verified: existing economy tests remain unchanged in meaning; non-contiguous player ids receive isolated four-resource rows; Gold changes affect the hash._
-2. **Gold Mines.** Add seeded symmetric mines through the resource-node path. _Verify: villagers mine, haul, deposit, deplete, and retarget with the same deterministic behavior as trees and berries._
+2. **Gold Mines (complete).** Seeded, map-profiled starting/medium/far mines now use the resource-node path, with profile-owned Gold Mine spacing and a separate two-tile tree/berry gap. _Verified: seed 1337 gives each player all required slots without mirrored coordinates; mine spacing and resource-node non-overlap hold; villagers mine, haul, deposit, deplete, and retarget through the existing deterministic loop._
 3. **Player progression state.** Add Archaic age and god-selection storage per active player, hashing, and viewer snapshots. _Verify: worlds initialize and hash identically; state remains attached to real player ids regardless of dense visibility slots._
 4. **Availability rules.** Add required-age/prerequisite content metadata and one shared sim query used by command validation and UI consumers. _Verify: forged locked Place/Train commands are no-ops and visible menus report the same result._
 
@@ -613,6 +613,7 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 - Greek Temple construction and Villager prayer as the first Favor-generation mechanic.
 - The first Classical human unit, Greek hero, myth unit, and single-use god power.
 - Infantry/cavalry/archer counters, armor and damage classes, and deterministic ranged projectiles.
+- Map-seed validation/regeneration for starts whose reachable terrain component cannot satisfy a required resource band; placement currently rejects such a seed rather than spawning unreachable or out-of-profile mines.
 
 ---
 

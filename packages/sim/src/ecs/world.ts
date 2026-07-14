@@ -33,6 +33,7 @@ import {
   NODE_RETARGET_RADIUS,
   RESOURCE_COUNT,
   TYPE_BERRY,
+  TYPE_GOLD_MINE,
   TYPE_TOWN_CENTER,
   TYPE_TREE,
   TYPE_VILLAGER,
@@ -75,6 +76,15 @@ const START_CORNERS = [
   [216, 40],
   [40, 216],
 ] as const;
+const GOLD_PLACEMENT_ATTEMPTS = 64;
+const GOLD_OTHER_NODE_CLEARANCE = 2;
+// This is content for the current map, not a universal economy rule. Future
+// maps can choose different counts and ranges without changing mine behavior.
+const CURRENT_MAP_GOLD_PLACEMENTS = [
+  { perPlayer: 1, minDistance: 22, maxDistance: 32, goldMineSpacing: 6 },
+  { perPlayer: 1, minDistance: 50, maxDistance: 75, goldMineSpacing: 10 },
+  { perPlayer: 1, minDistance: 90, maxDistance: 115, goldMineSpacing: 12 },
+] as const;
 const MAX_TARGET_BODY_RADIUS = (() => {
   let maxRadius = 0;
 
@@ -98,6 +108,8 @@ export interface World {
   moveTargetX: Float64Array;
   moveTargetZ: Float64Array;
   moving: Uint8Array;
+  // Clockwise world-space heading sectors: 0 = +Z, 2 = +X, 4 = -Z, 6 = -X.
+  facing: Uint16Array;
   // Actual player ids, which are NOT guaranteed contiguous - lobby churn skips numbers;
   // 255 owners is plenty.
   owner: Uint8Array;
@@ -180,6 +192,7 @@ export function createWorld(seed: number): World {
     moveTargetX: new Float64Array(MAX_UNITS),
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
+    facing: new Uint16Array(MAX_UNITS),
     owner: new Uint8Array(MAX_UNITS),
     playerIds: new Uint8Array(MAX_PLAYERS),
     playerSlotById,
@@ -226,6 +239,34 @@ export function createWorld(seed: number): World {
   };
 }
 
+export function setFacingToward(
+  world: World,
+  index: number,
+  targetX: number,
+  targetZ: number,
+): void {
+  const dx = targetX - world.posX[index]!;
+  const dz = targetZ - world.posZ[index]!;
+
+  if (dx === 0 && dz === 0) {
+    return;
+  }
+
+  const absX = Math.abs(dx);
+  const absZ = Math.abs(dz);
+  const diagonalThreshold = 0.414_213_562_373_095_03;
+
+  if (absZ <= absX * diagonalThreshold) {
+    world.facing[index] = dx > 0 ? 2 : 6;
+  } else if (absX <= absZ * diagonalThreshold) {
+    world.facing[index] = dz > 0 ? 0 : 4;
+  } else if (dx > 0) {
+    world.facing[index] = dz > 0 ? 1 : 3;
+  } else {
+    world.facing[index] = dz > 0 ? 7 : 5;
+  }
+}
+
 export function spawnUnit(
   world: World,
   x: number,
@@ -264,6 +305,9 @@ export function spawnUnit(
   world.moveTargetX[index] = 0;
   world.moveTargetZ[index] = 0;
   world.moving[index] = 0;
+  // The fixed camera looks from -X/-Z, so new idle units begin front-facing.
+  world.facing[index] = 5;
+  setFacingToward(world, index, x + vx, z + vz);
   world.owner[index] = owner;
   world.unitType[index] = type;
   world.hp[index] = UNIT_TYPES[type]!.maxHp;
@@ -547,11 +591,122 @@ function walkableCellNear(world: World, x: number, z: number): number {
   return cellOf(x, z);
 }
 
+function hasNodeClearance(world: World, x: number, z: number, goldMineSpacing: number): boolean {
+  for (let i = 0; i < world.count; i += 1) {
+    const type = world.unitType[i]!;
+
+    if (UNIT_TYPES[type]!.resource < 0) continue;
+
+    const dx = world.posX[i]! - x;
+    const dz = world.posZ[i]! - z;
+    const clearance = type === TYPE_GOLD_MINE ? goldMineSpacing : GOLD_OTHER_NODE_CLEARANCE;
+
+    if (dx * dx + dz * dz < clearance * clearance) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function findConstrainedGoldSpot(
+  world: World,
+  startX: number,
+  startZ: number,
+  field: FlowField,
+  minDistance: number,
+  maxDistance: number,
+  goldMineSpacing: number,
+): readonly [number, number] | null {
+  const minDistanceSq = minDistance * minDistance;
+  const maxDistanceSq = maxDistance * maxDistance;
+
+  // Square rejection sampling produces a random direction without sin/cos,
+  // which are banned by the deterministic simulation contract.
+  for (let attempt = 0; attempt < GOLD_PLACEMENT_ATTEMPTS; attempt += 1) {
+    const x = startX + (nextFloat(world.rng) * 2 - 1) * maxDistance;
+    const z = startZ + (nextFloat(world.rng) * 2 - 1) * maxDistance;
+    const dx = x - startX;
+    const dz = z - startZ;
+    const distanceSq = dx * dx + dz * dz;
+
+    if (
+      distanceSq >= minDistanceSq &&
+      distanceSq <= maxDistanceSq &&
+      isNodeSpotOpen(world, x, z) &&
+      reachableIn(field, x, z) &&
+      hasNodeClearance(world, x, z, goldMineSpacing)
+    ) {
+      return [x, z];
+    }
+  }
+
+  // Required map objects do not silently disappear after unlucky sampling.
+  // The stable row-major fallback finds any legal tile in the same band.
+  for (let tileZ = 1; tileZ < MAP_TILES - 1; tileZ += 1) {
+    for (let tileX = 1; tileX < MAP_TILES - 1; tileX += 1) {
+      const x = tileX + 0.5;
+      const z = tileZ + 0.5;
+      const dx = x - startX;
+      const dz = z - startZ;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (
+        distanceSq >= minDistanceSq &&
+        distanceSq <= maxDistanceSq &&
+        isNodeSpotOpen(world, x, z) &&
+        reachableIn(field, x, z) &&
+        hasNodeClearance(world, x, z, goldMineSpacing)
+      ) {
+        return [x, z];
+      }
+    }
+  }
+
+  return null;
+}
+
+function spawnGoldMines(world: World, startFields: readonly FlowField[]): void {
+  for (const placement of CURRENT_MAP_GOLD_PLACEMENTS) {
+    for (let copy = 0; copy < placement.perPlayer; copy += 1) {
+      for (let playerIndex = 0; playerIndex < world.playerCount; playerIndex += 1) {
+        const [startX, startZ] = START_CORNERS[playerIndex]!;
+        const spot = findConstrainedGoldSpot(
+          world,
+          startX,
+          startZ,
+          startFields[playerIndex]!,
+          placement.minDistance,
+          placement.maxDistance,
+          placement.goldMineSpacing,
+        );
+
+        if (spot === null) {
+          throw new RangeError(`Unable to place required gold mine for player ${playerIndex}`);
+        }
+
+        spawnUnit(world, spot[0], spot[1], 0, 0, NEUTRAL_OWNER, TYPE_GOLD_MINE);
+      }
+    }
+  }
+}
+
 export function spawnResourceNodes(world: World): void {
   // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
-  // Reachability fields from both spawn corners (TCs already stamped — walkability is final).
-  const fieldA = buildFlowField(world.walkable, walkableCellNear(world, 46, 46));
-  const fieldB = buildFlowField(world.walkable, walkableCellNear(world, 210, 210));
+  // Keep the two legacy tree fields in solo play; the forests are point-symmetric even
+  // without an opponent. Additional player fields support their map-profile gold slots.
+  const startFieldCount = Math.max(2, world.playerCount);
+  const startFields: FlowField[] = [];
+
+  for (let playerIndex = 0; playerIndex < startFieldCount; playerIndex += 1) {
+    const [startX, startZ] = START_CORNERS[playerIndex]!;
+    const inwardX = startX + (startX < SIM_MAP_SIZE * 0.5 ? 6 : -6);
+    const inwardZ = startZ + (startZ < SIM_MAP_SIZE * 0.5 ? 6 : -6);
+    startFields.push(buildFlowField(world.walkable, walkableCellNear(world, inwardX, inwardZ)));
+  }
+
+  const fieldA = startFields[0]!;
+  const fieldB = startFields[1]!;
   for (let cluster = 0; cluster < 6; cluster += 1) {
     let centerX = 0;
     let centerZ = 0;
@@ -633,6 +788,10 @@ export function spawnResourceNodes(world: World): void {
       }
     }
   }
+
+  // Gold is placed after existing resources so its clearance constraints cannot
+  // perturb the established forest and berry layouts for the same seed.
+  spawnGoldMines(world, startFields);
 }
 
 export function tickWorld(world: World): void {
@@ -730,6 +889,7 @@ export function tickWorld(world: World): void {
         if (distSq <= attackRangeSq) {
           world.moving[i] = 0;
           world.unitField[i] = null;
+          setFacingToward(world, i, targetX, targetZ);
 
           if (world.attackCooldown[i] === 0) {
             dealDamage(world, target, stats.attackDamage);
@@ -1070,6 +1230,7 @@ export function tickWorld(world: World): void {
       if (distSq <= reach * reach) {
         world.moving[i] = 0;
         world.unitField[i] = null;
+        setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
 
         if (world.attackCooldown[i] === 0) {
           const take = Math.min(
@@ -1251,6 +1412,7 @@ export function tickWorld(world: World): void {
       if (distSq <= reach * reach) {
         world.moving[i] = 0;
         world.unitField[i] = null;
+        setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
 
         if (world.attackCooldown[i] === 0) {
           const progress = world.buildProgress[target]! + BUILD_PER_STRIKE;
@@ -1302,6 +1464,7 @@ export function tickWorld(world: World): void {
   for (let i = 0; i < world.count; i += 1) {
     const x = world.posX[i]!;
     const z = world.posZ[i]!;
+    const wasMoving = world.moving[i] === 1;
     let pushX = 0;
     let pushZ = 0;
 
@@ -1353,6 +1516,10 @@ export function tickWorld(world: World): void {
           pushZ = (dz / dist) * step;
         }
       }
+    }
+
+    if (wasMoving && (pushX !== 0 || pushZ !== 0)) {
+      setFacingToward(world, i, x + pushX, z + pushZ);
     }
 
     // Idle units are separated too, so arriving crowds spread out instead of stacking.
@@ -1558,6 +1725,7 @@ function applyDeaths(world: World): void {
       world.moveTargetX[i] = world.moveTargetX[last]!;
       world.moveTargetZ[i] = world.moveTargetZ[last]!;
       world.moving[i] = world.moving[last]!;
+      world.facing[i] = world.facing[last]!;
       world.owner[i] = world.owner[last]!;
       world.unitType[i] = world.unitType[last]!;
       world.hp[i] = world.hp[last]!;

@@ -12,6 +12,7 @@ import {
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
+  TYPE_MILITIA,
   TYPE_TOWN_CENTER,
   TYPE_VILLAGER,
   unitIdAt,
@@ -21,6 +22,7 @@ import {
   WOOD,
   writeSnapshot,
 } from "@aom/sim";
+import { createGameAudio } from "./audio/audio";
 import {
   applyCameraTerrain,
   createCamera,
@@ -183,6 +185,7 @@ export async function createGame(
   let fog = createFogRenderer(gpu.device);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
+  const audio = createGameAudio();
 
   const colorAttachment: GPURenderPassColorAttachment = {
     clearValue: { r: 0.05, g: 0.07, b: 0.1, a: 1 },
@@ -253,6 +256,14 @@ export async function createGame(
     prevSnap = currSnap;
     currSnap = tmp;
     writeSnapshot(world, currSnap, selfPlayerId);
+    audio.sync(
+      currSnap,
+      selfPlayerId,
+      camera.target[0]!,
+      camera.target[2]!,
+      camera.viewDir[0]!,
+      camera.viewDir[2]!,
+    );
     // Max-since-emit, reset by the collector.
     statsCollector.frameGauges.tickMsMax = Math.max(
       statsCollector.frameGauges.tickMsMax,
@@ -403,6 +414,53 @@ export async function createGame(
         if (issued !== 0) {
           markerAgeMs = 0;
           markerKind = issued;
+
+          let selectedUnit = -1;
+
+          for (let i = 0; i < world.count; i += 1) {
+            const type = world.unitType[i]!;
+
+            if (
+              world.selected[i] === 1 &&
+              world.owner[i] === selfPlayerId &&
+              (type === TYPE_VILLAGER || type === TYPE_MILITIA)
+            ) {
+              selectedUnit = i;
+              break;
+            }
+          }
+
+          if (selectedUnit !== -1) {
+            let resourceType: number | undefined;
+
+            if (issued === 3) {
+              let nearestDistanceSq = Number.POSITIVE_INFINITY;
+
+              for (let i = 0; i < currSnap.count; i += 1) {
+                const type = currSnap.unitType[i]!;
+
+                if (UNIT_TYPES[type]!.resource < 0) {
+                  continue;
+                }
+
+                const dx = currSnap.posX[i]! - markerPos[0]!;
+                const dz = currSnap.posZ[i]! - markerPos[1]!;
+                const distanceSq = dx * dx + dz * dz;
+
+                if (distanceSq < nearestDistanceSq) {
+                  nearestDistanceSq = distanceSq;
+                  resourceType = type;
+                }
+              }
+            }
+
+            audio.acknowledge(
+              issued,
+              world.posX[selectedUnit]!,
+              world.posZ[selectedUnit]!,
+              resourceType,
+            );
+          }
         }
 
         // No placement to cancel: drop the intent so a stray Esc can't linger and
@@ -477,6 +535,7 @@ export async function createGame(
       pass,
       gpu.device.queue,
       camera.viewProj,
+      camera.viewDir,
       prevSnap,
       currSnap,
       alpha,
@@ -565,6 +624,7 @@ export async function createGame(
     // the sim decided the outcome ticks ago and hashed it; the engine only announces. Fires once.
     if (!matchEnded && currSnap.winner !== -1) {
       matchEnded = true;
+      audio.matchEnd(currSnap.winner === selfPlayerId);
       for (const cb of matchEndCbs) {
         cb(currSnap.winner);
       }
@@ -626,6 +686,7 @@ export async function createGame(
     }
     unsubscribeDesync?.();
     loop.stop();
+    audio.dispose();
     unobserveResize();
     input.detach();
     selectionCbs.clear();
@@ -646,6 +707,7 @@ export async function createGame(
     onStats: statsCollector.subscribe,
     startPlacement(buildingType: number): void {
       // UI-driven modal — the React build bar calls this.
+      audio.uiClick();
       placementType = buildingType;
       placementValid = false;
     },
@@ -667,6 +729,7 @@ export async function createGame(
 
         // Preview-validation only — the sim revalidates authoritatively at application.
         sink.submitTrain(unitIdAt(world, i), unitType);
+        audio.uiClick();
         return;
       }
     },
@@ -703,10 +766,12 @@ export async function createGame(
       }
 
       running = true;
+      audio.setActive(true);
       loop.start();
     },
     stop(): void {
       running = false;
+      audio.setActive(false);
       loop.stop();
     },
   };

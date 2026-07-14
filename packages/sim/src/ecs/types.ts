@@ -50,6 +50,7 @@ export const TYPE_BERRY = 3;
 export const TYPE_TOWN_CENTER = 4;
 export const TYPE_HOUSE = 5;
 export const TYPE_BARRACKS = 6;
+export const TYPE_GOLD_MINE = 7;
 
 export const UNIT_TYPES: readonly UnitTypeStats[] = [
   {
@@ -194,6 +195,28 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 200,
     popBonus: 0,
     trains: TYPE_MILITIA,
+    isDropsite: false,
+  },
+  {
+    // Standard neutral deposit; HP is remaining gold and depletion uses the
+    // same swap-remove path as trees and berry bushes.
+    maxHp: 3000,
+    lineOfSight: 0,
+    attackDamage: 0,
+    attackRange: 0,
+    aggroRange: 0,
+    attackCooldownTicks: 0,
+    isStatic: true,
+    resource: GOLD,
+    bodyRadius: 1.2,
+    footprint: 0,
+    costFood: 0,
+    costWood: 0,
+    costGold: 0,
+    costFavor: 0,
+    buildTicks: 0,
+    popBonus: 0,
+    trains: -1,
     isDropsite: false,
   },
 ];

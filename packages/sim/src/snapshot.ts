@@ -1,6 +1,6 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
 import { RESOURCE_COUNT } from "./ecs/types";
-import { unitIdAt, type World } from "./ecs/world";
+import { resolveId, unitIdAt, type World } from "./ecs/world";
 import { isEntityVisibleTo, VISIBILITY_TILES } from "./visibility";
 
 export interface RenderSnapshot {
@@ -9,6 +9,11 @@ export interface RenderSnapshot {
   ids: Uint32Array;
   posX: Float32Array;
   posZ: Float32Array;
+  facing: Uint16Array;
+  moving: Uint8Array;
+  mode: Uint8Array;
+  gatherTargetType: Uint8Array;
+  actionCooldown: Uint16Array;
   visible: Uint8Array;
   fog: Uint8Array;
   selected: Uint8Array;
@@ -30,6 +35,11 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     ids: new Uint32Array(capacity),
     posX: new Float32Array(capacity),
     posZ: new Float32Array(capacity),
+    facing: new Uint16Array(capacity),
+    moving: new Uint8Array(capacity),
+    mode: new Uint8Array(capacity),
+    gatherTargetType: new Uint8Array(capacity).fill(255),
+    actionCooldown: new Uint16Array(capacity),
     visible: new Uint8Array(capacity),
     fog: new Uint8Array(VISIBILITY_TILES),
     selected: new Uint8Array(capacity),
@@ -69,6 +79,12 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     // while sim keeps f64.
     out.posX[i] = world.posX[i]!;
     out.posZ[i] = world.posZ[i]!;
+    out.facing[i] = world.facing[i]!;
+    out.moving[i] = world.moving[i]!;
+    out.mode[i] = world.mode[i]!;
+    const gatherTarget = resolveId(world, world.gatherNode[i]!);
+    out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : 255;
+    out.actionCooldown[i] = world.attackCooldown[i]!;
     out.visible[i] = isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
     // Copies selected, not selectable; selectable only means the unit may be selected.
     out.selected[i] = world.selected[i]!;

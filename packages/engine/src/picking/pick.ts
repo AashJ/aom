@@ -15,10 +15,10 @@ import * as vec3 from "../math/vec3";
 import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
 import type { CommandSink } from "../net/sink";
+import { SPRITE_CONFIGS } from "../render/sprites";
 
-// Approximates the billboard sprite (2.2 tall, ~1.2 wide) as an upright box.
-const HALF_W = 0.5;
-const UNIT_H = 2.2;
+// Mobile-unit rings remain deliberately generous compared with their simulation bodies.
+const MIN_PICK_HALF_WIDTH = 0.5;
 
 const rayOrigin = vec3.create();
 const rayDir = vec3.create();
@@ -56,12 +56,16 @@ export function pickUnit(
     const x = prevX + (curr.posX[i]! - prevX) * alpha;
     const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
     const y = heightAt(heights, x, z);
-    const minX = x - HALF_W;
-    const maxX = x + HALF_W;
+    const type = curr.unitType[i]!;
+    const stats = UNIT_TYPES[type]!;
+    const config = SPRITE_CONFIGS[type]!;
+    const halfWidth = Math.max(MIN_PICK_HALF_WIDTH, stats.bodyRadius);
+    const minX = x - halfWidth;
+    const maxX = x + halfWidth;
     const minY = y;
-    const maxY = y + UNIT_H;
-    const minZ = z - HALF_W;
-    const maxZ = z + HALF_W;
+    const maxY = y + config.worldHeight - config.bottomPadding;
+    const minZ = z - halfWidth;
+    const maxZ = z + halfWidth;
     // IEEE +/-Infinity from 1/0 makes parallel slab tests work without branches.
     const invX = 1 / dx;
     const invY = 1 / dy;
@@ -319,7 +323,9 @@ export function marqueeSelect(
     const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
     const x = prevX + (curr.posX[i]! - prevX) * alpha;
     const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-    const y = heightAt(heights, x, z) + UNIT_H * 0.5;
+    const type = curr.unitType[i]!;
+    const config = SPRITE_CONFIGS[type]!;
+    const y = heightAt(heights, x, z) + (config.worldHeight - config.bottomPadding) * 0.5;
     const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
     const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
     const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;

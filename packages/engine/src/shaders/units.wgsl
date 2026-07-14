@@ -60,6 +60,10 @@ fn vs(
   @location(9) sizeW: f32,
   @location(10) sizeH: f32,
   @location(11) buildFrac: f32,
+  @location(12) ringScale: f32,
+  @location(13) uvVBottom: f32,
+  @location(14) uvV0: f32,
+  @location(15) uvVH: f32,
 ) -> VertexOut {
   var world: vec3f;
   var local = baseLocal;
@@ -77,7 +81,10 @@ fn vs(
   } else if (part > 0.5) {
     // Ring verts reuse local.xy as ground-plane XZ offsets. Unselected rings
     // collapse to the instance origin (zero-area triangles rasterize nothing).
-    let ringOffset = local * step(0.5, selected);
+    // Scale the ring radius without scaling its stroke thickness. Large-building rings
+    // would otherwise become broad filled-looking bands.
+    let radius = max(0.0, ringScale - (1.0 - length(local)));
+    let ringOffset = normalize(local) * radius * step(0.5, selected);
     let ringXZ = instancePos.xz + ringOffset;
     world = vec3f(ringXZ.x, terrainHeight(ringXZ) + 0.08, ringXZ.y);
   } else {
@@ -91,8 +98,10 @@ fn vs(
   out.position = u.viewProj * vec4f(world, 1.0);
   if (part > 1.5) {
     out.uv = uv;
-  } else {
+  } else if (part > 0.5) {
     out.uv = vec2f(uvU0 + uv.x * uvUW, uv.y);
+  } else {
+    out.uv = vec2f(uvU0 + uv.x * uvUW, uvV0 + uv.y * uvVH * uvVBottom);
   }
   out.part = part;
   out.selected = selected;

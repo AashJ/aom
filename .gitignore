@@ -62,3 +62,7 @@ lerna-debug.log*
 *.tgz
 tmp/
 temp/
+
+# Locally extracted proprietary game assets
+private-assets/
+packages/engine/src/assets/audio/

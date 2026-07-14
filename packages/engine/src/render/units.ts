@@ -1,14 +1,34 @@
-import { heightAt, UNIT_TYPES, VERTS_PER_ROW, type RenderSnapshot } from "@aom/sim";
+import {
+  heightAt,
+  MODE_GATHERING,
+  TYPE_BERRY,
+  TYPE_GOLD_MINE,
+  TYPE_VILLAGER,
+  UNIT_TYPES,
+  VERTS_PER_ROW,
+  type RenderSnapshot,
+} from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
-import { SPRITE_CONFIGS, type SpriteConfig } from "./sprites";
-import { villagerAnimationFrame } from "./unit-animation";
+import {
+  RENDER_SPRITE_CONFIGS,
+  SPRITE_CONFIGS,
+  VILLAGER_HARVEST_SPRITE_INDEX,
+  VILLAGER_MINE_SPRITE_INDEX,
+  type SpriteConfig,
+} from "./sprites";
+import {
+  spriteDirectionRow,
+  villagerAnimationFrame,
+  villagerGatherAnimationFrame,
+} from "./unit-animation";
 
 export interface UnitsRenderer {
   draw(
     pass: GPURenderPassEncoder,
     queue: GPUQueue,
     viewProj: Float32Array,
+    cameraViewDir: Float32Array,
     prev: RenderSnapshot,
     curr: RenderSnapshot,
     alpha: number,
@@ -23,7 +43,7 @@ export interface UnitsRenderer {
 const RING_SEGMENTS = 32;
 const RING_INNER = 0.75;
 const RING_OUTER = 1.0;
-const INSTANCE_FLOATS = 11;
+const INSTANCE_FLOATS = 15;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
 
 interface SpriteTextureData {
@@ -31,6 +51,7 @@ interface SpriteTextureData {
   texture: GPUTexture;
   aspect: number;
   uvFrameWidth: number;
+  uvFrameHeight: number;
 }
 
 interface SpriteResources extends SpriteTextureData {
@@ -38,6 +59,24 @@ interface SpriteResources extends SpriteTextureData {
 }
 
 const spriteImages = new Map<string, Promise<ImageBitmap>>();
+
+function spriteIndexFor(snapshot: RenderSnapshot, index: number): number {
+  if (
+    snapshot.unitType[index] === TYPE_VILLAGER &&
+    snapshot.mode[index] === MODE_GATHERING &&
+    snapshot.moving[index] === 0
+  ) {
+    if (snapshot.gatherTargetType[index] === TYPE_GOLD_MINE) {
+      return VILLAGER_MINE_SPRITE_INDEX;
+    }
+
+    if (snapshot.gatherTargetType[index] === TYPE_BERRY) {
+      return VILLAGER_HARVEST_SPRITE_INDEX;
+    }
+  }
+
+  return snapshot.unitType[index]!;
+}
 
 function loadSpriteImage(config: SpriteConfig): Promise<ImageBitmap> {
   let image = spriteImages.get(config.url);
@@ -85,8 +124,9 @@ function createSpriteTexture(
   return {
     sampler,
     texture,
-    aspect: image.width / config.columns / image.height,
+    aspect: image.width / config.columns / (image.height / config.directions),
     uvFrameWidth: 1 / config.columns,
+    uvFrameHeight: 1 / config.directions,
   };
 }
 
@@ -94,10 +134,10 @@ async function createSpriteTextures(
   device: GPUDevice,
   sampler: GPUSampler,
 ): Promise<SpriteTextureData[]> {
-  const images = await Promise.all(SPRITE_CONFIGS.map((config) => loadSpriteImage(config)));
+  const images = await Promise.all(RENDER_SPRITE_CONFIGS.map((config) => loadSpriteImage(config)));
 
-  return images.map((image, type) =>
-    createSpriteTexture(device, sampler, image, SPRITE_CONFIGS[type]!),
+  return images.map((image, spriteIndex) =>
+    createSpriteTexture(device, sampler, image, RENDER_SPRITE_CONFIGS[spriteIndex]!),
   );
 }
 
@@ -162,9 +202,9 @@ export async function createUnitsRenderer(
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
   const staging = new Float32Array(instanceCapacity * INSTANCE_FLOATS);
-  const typeCounts = new Uint32Array(SPRITE_CONFIGS.length);
-  const typeFirstInstances = new Uint32Array(SPRITE_CONFIGS.length);
-  const typeWriteOffsets = new Uint32Array(SPRITE_CONFIGS.length);
+  const spriteCounts = new Uint32Array(RENDER_SPRITE_CONFIGS.length);
+  const spriteFirstInstances = new Uint32Array(RENDER_SPRITE_CONFIGS.length);
+  const spriteWriteOffsets = new Uint32Array(RENDER_SPRITE_CONFIGS.length);
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -204,6 +244,10 @@ export async function createUnitsRenderer(
             { format: "float32", offset: 32, shaderLocation: 9 },
             { format: "float32", offset: 36, shaderLocation: 10 },
             { format: "float32", offset: 40, shaderLocation: 11 },
+            { format: "float32", offset: 44, shaderLocation: 12 },
+            { format: "float32", offset: 48, shaderLocation: 13 },
+            { format: "float32", offset: 52, shaderLocation: 14 },
+            { format: "float32", offset: 56, shaderLocation: 15 },
           ],
         },
       ],
@@ -263,6 +307,7 @@ export async function createUnitsRenderer(
       pass,
       queue,
       viewProj,
+      cameraViewDir,
       prev,
       curr,
       alpha,
@@ -272,19 +317,20 @@ export async function createUnitsRenderer(
       ghostZ,
       ghostValid,
     ): number {
-      typeCounts.fill(0);
+      spriteCounts.fill(0);
 
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
-        typeCounts[curr.unitType[i]!] = typeCounts[curr.unitType[i]!]! + 1;
+        const spriteIndex = spriteIndexFor(curr, i);
+        spriteCounts[spriteIndex] = spriteCounts[spriteIndex]! + 1;
       }
 
-      // Counting sort like the sim's grid build: count per type, prefix to first instance, scatter.
+      // Counting sort like the sim's grid build: count per sprite, prefix, then scatter.
       let totalInstances = 0;
-      for (let type = 0; type < typeCounts.length; type += 1) {
-        typeFirstInstances[type] = totalInstances;
-        typeWriteOffsets[type] = totalInstances;
-        totalInstances += typeCounts[type]!;
+      for (let spriteIndex = 0; spriteIndex < spriteCounts.length; spriteIndex += 1) {
+        spriteFirstInstances[spriteIndex] = totalInstances;
+        spriteWriteOffsets[spriteIndex] = totalInstances;
+        totalInstances += spriteCounts[spriteIndex]!;
       }
 
       for (let i = 0; i < curr.count; i += 1) {
@@ -301,29 +347,53 @@ export async function createUnitsRenderer(
         const x = prevX + (curr.posX[i]! - prevX) * alpha;
         const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
         const type = curr.unitType[i]!;
-        const ts = UNIT_TYPES[curr.unitType[i]!]!;
-        const config = SPRITE_CONFIGS[type]!;
-        const sprite = spriteResources[type]!;
-        const instanceIndex = typeWriteOffsets[type]!;
+        const ts = UNIT_TYPES[type]!;
+        const spriteIndex = spriteIndexFor(curr, i);
+        const config = RENDER_SPRITE_CONFIGS[spriteIndex]!;
+        const sprite = spriteResources[spriteIndex]!;
+        const instanceIndex = spriteWriteOffsets[spriteIndex]!;
         const offset = instanceIndex * INSTANCE_FLOATS;
         const buildFrac =
           ts.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / ts.buildTicks) : 1;
-        const frame = config.animated
-          ? villagerAnimationFrame(
-              {
-                prevX,
-                prevZ,
-                currX: curr.posX[i]!,
-                currZ: curr.posZ[i]!,
-                tick: curr.tick,
-                alpha,
-                unitIndex: i,
-              },
-              config,
-            )
-          : config.idleFrame;
+        let frame: number;
 
-        typeWriteOffsets[type] = instanceIndex + 1;
+        if (
+          spriteIndex === VILLAGER_MINE_SPRITE_INDEX ||
+          spriteIndex === VILLAGER_HARVEST_SPRITE_INDEX
+        ) {
+          frame = villagerGatherAnimationFrame(
+            { cooldown: curr.actionCooldown[i]!, alpha },
+            config,
+          );
+        } else if (config.animated) {
+          frame = villagerAnimationFrame(
+            {
+              prevX,
+              prevZ,
+              currX: curr.posX[i]!,
+              currZ: curr.posZ[i]!,
+              tick: curr.tick,
+              alpha,
+              unitIndex: i,
+            },
+            config,
+          );
+        } else if (config.staticFrames === "variation") {
+          frame = curr.ids[i]! % config.columns;
+        } else if (config.staticFrames === "depletion") {
+          const depletionFrame = Math.floor((1 - curr.hp[i]! / ts.maxHp) * config.columns);
+          frame = Math.min(config.columns - 1, Math.max(0, depletionFrame));
+        } else {
+          frame = config.idleFrame;
+        }
+        const directionRow = spriteDirectionRow(
+          curr.facing[i]!,
+          cameraViewDir[0]!,
+          cameraViewDir[2]!,
+          config.directions,
+        );
+
+        spriteWriteOffsets[spriteIndex] = instanceIndex + 1;
 
         staging[offset] = x;
         staging[offset + 1] = heightAt(heights, x, z);
@@ -335,8 +405,15 @@ export async function createUnitsRenderer(
         staging[offset + 6] = frame * sprite.uvFrameWidth;
         staging[offset + 7] = sprite.uvFrameWidth;
         staging[offset + 8] = config.worldHeight * sprite.aspect;
-        staging[offset + 9] = config.worldHeight;
+        staging[offset + 9] = config.worldHeight - config.bottomPadding;
         staging[offset + 10] = buildFrac;
+        // Ground rings read cleanly under units but fight the large billboard footprint of
+        // buildings. Buildings rely on their sprite highlight and full visual pick bounds.
+        staging[offset + 11] = ts.footprint > 0 ? 0 : 1;
+        // Crop transparent bottom padding in UV space instead of lowering the quad through terrain.
+        staging[offset + 12] = 1 - config.bottomPadding / config.worldHeight;
+        staging[offset + 13] = directionRow * sprite.uvFrameHeight;
+        staging[offset + 14] = sprite.uvFrameHeight;
       }
 
       let ghostFirstInstance = -1;
@@ -361,8 +438,12 @@ export async function createUnitsRenderer(
           staging[offset + 6] = 0;
           staging[offset + 7] = sprite.uvFrameWidth;
           staging[offset + 8] = config.worldHeight * sprite.aspect;
-          staging[offset + 9] = config.worldHeight;
+          staging[offset + 9] = config.worldHeight - config.bottomPadding;
           staging[offset + 10] = 1;
+          staging[offset + 11] = UNIT_TYPES[ghostType]!.footprint > 0 ? 0 : 1;
+          staging[offset + 12] = 1 - config.bottomPadding / config.worldHeight;
+          staging[offset + 13] = 0;
+          staging[offset + 14] = sprite.uvFrameHeight;
           totalInstances += 1;
         }
       }
@@ -381,16 +462,15 @@ export async function createUnitsRenderer(
       pass.setVertexBuffer(0, vertexBuffer);
       pass.setVertexBuffer(1, instanceBuffer);
       pass.setIndexBuffer(indexBuffer, "uint16");
-      for (let type = 0; type < typeCounts.length; type += 1) {
-        const typeCount = typeCounts[type]!;
+      for (let spriteIndex = 0; spriteIndex < spriteCounts.length; spriteIndex += 1) {
+        const spriteCount = spriteCounts[spriteIndex]!;
 
-        if (typeCount === 0) {
+        if (spriteCount === 0) {
           continue;
         }
 
-        pass.setBindGroup(0, spriteResources[type]!.bindGroup);
-        // firstInstance walks the instance buffer -- 7 draws replace 1, budget yawns.
-        pass.drawIndexed(indexData.length, typeCount, 0, 0, typeFirstInstances[type]!);
+        pass.setBindGroup(0, spriteResources[spriteIndex]!.bindGroup);
+        pass.drawIndexed(indexData.length, spriteCount, 0, 0, spriteFirstInstances[spriteIndex]!);
       }
 
       if (ghostFirstInstance >= 0) {

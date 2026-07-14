@@ -9,6 +9,10 @@ import {
   type IconConfig,
   type SelectionSummary,
 } from "@aom/engine";
+import favorIconUrl from "@/assets/resource-favor.png";
+import foodIconUrl from "@/assets/resource-food.png";
+import goldIconUrl from "@/assets/resource-gold.png";
+import woodIconUrl from "@/assets/resource-wood.png";
 import { ClassicHudPanel } from "./classic-hud-panel";
 
 export function CommandPanel({ game }: { game: GameHandle | null }) {
@@ -152,46 +156,84 @@ function CommandTile({
   progress?: number;
   onClick(): void;
 }) {
-  const costLabel = [
-    costFood > 0 ? `${costFood} food` : null,
-    costWood > 0 ? `${costWood} wood` : null,
-    costGold > 0 ? `${costGold} gold` : null,
-    costFavor > 0 ? `${costFavor} favor` : null,
-  ]
-    .filter((cost): cost is string => cost !== null)
-    .join(", ");
+  const costs = [
+    { label: "Food", value: costFood, iconUrl: foodIconUrl },
+    { label: "Wood", value: costWood, iconUrl: woodIconUrl },
+    { label: "Gold", value: costGold, iconUrl: goldIconUrl },
+    { label: "Favor", value: costFavor, iconUrl: favorIconUrl },
+  ].filter((cost) => cost.value > 0);
+  const costLabel = costs.map((cost) => `${cost.value} ${cost.label.toLowerCase()}`).join(", ");
   const accessibleLabel = costLabel ? `${label} — ${costLabel}` : label;
 
   return (
-    <button
-      type="button"
-      title={accessibleLabel}
-      aria-label={accessibleLabel}
-      disabled={disabled}
-      className="relative size-12 overflow-hidden border border-[#19130d] bg-[#17130f] [box-shadow:inset_0_0_0_1px_#c9b86f,inset_0_0_0_3px_#5e4b28,inset_0_0_7px_rgb(0_0_0/90%),0_1px_0_rgb(235_226_183/45%)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78] enabled:hover:brightness-115 enabled:active:translate-y-px disabled:cursor-not-allowed disabled:brightness-50 disabled:grayscale sm:size-10"
-      onClick={onClick}
-    >
-      <span
-        aria-hidden="true"
-        className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0.5 bg-left bg-no-repeat"
-        style={{
-          backgroundImage: icon ? `url(${icon.url})` : undefined,
-          backgroundSize: icon ? `${icon.columns * 100}% 100%` : undefined,
+    <div className="group relative size-12 sm:size-10">
+      <button
+        type="button"
+        aria-label={accessibleLabel}
+        aria-disabled={disabled}
+        className="relative size-full overflow-hidden border border-[#19130d] bg-[#17130f] [box-shadow:inset_0_0_0_1px_#c9b86f,inset_0_0_0_3px_#5e4b28,inset_0_0_7px_rgb(0_0_0/90%),0_1px_0_rgb(235_226_183/45%)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78] hover:brightness-115 active:translate-y-px aria-disabled:cursor-not-allowed aria-disabled:brightness-50 aria-disabled:grayscale aria-disabled:hover:brightness-50 aria-disabled:active:translate-y-0"
+        onClick={() => {
+          if (!disabled) {
+            onClick();
+          }
         }}
-      />
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-fine:hidden absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-1/2"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0.5 bg-left bg-no-repeat"
+          style={{
+            backgroundImage: icon ? `url(${icon.url})` : undefined,
+            backgroundSize: icon ? `${icon.columns * 100}% 100%` : undefined,
+          }}
+        />
 
-      {progress !== undefined && progress >= 0 && (
-        <div className="absolute inset-x-1 bottom-1 h-1 border border-black/80 bg-[#211a12]">
-          <div
-            className="h-full bg-[#d5bb5a] shadow-[inset_0_1px_0_rgb(255_246_171/65%)]"
-            style={{ width: `${progress * 100}%` }}
-          />
-        </div>
-      )}
-    </button>
+        {progress !== undefined && progress >= 0 && (
+          <div className="absolute inset-x-1 bottom-1 h-1 border border-black/80 bg-[#211a12]">
+            <div
+              className="h-full bg-[#d5bb5a] shadow-[inset_0_1px_0_rgb(255_246_171/65%)]"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+        )}
+      </button>
+      <RolloverHelp label={label} costs={costs} />
+    </div>
+  );
+}
+
+function RolloverHelp({
+  label,
+  costs,
+}: {
+  label: string;
+  costs: { label: string; value: number; iconUrl: string }[];
+}) {
+  return (
+    <div
+      role="tooltip"
+      aria-label="Rollover help"
+      className="pointer-events-none invisible fixed bottom-[9.625rem] left-0 z-40 min-h-20 w-80 bg-[#1d1a14]/75 p-3 font-serif text-[#f4eed8] opacity-0 [box-shadow:inset_0_1px_0_rgb(231_220_177/45%),inset_-1px_0_0_rgb(67_55_38/80%),0_-2px_8px_rgb(0_0_0/30%)] group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 sm:bottom-[8.375rem] sm:w-96"
+    >
+      <div className="text-base font-semibold [text-shadow:0_1px_1px_rgb(0_0_0/85%)] sm:text-sm">
+        {label}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 pt-2 text-base tabular-nums sm:text-sm">
+        {costs.map((cost) => (
+          <div key={cost.label} className="flex items-center gap-1">
+            <img
+              src={cost.iconUrl}
+              alt=""
+              className="h-5 w-8 shrink-0 bg-[#0c0a08] object-contain sm:h-4 sm:w-6"
+            />
+            <span className="sr-only">{cost.label}: </span>
+            <span>{cost.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

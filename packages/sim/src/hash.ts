@@ -89,6 +89,12 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.facing[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // Owner is shared gameplay state; a disagreement means different validation outcomes.
   for (let i = 0; i < world.count; i += 1) {
     word = world.owner[i]!;

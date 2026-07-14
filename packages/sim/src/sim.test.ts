@@ -19,6 +19,7 @@ import {
   RESOURCE_COUNT,
   TYPE_BARRACKS,
   TYPE_BERRY,
+  TYPE_GOLD_MINE,
   TYPE_HOUSE,
   TYPE_MILITIA,
   TYPE_TOWN_CENTER,
@@ -35,6 +36,7 @@ import {
   killUnit,
   MATCH_DRAW,
   MODE_BUILDING,
+  MODE_GATHERING,
   MODE_IDLE,
   NEUTRAL_OWNER,
   NO_TARGET,
@@ -114,12 +116,14 @@ describe("sim", () => {
       expect(a.posZ[index]).toBe(b.posZ[index]);
       expect(a.velX[index]).toBe(b.velX[index]);
       expect(a.velZ[index]).toBe(b.velZ[index]);
+      expect(a.facing[index]).toBe(b.facing[index]);
     }
 
     expect(a.posX.every((value, index) => value === b.posX[index])).toBe(true);
     expect(a.posZ.every((value, index) => value === b.posZ[index])).toBe(true);
     expect(a.velX.every((value, index) => value === b.velX[index])).toBe(true);
     expect(a.velZ.every((value, index) => value === b.velZ[index])).toBe(true);
+    expect(a.facing.every((value, index) => value === b.facing[index])).toBe(true);
   });
 
   test("drifting units stay in bounds", () => {
@@ -144,7 +148,13 @@ describe("sim", () => {
     const snapshot = createSnapshot(1000);
 
     spawnUnits(world, 1000);
+    world.facing[17] = 3;
     tickWorld(world);
+    world.mode[17] = MODE_GATHERING;
+    world.moving[17] = 0;
+    world.unitType[18] = TYPE_BERRY;
+    world.gatherNode[17] = unitIdAt(world, 18);
+    world.attackCooldown[17] = 7;
     writeSnapshot(world, snapshot);
 
     expect(snapshot.tick).toBe(world.tick);
@@ -154,7 +164,42 @@ describe("sim", () => {
       expect(snapshot.posX[index]).toBe(Math.fround(world.posX[index]!));
       expect(snapshot.posZ[index]).toBe(Math.fround(world.posZ[index]!));
       expect(snapshot.selected[index]).toBe(0);
+      expect(snapshot.facing[index]).toBe(world.facing[index]);
     }
+
+    expect(snapshot.mode[17]).toBe(MODE_GATHERING);
+    expect(snapshot.moving[17]).toBe(0);
+    expect(snapshot.gatherTargetType[17]).toBe(TYPE_BERRY);
+    expect(snapshot.actionCooldown[17]).toBe(7);
+  });
+
+  test("moving units face their heading and preserve it when stopped", () => {
+    const world = flatWorld(42);
+    const id = spawnUnit(world, 100, 100, 0, 0);
+
+    expect(world.facing[0]).toBe(5);
+
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [id],
+      targetX: 120,
+      targetZ: 100,
+    });
+    tickWorld(world);
+
+    expect(world.facing[0]).toBe(2);
+
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_STOP,
+      unitIds: [id],
+    });
+    tickWorld(world);
+
+    expect(world.facing[0]).toBe(2);
   });
 
   test("selection writes to snapshots and can be cleared", () => {
@@ -336,6 +381,16 @@ describe("packed entity ids", () => {
     // different commands — the hash must see that.
     expect(hashWorld(world)).not.toBe(before);
   });
+
+  test("facing changes are visible to the state hash", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 10);
+
+    const before = hashWorld(world);
+    world.facing[2] = 4;
+
+    expect(hashWorld(world)).not.toBe(before);
+  });
 });
 
 describe("ownership", () => {
@@ -451,6 +506,7 @@ describe("ownership", () => {
     spawnUnit(world, 10, 10, 0, 0, 0);
     spawnUnit(world, 20, 20, 0, 0, 1);
     spawnUnit(world, 30, 30, 0, 0, 2);
+    world.facing[2] = 3;
 
     killUnit(world, 0);
     tickWorld(world);
@@ -458,10 +514,12 @@ describe("ownership", () => {
     // The last unit (owner 2) swapped into slot 0 with its owner intact —
     // the applyDeaths copy-list checklist in action.
     expect(world.owner[0]).toBe(2);
+    expect(world.facing[0]).toBe(3);
 
     const snapshot = createSnapshot(8);
     writeSnapshot(world, snapshot);
     expect(snapshot.owner[0]).toBe(2);
+    expect(snapshot.facing[0]).toBe(3);
     expect(snapshot.owner[1]).toBe(1);
   });
 });
@@ -641,7 +699,7 @@ describe("death and swap-remove", () => {
 });
 
 describe("resources and nodes", () => {
-  test("node placement is seeded, mirrored, and identical across worlds", () => {
+  test("node placement is seeded, with mirrored forests and map-profiled gold", () => {
     const a = createWorld(1337);
     const b = createWorld(1337);
 
@@ -654,6 +712,7 @@ describe("resources and nodes", () => {
 
     let trees = 0;
     let berries = 0;
+    const goldMines: number[] = [];
 
     for (let i = 0; i < a.count; i += 1) {
       if (a.unitType[i] === TYPE_TREE) {
@@ -685,6 +744,12 @@ describe("resources and nodes", () => {
       if (a.unitType[i] === TYPE_BERRY) {
         berries += 1;
       }
+
+      if (a.unitType[i] === TYPE_GOLD_MINE) {
+        goldMines.push(i);
+        expect(a.owner[i]).toBe(NEUTRAL_OWNER);
+        expect(a.hp[i]).toBe(3000);
+      }
     }
 
     expect(trees).toBeGreaterThan(50);
@@ -693,6 +758,68 @@ describe("resources and nodes", () => {
     // map, not the rule. Most of both patches must survive placement.
     expect(berries).toBeGreaterThanOrEqual(8);
     expect(berries).toBeLessThanOrEqual(10);
+
+    // This map profile gives both players one starting, medium, and far mine.
+    expect(goldMines).toHaveLength(6);
+    const starts = [
+      [40, 40],
+      [216, 216],
+    ] as const;
+    const bands = [
+      [22, 32],
+      [50, 75],
+      [90, 115],
+    ] as const;
+
+    for (const [startX, startZ] of starts) {
+      for (const [minDistance, maxDistance] of bands) {
+        expect(
+          goldMines.some((i) => {
+            const dx = a.posX[i]! - startX;
+            const dz = a.posZ[i]! - startZ;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            return distance >= minDistance && distance <= maxDistance;
+          }),
+        ).toBe(true);
+      }
+    }
+
+    const goldMineSpacing = [6, 10, 12] as const;
+
+    for (let mineIndex = 0; mineIndex < goldMines.length; mineIndex += 1) {
+      const mine = goldMines[mineIndex]!;
+      const placementIndex = Math.floor(mineIndex / starts.length);
+
+      for (let earlierIndex = 0; earlierIndex < mineIndex; earlierIndex += 1) {
+        const earlierMine = goldMines[earlierIndex]!;
+        const dx = a.posX[mine]! - a.posX[earlierMine]!;
+        const dz = a.posZ[mine]! - a.posZ[earlierMine]!;
+
+        expect(Math.sqrt(dx * dx + dz * dz)).toBeGreaterThanOrEqual(
+          goldMineSpacing[placementIndex]!,
+        );
+      }
+
+      for (let node = 0; node < a.count; node += 1) {
+        if (a.unitType[node] !== TYPE_TREE && a.unitType[node] !== TYPE_BERRY) continue;
+
+        const dx = a.posX[mine]! - a.posX[node]!;
+        const dz = a.posZ[mine]! - a.posZ[node]!;
+
+        expect(Math.sqrt(dx * dx + dz * dz)).toBeGreaterThanOrEqual(2);
+      }
+    }
+
+    // Seeded randomness is reproducible without forcing point symmetry.
+    expect(
+      goldMines.some((i) => {
+        const mirrorX = SIM_MAP_SIZE - a.posX[i]!;
+        const mirrorZ = SIM_MAP_SIZE - a.posZ[i]!;
+        return !goldMines.some(
+          (j) => Math.abs(a.posX[j]! - mirrorX) < 0.001 && Math.abs(a.posZ[j]! - mirrorZ) < 0.001,
+        );
+      }),
+    ).toBe(true);
   });
 
   test("armies ignore neutral nodes and nodes never fight or move", () => {
@@ -934,6 +1061,30 @@ describe("gathering", () => {
     expect(world.hp[2]!).toBeLessThan(UNIT_TYPES[TYPE_TREE]!.maxHp);
     // And the villager went BACK to work after depositing.
     expect(world.mode[1]).not.toBe(0);
+  });
+
+  test("gold mines use the existing gather, haul, and deposit loop", () => {
+    const world = flatWorld(42);
+    spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
+    const villager = spawnUnit(world, 106, 102, 0, 0, 0);
+    const mine = spawnUnit(world, 112, 102, 0, 0, NEUTRAL_OWNER, TYPE_GOLD_MINE);
+    const goldBefore = world.stockpiles[GOLD]!;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [villager],
+      targetId: mine,
+    });
+
+    for (let t = 0; t < 400; t += 1) {
+      tickWorld(world);
+    }
+
+    expect(world.stockpiles[GOLD]!).toBeGreaterThan(goldBefore);
+    expect(world.hp[2]!).toBeLessThan(UNIT_TYPES[TYPE_GOLD_MINE]!.maxHp);
+    expect(world.mode[1]).not.toBe(MODE_IDLE);
   });
 
   test("a depleted node hands the villager to a neighbor", () => {
