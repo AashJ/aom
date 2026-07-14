@@ -148,7 +148,8 @@ export async function createGame(
   // Init handoff: createWorld(seed) derives terrain from the same seed the sim owns,
   // so rendering receives identical heights without a per-tick channel.
   const heights = world.heights;
-  spawnUnits(world, 15, beginInfo ? beginInfo.players.map((p) => p.id) : [0]);
+  const ownerIds = beginInfo ? beginInfo.players.map((player) => player.id) : [0];
+  spawnUnits(world, 3 * ownerIds.length, ownerIds);
 
   for (let i = 0; i < world.count; i += 1) {
     if (world.owner[i] !== selfPlayerId || world.unitType[i] !== TYPE_TOWN_CENTER) continue;
