@@ -2227,6 +2227,47 @@ describe("commands and separation", () => {
     }
   });
 
+  test("flow steering never enters a blocked diagonal tile", () => {
+    const world = flatWorld(7);
+    const mover = spawnUnit(world, 100, 100, 0, 0);
+    const blockedTile = 101 * MAP_TILES + 101;
+
+    world.walkable[blockedTile] = 0;
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [mover],
+      targetX: 103,
+      targetZ: 103,
+    });
+
+    for (let tick = 0; tick < 80; tick += 1) {
+      tickWorld(world);
+      const occupiedTile =
+        Math.floor(world.posZ[mover]!) * MAP_TILES + Math.floor(world.posX[mover]!);
+
+      expect(occupiedTile).not.toBe(blockedTile);
+    }
+
+    expect(world.posX[mover]).toBe(103);
+    expect(world.posZ[mover]).toBe(103);
+  });
+
+  test("separation cannot push a unit diagonally through a blocked corner", () => {
+    const world = flatWorld(7);
+    const pushed = spawnUnit(world, 100.98, 100.98, 0, 0);
+
+    spawnUnit(world, 100.78, 100.78, 0, 0);
+    world.walkable[100 * MAP_TILES + 101] = 0;
+    world.walkable[101 * MAP_TILES + 100] = 0;
+
+    tickWorld(world);
+
+    expect(world.posX[pushed]).toBeLessThan(101);
+    expect(world.posZ[pushed]).toBeLessThan(101);
+  });
+
   test("scripted commands stay hash-identical across two worlds", () => {
     // The M3 exit-criteria test: same seed, same command script, compare the
     // full state hash EVERY tick so the first divergent tick names itself —

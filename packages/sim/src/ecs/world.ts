@@ -266,6 +266,44 @@ export function setFacingToward(
   world.facingZ[index] = dz * inverseLength;
 }
 
+function isWalkableStep(
+  world: World,
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+): boolean {
+  const fromTile = cellOf(fromX, fromZ);
+  const toTile = cellOf(toX, toZ);
+
+  // Units spawned on an obstructed tile must be able to move within it until
+  // they cross onto walkable ground.
+  if (toTile === fromTile) {
+    return true;
+  }
+
+  if (world.walkable[toTile] !== 1) {
+    return false;
+  }
+
+  const fromTileX = fromTile & (MAP_TILES - 1);
+  const fromTileZ = fromTile >>> 8;
+  const toTileX = toTile & (MAP_TILES - 1);
+  const toTileZ = toTile >>> 8;
+
+  if (fromTileX === toTileX || fromTileZ === toTileZ) {
+    return true;
+  }
+
+  // A combined seek + separation push is shorter than one tile on each axis,
+  // so a diagonal transition can only cross these two orthogonal side tiles.
+  // Requiring both prevents the final blended vector from cutting a corner
+  // even when its destination tile is itself walkable.
+  const xSideTile = fromTileZ * MAP_TILES + toTileX;
+  const zSideTile = toTileZ * MAP_TILES + fromTileX;
+  return world.walkable[xSideTile] === 1 && world.walkable[zSideTile] === 1;
+}
+
 export function spawnUnit(
   world: World,
   x: number,
@@ -1611,29 +1649,21 @@ export function tickWorld(world: World): void {
     const z = oldZ + world.pushZ[i]!;
     const nx = x < 0 ? 0 : x > SIM_MAP_SIZE ? SIM_MAP_SIZE : x;
     const nz = z < 0 ? 0 : z > SIM_MAP_SIZE ? SIM_MAP_SIZE : z;
-    const curTile = cellOf(oldX, oldZ);
-    const nextTile = cellOf(nx, nz);
-
-    // Same-tile moves must stay legal or a unit spawned on rock can never leave.
-    if (world.walkable[nextTile] === 1 || nextTile === curTile) {
+    if (isWalkableStep(world, oldX, oldZ, nx, nz)) {
       world.posX[i] = nx;
       world.posZ[i] = nz;
       continue;
     }
 
-    const xSlideTile = cellOf(nx, oldZ);
-
     // Axis sliding turns head-on wall hits into smooth wall-following; the x-then-z
     // preference is arbitrary but fixed for determinism.
-    if (world.walkable[xSlideTile] === 1 || xSlideTile === curTile) {
+    if (nx !== oldX && isWalkableStep(world, oldX, oldZ, nx, oldZ)) {
       world.posX[i] = nx;
       world.posZ[i] = oldZ;
       continue;
     }
 
-    const zSlideTile = cellOf(oldX, nz);
-
-    if (world.walkable[zSlideTile] === 1 || zSlideTile === curTile) {
+    if (nz !== oldZ && isWalkableStep(world, oldX, oldZ, oldX, nz)) {
       world.posX[i] = oldX;
       world.posZ[i] = nz;
     }
