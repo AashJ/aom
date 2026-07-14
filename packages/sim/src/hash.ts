@@ -58,6 +58,8 @@ export function hashWorld(world: World): number {
     world.velZ,
     world.moveTargetX,
     world.moveTargetZ,
+    world.facingX,
+    world.facingZ,
   ];
 
   for (let arrayIndex = 0; arrayIndex < arrays.length; arrayIndex += 1) {
@@ -85,12 +87,6 @@ export function hashWorld(world: World): number {
 
   for (let i = 0; i < world.count; i += 1) {
     word = world.moving[i]!;
-    h ^= word;
-    h = Math.imul(h, FNV_PRIME);
-  }
-
-  for (let i = 0; i < world.count; i += 1) {
-    word = world.facing[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

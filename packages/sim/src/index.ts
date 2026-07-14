@@ -47,7 +47,7 @@ export {
   spawnResourceNodes,
   unitIdAt,
 } from "./ecs/world";
-export { buildFlowField, cellOf, type FlowField } from "./flow";
+export { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "./flow";
 export * from "./hash";
 export * from "./snapshot";
 export * from "./visibility";

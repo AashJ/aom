@@ -11,7 +11,7 @@ import {
   COMMAND_TRAIN,
   type Command,
 } from "../commands";
-import { buildFlowField, cellOf, type FlowField } from "../flow";
+import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
 import {
@@ -78,6 +78,8 @@ const START_CORNERS = [
   [40, 216],
 ] as const;
 const GOLD_PLACEMENT_ATTEMPTS = 64;
+const INV_SQRT2 = 1 / Math.sqrt(2);
+const sampledFlowDirection = new Float64Array(2);
 const GOLD_OTHER_NODE_CLEARANCE = 2;
 // This is content for the current map, not a universal economy rule. Future
 // maps can choose different counts and ranges without changing mine behavior.
@@ -109,8 +111,10 @@ export interface World {
   moveTargetX: Float64Array;
   moveTargetZ: Float64Array;
   moving: Uint8Array;
-  // Clockwise world-space heading sectors: 0 = +Z, 2 = +X, 4 = -Z, 6 = -X.
-  facing: Uint16Array;
+  // Unit-length world-space heading. A vector avoids deterministic-sim trig and
+  // lets the renderer rotate 3D models through the full circle.
+  facingX: Float64Array;
+  facingZ: Float64Array;
   // Actual player ids, which are NOT guaranteed contiguous - lobby churn skips numbers;
   // 255 owners is plenty.
   owner: Uint8Array;
@@ -195,7 +199,8 @@ export function createWorld(seed: number): World {
     moveTargetX: new Float64Array(MAX_UNITS),
     moveTargetZ: new Float64Array(MAX_UNITS),
     moving: new Uint8Array(MAX_UNITS),
-    facing: new Uint16Array(MAX_UNITS),
+    facingX: new Float64Array(MAX_UNITS),
+    facingZ: new Float64Array(MAX_UNITS),
     owner: new Uint8Array(MAX_UNITS),
     playerIds: new Uint8Array(MAX_PLAYERS),
     playerSlotById,
@@ -256,19 +261,9 @@ export function setFacingToward(
     return;
   }
 
-  const absX = Math.abs(dx);
-  const absZ = Math.abs(dz);
-  const diagonalThreshold = 0.414_213_562_373_095_03;
-
-  if (absZ <= absX * diagonalThreshold) {
-    world.facing[index] = dx > 0 ? 2 : 6;
-  } else if (absX <= absZ * diagonalThreshold) {
-    world.facing[index] = dz > 0 ? 0 : 4;
-  } else if (dx > 0) {
-    world.facing[index] = dz > 0 ? 1 : 3;
-  } else {
-    world.facing[index] = dz > 0 ? 7 : 5;
-  }
+  const inverseLength = 1 / Math.sqrt(dx * dx + dz * dz);
+  world.facingX[index] = dx * inverseLength;
+  world.facingZ[index] = dz * inverseLength;
 }
 
 export function spawnUnit(
@@ -310,7 +305,8 @@ export function spawnUnit(
   world.moveTargetZ[index] = 0;
   world.moving[index] = 0;
   // The fixed camera looks from -X/-Z, so new idle units begin front-facing.
-  world.facing[index] = 5;
+  world.facingX[index] = -INV_SQRT2;
+  world.facingZ[index] = -INV_SQRT2;
   setFacingToward(world, index, x + vx, z + vz);
   world.owner[index] = owner;
   world.unitType[index] = type;
@@ -1512,9 +1508,9 @@ export function tickWorld(world: World): void {
 
         // Most moving units follow their cached goal field.
         if (field !== null) {
-          const cell = cellOf(x, z);
-          const fdx = field.dirX[cell]!;
-          const fdz = field.dirZ[cell]!;
+          sampleFlowDirection(field, x, z, sampledFlowDirection);
+          const fdx = sampledFlowDirection[0]!;
+          const fdz = sampledFlowDirection[1]!;
 
           if (fdx !== 0 || fdz !== 0) {
             pushX = fdx * step;
@@ -1739,7 +1735,8 @@ function applyDeaths(world: World): void {
       world.moveTargetX[i] = world.moveTargetX[last]!;
       world.moveTargetZ[i] = world.moveTargetZ[last]!;
       world.moving[i] = world.moving[last]!;
-      world.facing[i] = world.facing[last]!;
+      world.facingX[i] = world.facingX[last]!;
+      world.facingZ[i] = world.facingZ[last]!;
       world.owner[i] = world.owner[last]!;
       world.unitType[i] = world.unitType[last]!;
       world.hp[i] = world.hp[last]!;

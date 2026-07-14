@@ -9,7 +9,8 @@ export interface RenderSnapshot {
   ids: Uint32Array;
   posX: Float32Array;
   posZ: Float32Array;
-  facing: Uint16Array;
+  facingX: Float32Array;
+  facingZ: Float32Array;
   moving: Uint8Array;
   mode: Uint8Array;
   gatherTargetType: Uint8Array;
@@ -36,7 +37,8 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     ids: new Uint32Array(capacity),
     posX: new Float32Array(capacity),
     posZ: new Float32Array(capacity),
-    facing: new Uint16Array(capacity),
+    facingX: new Float32Array(capacity),
+    facingZ: new Float32Array(capacity),
     moving: new Uint8Array(capacity),
     mode: new Uint8Array(capacity),
     gatherTargetType: new Uint8Array(capacity).fill(255),
@@ -81,7 +83,8 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     // while sim keeps f64.
     out.posX[i] = world.posX[i]!;
     out.posZ[i] = world.posZ[i]!;
-    out.facing[i] = world.facing[i]!;
+    out.facingX[i] = world.facingX[i]!;
+    out.facingZ[i] = world.facingZ[i]!;
     out.moving[i] = world.moving[i]!;
     out.mode[i] = world.mode[i]!;
     const gatherTarget = resolveId(world, world.gatherNode[i]!);

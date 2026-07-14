@@ -71,6 +71,7 @@ export interface GameHandle {
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
   producerProgress(): number;
+  producerQueueLength(): number;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
   onMatchEnd(cb: (winner: number) => void): () => void;
   onStats(cb: StatsCallback): () => void;
@@ -747,6 +748,15 @@ export async function createGame(
       }
 
       return -1;
+    },
+    producerQueueLength(): number {
+      for (let i = 0; i < currSnap.count; i += 1) {
+        if (currSnap.ids[i] === lastProducerId) {
+          return currSnap.trainQueueLength[i]!;
+        }
+      }
+
+      return 0;
     },
     onSelection(cb: (sel: SelectionSummary) => void): () => void {
       selectionCbs.add(cb);

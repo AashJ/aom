@@ -117,14 +117,16 @@ describe("sim", () => {
       expect(a.posZ[index]).toBe(b.posZ[index]);
       expect(a.velX[index]).toBe(b.velX[index]);
       expect(a.velZ[index]).toBe(b.velZ[index]);
-      expect(a.facing[index]).toBe(b.facing[index]);
+      expect(a.facingX[index]).toBe(b.facingX[index]);
+      expect(a.facingZ[index]).toBe(b.facingZ[index]);
     }
 
     expect(a.posX.every((value, index) => value === b.posX[index])).toBe(true);
     expect(a.posZ.every((value, index) => value === b.posZ[index])).toBe(true);
     expect(a.velX.every((value, index) => value === b.velX[index])).toBe(true);
     expect(a.velZ.every((value, index) => value === b.velZ[index])).toBe(true);
-    expect(a.facing.every((value, index) => value === b.facing[index])).toBe(true);
+    expect(a.facingX.every((value, index) => value === b.facingX[index])).toBe(true);
+    expect(a.facingZ.every((value, index) => value === b.facingZ[index])).toBe(true);
   });
 
   test("drifting units stay in bounds", () => {
@@ -149,7 +151,8 @@ describe("sim", () => {
     const snapshot = createSnapshot(1000);
 
     spawnUnits(world, 1000);
-    world.facing[17] = 3;
+    world.facingX[17] = 0.25;
+    world.facingZ[17] = -0.75;
     tickWorld(world);
     world.mode[17] = MODE_GATHERING;
     world.moving[17] = 0;
@@ -165,7 +168,8 @@ describe("sim", () => {
       expect(snapshot.posX[index]).toBe(Math.fround(world.posX[index]!));
       expect(snapshot.posZ[index]).toBe(Math.fround(world.posZ[index]!));
       expect(snapshot.selected[index]).toBe(0);
-      expect(snapshot.facing[index]).toBe(world.facing[index]);
+      expect(snapshot.facingX[index]).toBe(Math.fround(world.facingX[index]!));
+      expect(snapshot.facingZ[index]).toBe(Math.fround(world.facingZ[index]!));
     }
 
     expect(snapshot.mode[17]).toBe(MODE_GATHERING);
@@ -178,7 +182,8 @@ describe("sim", () => {
     const world = flatWorld(42);
     const id = spawnUnit(world, 100, 100, 0, 0);
 
-    expect(world.facing[0]).toBe(5);
+    expect(world.facingX[0]).toBeCloseTo(-1 / Math.sqrt(2));
+    expect(world.facingZ[0]).toBeCloseTo(-1 / Math.sqrt(2));
 
     enqueueCommand(world, {
       tick: 0,
@@ -190,7 +195,8 @@ describe("sim", () => {
     });
     tickWorld(world);
 
-    expect(world.facing[0]).toBe(2);
+    expect(world.facingX[0]).toBeCloseTo(1);
+    expect(world.facingZ[0]).toBeCloseTo(0);
 
     enqueueCommand(world, {
       tick: world.tick,
@@ -200,7 +206,30 @@ describe("sim", () => {
     });
     tickWorld(world);
 
-    expect(world.facing[0]).toBe(2);
+    expect(world.facingX[0]).toBeCloseTo(1);
+    expect(world.facingZ[0]).toBeCloseTo(0);
+  });
+
+  test("non-octant move orders produce continuous headings", () => {
+    const world = flatWorld(42);
+    const id = spawnUnit(world, 100, 100, 0, 0);
+
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [id],
+      targetX: 120,
+      targetZ: 107,
+    });
+    tickWorld(world);
+
+    expect(world.facingX[0]).toBeGreaterThan(0);
+    expect(world.facingZ[0]).toBeGreaterThan(0);
+    expect(world.facingX[0]).not.toBeCloseTo(world.facingZ[0]!);
+    expect(
+      world.facingX[0]! * world.facingX[0]! + world.facingZ[0]! * world.facingZ[0]!,
+    ).toBeCloseTo(1);
   });
 
   test("selection writes to snapshots and can be cleared", () => {
@@ -388,7 +417,7 @@ describe("packed entity ids", () => {
     spawnUnits(world, 10);
 
     const before = hashWorld(world);
-    world.facing[2] = 4;
+    world.facingX[2] = 0.125;
 
     expect(hashWorld(world)).not.toBe(before);
   });
@@ -517,7 +546,8 @@ describe("ownership", () => {
     spawnUnit(world, 10, 10, 0, 0, 0);
     spawnUnit(world, 20, 20, 0, 0, 1);
     spawnUnit(world, 30, 30, 0, 0, 2);
-    world.facing[2] = 3;
+    world.facingX[2] = 0.6;
+    world.facingZ[2] = 0.8;
 
     killUnit(world, 0);
     tickWorld(world);
@@ -525,12 +555,14 @@ describe("ownership", () => {
     // The last unit (owner 2) swapped into slot 0 with its owner intact —
     // the applyDeaths copy-list checklist in action.
     expect(world.owner[0]).toBe(2);
-    expect(world.facing[0]).toBe(3);
+    expect(world.facingX[0]).toBe(0.6);
+    expect(world.facingZ[0]).toBe(0.8);
 
     const snapshot = createSnapshot(8);
     writeSnapshot(world, snapshot);
     expect(snapshot.owner[0]).toBe(2);
-    expect(snapshot.facing[0]).toBe(3);
+    expect(snapshot.facingX[0]).toBeCloseTo(0.6);
+    expect(snapshot.facingZ[0]).toBeCloseTo(0.8);
     expect(snapshot.owner[1]).toBe(1);
   });
 });

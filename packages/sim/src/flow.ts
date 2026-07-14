@@ -25,15 +25,17 @@ const NEIGHBOR_COST = new Uint8Array([
   STRAIGHT_COST,
   DIAGONAL_COST,
 ]);
-// Unit-length direction from a relaxed neighbor back toward the cell that
-// relaxed it — only 8 possibilities, so no sqrt runs inside the build loops.
+// Unit-length neighbor vectors. The search still uses an eight-neighbor grid,
+// but the final flow at each cell blends every downhill neighbor instead of
+// storing one predecessor. Runtime sampling then interpolates those vectors so
+// steering is not locked to eight headings.
 const INV_SQRT2 = 1 / Math.sqrt(2);
-const TOWARD_PRED_X = new Float32Array(8);
-const TOWARD_PRED_Z = new Float32Array(8);
+const NEIGHBOR_UNIT_X = new Float32Array(8);
+const NEIGHBOR_UNIT_Z = new Float32Array(8);
 for (let i = 0; i < 8; i += 1) {
   const scale = NEIGHBOR_DX[i]! !== 0 && NEIGHBOR_DZ[i]! !== 0 ? INV_SQRT2 : 1;
-  TOWARD_PRED_X[i] = -NEIGHBOR_DX[i]! * scale;
-  TOWARD_PRED_Z[i] = -NEIGHBOR_DZ[i]! * scale;
+  NEIGHBOR_UNIT_X[i] = NEIGHBOR_DX[i]! * scale;
+  NEIGHBOR_UNIT_Z[i] = NEIGHBOR_DZ[i]! * scale;
 }
 
 // Module-level scratch is safe because builds are synchronous and single-threaded.
@@ -152,16 +154,106 @@ export function buildFlowField(walkable: Uint8Array, goalCell: number): FlowFiel
 
         if (candidateCost < costs[neighbor]!) {
           costs[neighbor] = candidateCost;
-          // The relaxation that sets a cell's final cost is its optimal
-          // predecessor, so the last write here IS the direction field —
-          // no separate derivation pass needed.
-          dirX[neighbor] = TOWARD_PRED_X[i]!;
-          dirZ[neighbor] = TOWARD_PRED_Z[i]!;
           bucketPush(candidateCost, neighbor);
         }
       }
     }
   }
 
+  // Blend all legal downhill neighbors into a smooth vector at each cell. The
+  // cost drop is the weight, so strong descent wins without discarding useful
+  // side gradients around obstacles.
+  for (let cell = 0; cell < CELL_COUNT; cell += 1) {
+    const centerCost = costs[cell]!;
+
+    if (centerCost === 0 || centerCost === UNVISITED || walkable[cell] !== 1) {
+      continue;
+    }
+
+    const tileX = cell & (MAP_TILES - 1);
+    const tileZ = cell >>> 8;
+    let x = 0;
+    let z = 0;
+
+    for (let i = 0; i < NEIGHBOR_DX.length; i += 1) {
+      const dx = NEIGHBOR_DX[i]!;
+      const dz = NEIGHBOR_DZ[i]!;
+      const neighborX = tileX + dx;
+      const neighborZ = tileZ + dz;
+
+      if (neighborX < 0 || neighborX >= MAP_TILES || neighborZ < 0 || neighborZ >= MAP_TILES) {
+        continue;
+      }
+
+      const neighbor = neighborZ * MAP_TILES + neighborX;
+      const neighborCost = costs[neighbor]!;
+
+      if (walkable[neighbor] !== 1 || neighborCost >= centerCost) {
+        continue;
+      }
+
+      if (dx !== 0 && dz !== 0) {
+        const sideA = tileZ * MAP_TILES + neighborX;
+        const sideB = neighborZ * MAP_TILES + tileX;
+
+        if (walkable[sideA] !== 1 || walkable[sideB] !== 1) {
+          continue;
+        }
+      }
+
+      const drop = centerCost - neighborCost;
+      x += NEIGHBOR_UNIT_X[i]! * drop;
+      z += NEIGHBOR_UNIT_Z[i]! * drop;
+    }
+
+    const lengthSq = x * x + z * z;
+
+    if (lengthSq > 0) {
+      const inverseLength = 1 / Math.sqrt(lengthSq);
+      dirX[cell] = x * inverseLength;
+      dirZ[cell] = z * inverseLength;
+    }
+  }
+
   return { goalCell, dirX, dirZ };
+}
+
+export function sampleFlowDirection(
+  field: FlowField,
+  worldX: number,
+  worldZ: number,
+  outDirection: Float64Array,
+): void {
+  // Bilinear interpolation across the four neighboring tile vectors removes
+  // cell-boundary heading snaps while keeping integer-aligned move orders on
+  // their exact row/column.
+  const gridX = Math.min(MAP_TILES - 1, Math.max(0, worldX));
+  const gridZ = Math.min(MAP_TILES - 1, Math.max(0, worldZ));
+  const x0 = Math.floor(gridX);
+  const z0 = Math.floor(gridZ);
+  const x1 = Math.min(MAP_TILES - 1, x0 + 1);
+  const z1 = Math.min(MAP_TILES - 1, z0 + 1);
+  const tx = gridX - x0;
+  const tz = gridZ - z0;
+  const i00 = z0 * MAP_TILES + x0;
+  const i10 = z0 * MAP_TILES + x1;
+  const i01 = z1 * MAP_TILES + x0;
+  const i11 = z1 * MAP_TILES + x1;
+  const topX = field.dirX[i00]! + (field.dirX[i10]! - field.dirX[i00]!) * tx;
+  const topZ = field.dirZ[i00]! + (field.dirZ[i10]! - field.dirZ[i00]!) * tx;
+  const bottomX = field.dirX[i01]! + (field.dirX[i11]! - field.dirX[i01]!) * tx;
+  const bottomZ = field.dirZ[i01]! + (field.dirZ[i11]! - field.dirZ[i01]!) * tx;
+  const x = topX + (bottomX - topX) * tz;
+  const z = topZ + (bottomZ - topZ) * tz;
+  const lengthSq = x * x + z * z;
+
+  if (lengthSq === 0) {
+    outDirection[0] = 0;
+    outDirection[1] = 0;
+    return;
+  }
+
+  const inverseLength = 1 / Math.sqrt(lengthSq);
+  outDirection[0] = x * inverseLength;
+  outDirection[1] = z * inverseLength;
 }
