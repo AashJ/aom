@@ -9,6 +9,7 @@ import {
   type ModelAnimationState,
 } from "./model-animation";
 import { MODEL_CONFIGS } from "./model-assets";
+import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import { modelAnimationTime, resolveModelPresentation } from "./unit-presentation";
 
 const INSTANCE_FLOATS = 37;
@@ -43,7 +44,7 @@ export interface ModelRenderer {
     curr: RenderSnapshot,
     alpha: number,
     heights: Float32Array,
-  ): void;
+  ): RendererStatistics;
 }
 
 function uploadModel(
@@ -298,9 +299,11 @@ export async function createModelRenderer(
     nodeMatrix: mat4.create(),
   };
   const attachmentMatrix = mat4.create();
+  const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
 
   return {
-    draw(pass, queue, viewProj, prev, curr, alpha, heights): void {
+    draw(pass, queue, viewProj, prev, curr, alpha, heights): RendererStatistics {
+      resetRendererStatistics(statistics);
       counts.fill(0);
 
       for (let i = 0; i < curr.count; i += 1) {
@@ -419,7 +422,7 @@ export async function createModelRenderer(
         staging.set(attachmentMatrix, attachmentOffset + 21);
       }
 
-      if (totalInstances === 0) return;
+      if (totalInstances === 0) return statistics;
       queue.writeBuffer(instanceBuffer, 0, staging, 0, totalInstances * INSTANCE_FLOATS);
       uniformStaging.set(viewProj);
       queue.writeBuffer(uniformBuffer, 0, uniformStaging);
@@ -435,8 +438,10 @@ export async function createModelRenderer(
           pass.setIndexBuffer(primitive.indexBuffer, primitive.indexFormat);
           pass.setBindGroup(1, primitive.bindGroup);
           pass.drawIndexed(primitive.indexCount, count, 0, 0, firstInstances[modelIndex]!);
+          recordDraw(statistics, count);
         }
       }
+      return statistics;
     },
   };
 }

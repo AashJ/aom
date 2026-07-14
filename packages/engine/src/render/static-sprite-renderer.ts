@@ -1,6 +1,7 @@
 import { UNIT_TYPES, VERTS_PER_ROW, heightAt, type RenderSnapshot } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
+import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import { UNIT_PRESENTATIONS, type StaticSpritePresentation } from "./unit-presentation";
 
 const INSTANCE_FLOATS = 15;
@@ -26,7 +27,7 @@ export interface StaticSpriteRenderer {
     ghostX: number,
     ghostZ: number,
     ghostValid: boolean,
-  ): void;
+  ): RendererStatistics;
 }
 
 const spriteImages = new Map<string, Promise<ImageBitmap>>();
@@ -79,6 +80,7 @@ export async function createStaticSpriteRenderer(
   const counts = new Uint32Array(UNIT_PRESENTATIONS.length);
   const firstInstances = new Uint32Array(UNIT_PRESENTATIONS.length);
   const writeOffsets = new Uint32Array(UNIT_PRESENTATIONS.length);
+  const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -229,6 +231,7 @@ export async function createStaticSpriteRenderer(
       ghostZ,
       ghostValid,
     ) {
+      resetRendererStatistics(statistics);
       counts.fill(0);
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
@@ -297,7 +300,7 @@ export async function createStaticSpriteRenderer(
         totalInstances += 1;
       }
 
-      if (totalInstances === 0) return;
+      if (totalInstances === 0) return statistics;
       queue.writeBuffer(instanceBuffer, 0, staging, 0, totalInstances * INSTANCE_FLOATS);
       uniformStaging.set(viewProj);
       uniformStaging[16] = viewProj[0]!;
@@ -316,11 +319,14 @@ export async function createStaticSpriteRenderer(
         if (count === 0) continue;
         pass.setBindGroup(0, resources[type]!.bindGroup);
         pass.drawIndexed(indexData.length, count, 0, 0, firstInstances[type]!);
+        recordDraw(statistics, count);
       }
       if (ghostFirstInstance >= 0) {
         pass.setBindGroup(0, resources[ghostType]!.bindGroup);
         pass.drawIndexed(indexData.length, 1, 0, 0, ghostFirstInstance);
+        recordDraw(statistics, 1);
       }
+      return statistics;
     },
   };
 }

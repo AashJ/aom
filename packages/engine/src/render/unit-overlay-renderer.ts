@@ -1,6 +1,7 @@
 import { UNIT_TYPES, VERTS_PER_ROW, heightAt, type RenderSnapshot } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import overlaysWgsl from "../shaders/unit-overlays.wgsl?raw";
+import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import { UNIT_PRESENTATIONS } from "./unit-presentation";
 
 const RING_SEGMENTS = 32;
@@ -18,7 +19,7 @@ export interface UnitOverlayRenderer {
     curr: RenderSnapshot,
     alpha: number,
     heights: Float32Array,
-  ): number;
+  ): RendererStatistics;
 }
 
 export function createUnitOverlayRenderer(
@@ -135,9 +136,11 @@ export function createUnitOverlayRenderer(
     { bytesPerRow: VERTS_PER_ROW * 4, rowsPerImage: VERTS_PER_ROW },
     { width: VERTS_PER_ROW, height: VERTS_PER_ROW },
   );
+  const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
 
   return {
-    draw(pass, queue, viewProj, prev, curr, alpha, terrainHeights): number {
+    draw(pass, queue, viewProj, prev, curr, alpha, terrainHeights): RendererStatistics {
+      resetRendererStatistics(statistics);
       let count = 0;
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
@@ -164,7 +167,7 @@ export function createUnitOverlayRenderer(
         count += 1;
       }
 
-      if (count === 0) return 0;
+      if (count === 0) return statistics;
       queue.writeBuffer(instanceBuffer, 0, staging, 0, count * INSTANCE_FLOATS);
       uniformStaging.set(viewProj);
       uniformStaging[16] = viewProj[0]!;
@@ -180,7 +183,8 @@ export function createUnitOverlayRenderer(
       pass.setVertexBuffer(1, instanceBuffer);
       pass.setIndexBuffer(indexBuffer, "uint16");
       pass.drawIndexed(indexData.length, count);
-      return count;
+      recordDraw(statistics, count);
+      return statistics;
     },
   };
 }

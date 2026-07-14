@@ -1,8 +1,12 @@
 import type { RenderSnapshot } from "@aom/sim";
 import { createModelRenderer } from "./model-renderer";
+import {
+  addRendererStatistics,
+  resetRendererStatistics,
+  type RendererStatistics,
+} from "./render-statistics";
 import { createStaticSpriteRenderer } from "./static-sprite-renderer";
 import { createUnitOverlayRenderer } from "./unit-overlay-renderer";
-import { UNIT_PRESENTATIONS } from "./unit-presentation";
 
 export interface UnitsRenderer {
   draw(
@@ -18,7 +22,7 @@ export interface UnitsRenderer {
     ghostX: number,
     ghostZ: number,
     ghostValid: boolean,
-  ): number;
+  ): RendererStatistics;
 }
 
 export async function createUnitsRenderer(
@@ -32,6 +36,7 @@ export async function createUnitsRenderer(
     createStaticSpriteRenderer(device, format, maxInstances, heights),
   ]);
   const overlays = createUnitOverlayRenderer(device, format, maxInstances, heights);
+  const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
 
   return {
     draw(
@@ -47,33 +52,33 @@ export async function createUnitsRenderer(
       ghostX,
       ghostZ,
       ghostValid,
-    ): number {
-      models.draw(pass, queue, viewProj, prev, curr, alpha, terrainHeights);
-      sprites.draw(
-        pass,
-        queue,
-        viewProj,
-        prev,
-        curr,
-        alpha,
-        terrainHeights,
-        ghostType,
-        ghostX,
-        ghostZ,
-        ghostValid,
+    ): RendererStatistics {
+      resetRendererStatistics(statistics);
+      addRendererStatistics(
+        statistics,
+        models.draw(pass, queue, viewProj, prev, curr, alpha, terrainHeights),
       );
-      const visibleInstances = overlays.draw(
-        pass,
-        queue,
-        viewProj,
-        prev,
-        curr,
-        alpha,
-        terrainHeights,
+      addRendererStatistics(
+        statistics,
+        sprites.draw(
+          pass,
+          queue,
+          viewProj,
+          prev,
+          curr,
+          alpha,
+          terrainHeights,
+          ghostType,
+          ghostX,
+          ghostZ,
+          ghostValid,
+        ),
       );
-      // Keep the existing public metric stable; render statistics ownership is handled separately.
-      const ghostInstances = ghostType >= 0 && UNIT_PRESENTATIONS[ghostType] ? 1 : 0;
-      return visibleInstances + ghostInstances;
+      addRendererStatistics(
+        statistics,
+        overlays.draw(pass, queue, viewProj, prev, curr, alpha, terrainHeights),
+      );
+      return statistics;
     },
   };
 }

@@ -43,7 +43,6 @@ import { createGpuTimer } from "./render/gpu-timer";
 import { createFogRenderer } from "./render/fog";
 import { createMarkerRenderer } from "./render/marker";
 import { createMinimapRenderer } from "./render/minimap";
-import { UNIT_PRESENTATIONS } from "./render/unit-presentation";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
@@ -168,7 +167,6 @@ export async function createGame(
   updateVisibility(world);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
-  const unitDrawCallSeen = new Uint8Array(UNIT_PRESENTATIONS.length);
   const markerPos = new Float32Array(2);
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
@@ -530,7 +528,7 @@ export async function createGame(
     const ghostType = placementStats ? placementType : -1;
     const ghostX = placementStats ? placementTile[0]! + placementStats.footprint / 2 : 0;
     const ghostZ = placementStats ? placementTile[1]! + placementStats.footprint / 2 : 0;
-    const instances = units.draw(
+    const unitStatistics = units.draw(
       pass,
       gpu.device.queue,
       camera.viewProj,
@@ -544,18 +542,6 @@ export async function createGame(
       ghostZ,
       placementValid,
     );
-    unitDrawCallSeen.fill(0);
-    let unitDrawCalls = 0;
-    for (let i = 0; i < currSnap.count; i += 1) {
-      if (currSnap.visible[i] === 0) continue;
-
-      const unitType = currSnap.unitType[i]!;
-
-      if (unitDrawCallSeen[unitType] === 0) {
-        unitDrawCallSeen[unitType] = 1;
-        unitDrawCalls += 1;
-      }
-    }
     minimap.draw(
       pass,
       gpu.device.queue,
@@ -578,10 +564,10 @@ export async function createGame(
         markerKind,
       );
     }
-    // +4 = minimap frame + base + footprint + dots; units draw once per occupied sprite bucket.
+    // +4 = minimap frame + base + footprint + dots.
     statsCollector.frameGauges.drawCalls =
-      visibleChunks + unitDrawCalls + 4 + (markerAgeMs < 600 ? 1 : 0);
-    statsCollector.frameGauges.instances = instances;
+      visibleChunks + unitStatistics.drawCalls + 4 + (markerAgeMs < 600 ? 1 : 0);
+    statsCollector.frameGauges.instances = unitStatistics.instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
     const stockpileBase = selfPlayerId * RESOURCE_COUNT;
