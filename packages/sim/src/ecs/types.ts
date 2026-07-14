@@ -18,6 +18,8 @@ export interface UnitTypeStats {
   // Consumed by M6-3/4/5/6; the building table is completed in one pass here.
   costFood: number;
   costWood: number;
+  costGold: number;
+  costFavor: number;
   buildTicks: number;
   popBonus: number;
   // Unit type this building produces; -1 = not a producer. Single-slot, no queues in M6.
@@ -25,10 +27,12 @@ export interface UnitTypeStats {
   isDropsite: boolean;
 }
 
-// Resources are table rows, not subsystems; gold/favor are future rows.
+// Fixed resource ids are shared by costs, carrying, stockpiles, snapshots, and UI.
 export const FOOD = 0;
 export const WOOD = 1;
-export const RESOURCE_COUNT = 2;
+export const GOLD = 2;
+export const FAVOR = 3;
+export const RESOURCE_COUNT = 4;
 
 // Balance-pass placeholders: 0.5 s per unit, 5 s to fill at 20 Hz.
 // Build cadence reuses GATHER_COOLDOWN_TICKS (10), so the average rate is 1 progress/tick/builder and buildTicks reads as solo builder-ticks.
@@ -59,10 +63,12 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     resource: -1,
     bodyRadius: 0.3,
     footprint: 0,
-    // For trainable units, costFood/costWood are the train price and buildTicks
+    // For trainable units, the four cost columns are the train price and buildTicks
     // is the train duration (5 s at 20 Hz), the same columns buildings use for construction.
     costFood: 50,
     costWood: 0,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 100,
     popBonus: 0,
     trains: -1,
@@ -82,6 +88,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     footprint: 0,
     costFood: 60,
     costWood: 20,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 160,
     popBonus: 0,
     trains: -1,
@@ -101,6 +109,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     footprint: 0,
     costFood: 0,
     costWood: 0,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 0,
     popBonus: 0,
     trains: -1,
@@ -119,6 +129,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     footprint: 0,
     costFood: 0,
     costWood: 0,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 0,
     popBonus: 0,
     trains: -1,
@@ -137,6 +149,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     footprint: 4,
     costFood: 0,
     costWood: 300,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 300,
     popBonus: 15,
     trains: TYPE_VILLAGER,
@@ -155,6 +169,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     footprint: 2,
     costFood: 0,
     costWood: 60,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 120,
     popBonus: 10,
     trains: -1,
@@ -173,6 +189,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     footprint: 3,
     costFood: 0,
     costWood: 120,
+    costGold: 0,
+    costFavor: 0,
     buildTicks: 200,
     popBonus: 0,
     trains: TYPE_MILITIA,

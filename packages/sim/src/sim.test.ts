@@ -12,7 +12,9 @@ import {
 import { idGeneration, idIndex, packId } from "./ecs/id";
 import {
   CARRY_CAPACITY,
+  FAVOR,
   FOOD,
+  GOLD,
   LEASH_FACTOR,
   RESOURCE_COUNT,
   TYPE_BARRACKS,
@@ -769,9 +771,11 @@ describe("resources and nodes", () => {
 
     expect(world.stockpiles[3 * RESOURCE_COUNT + FOOD]).toBe(100);
     expect(world.stockpiles[8 * RESOURCE_COUNT + WOOD]).toBe(100);
+    expect(world.stockpiles[3 * RESOURCE_COUNT + GOLD]).toBe(0);
+    expect(world.stockpiles[8 * RESOURCE_COUNT + FAVOR]).toBe(0);
 
     const before = hashWorld(world);
-    world.stockpiles[3 * RESOURCE_COUNT + WOOD] = world.stockpiles[3 * RESOURCE_COUNT + WOOD]! + 1;
+    world.stockpiles[3 * RESOURCE_COUNT + GOLD] = world.stockpiles[3 * RESOURCE_COUNT + GOLD]! + 1;
     expect(hashWorld(world)).not.toBe(before);
   });
 });

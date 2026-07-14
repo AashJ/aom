@@ -2,7 +2,9 @@ import {
   canPlaceBuilding,
   createSnapshot,
   createWorld,
+  FAVOR,
   FOOD,
+  GOLD,
   hashWorld,
   MAP_TILES,
   MAX_UNITS,
@@ -311,7 +313,9 @@ export async function createGame(
           // Preview-validation only — the sim revalidates authoritatively at application.
           const affordable =
             (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementStats.costFood &&
-            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementStats.costWood;
+            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementStats.costWood &&
+            (currSnap.stockpiles[stockpileBase + GOLD] ?? 0) >= placementStats.costGold &&
+            (currSnap.stockpiles[stockpileBase + FAVOR] ?? 0) >= placementStats.costFavor;
           let footprintVisible = hitGround;
 
           if (footprintVisible) {
@@ -524,6 +528,8 @@ export async function createGame(
     const stockpileBase = selfPlayerId * RESOURCE_COUNT;
     statsCollector.frameGauges.food = currSnap.stockpiles[stockpileBase + FOOD] ?? 0;
     statsCollector.frameGauges.wood = currSnap.stockpiles[stockpileBase + WOOD] ?? 0;
+    statsCollector.frameGauges.gold = currSnap.stockpiles[stockpileBase + GOLD] ?? 0;
+    statsCollector.frameGauges.favor = currSnap.stockpiles[stockpileBase + FAVOR] ?? 0;
     let pop = 0;
     let popCap = 0;
 

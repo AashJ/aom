@@ -50,7 +50,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.count = world.count;
   // HP bars and the win banner are 4a/4b consumers.
   out.winner = world.winner;
-  // Full copy each write: 2 KB at 20 Hz is negligible.
+  // Full copy each write: 4 KB at 20 Hz is negligible.
   out.stockpiles.set(world.stockpiles);
   const viewerSlot = world.playerSlotById[viewerId]!;
 

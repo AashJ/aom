@@ -24,9 +24,11 @@ import { idGeneration, idIndex, packId } from "./id";
 import {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
+  FAVOR,
   FOOD,
   GATHER_COOLDOWN_TICKS,
   GATHER_PER_STRIKE,
+  GOLD,
   LEASH_FACTOR,
   NODE_RETARGET_RADIUS,
   RESOURCE_COUNT,
@@ -43,7 +45,7 @@ export const TICK_S = 0.05;
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 // Players use real ids < 256, but stockpiles index by actual id; a 256-wide
-// array is 2 KB, cheaper than an id-to-slot map.
+// four-resource array is 4 KB, cheaper than an id-to-slot map.
 export const NEUTRAL_OWNER = 255;
 export const MAX_PLAYERS = 8;
 export const UNIT_SPEED = 3;
@@ -446,6 +448,8 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
 
     world.stockpiles[owner * RESOURCE_COUNT + FOOD] = 100;
     world.stockpiles[owner * RESOURCE_COUNT + WOOD] = 100;
+    world.stockpiles[owner * RESOURCE_COUNT + GOLD] = 0;
+    world.stockpiles[owner * RESOURCE_COUNT + FAVOR] = 0;
   }
 
   const baseCount = Math.floor(count / ownerCount);
@@ -1797,10 +1801,14 @@ function applyPendingCommands(world: World): void {
           const unitStats = UNIT_TYPES[command.unitType]!;
           const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
           const woodIndex = command.issuer * RESOURCE_COUNT + WOOD;
+          const goldIndex = command.issuer * RESOURCE_COUNT + GOLD;
+          const favorIndex = command.issuer * RESOURCE_COUNT + FAVOR;
 
           if (
             world.stockpiles[foodIndex]! >= unitStats.costFood &&
-            world.stockpiles[woodIndex]! >= unitStats.costWood
+            world.stockpiles[woodIndex]! >= unitStats.costWood &&
+            world.stockpiles[goldIndex]! >= unitStats.costGold &&
+            world.stockpiles[favorIndex]! >= unitStats.costFavor
           ) {
             let pop = 0;
             let popCap = 0;
@@ -1824,6 +1832,8 @@ function applyPendingCommands(world: World): void {
             if (pop + 1 <= popCap) {
               world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - unitStats.costFood;
               world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - unitStats.costWood;
+              world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - unitStats.costGold;
+              world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - unitStats.costFavor;
               world.trainType[building] = command.unitType;
               world.trainRemaining[building] = unitStats.buildTicks;
             }
@@ -1835,6 +1845,8 @@ function applyPendingCommands(world: World): void {
       const buildingStats = UNIT_TYPES[buildingType];
       const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
       const woodIndex = command.issuer * RESOURCE_COUNT + WOOD;
+      const goldIndex = command.issuer * RESOURCE_COUNT + GOLD;
+      const favorIndex = command.issuer * RESOURCE_COUNT + FAVOR;
 
       // The engine's ghost preview pre-validates, so failures here are stale-by-input-delay races —
       // e.g. two players placing on the same tiles in one turn: the first (playerId order) wins,
@@ -1851,10 +1863,14 @@ function applyPendingCommands(world: World): void {
         ) &&
         canPlaceBuilding(world, command.tileX, command.tileZ, buildingType) &&
         world.stockpiles[foodIndex]! >= buildingStats.costFood &&
-        world.stockpiles[woodIndex]! >= buildingStats.costWood
+        world.stockpiles[woodIndex]! >= buildingStats.costWood &&
+        world.stockpiles[goldIndex]! >= buildingStats.costGold &&
+        world.stockpiles[favorIndex]! >= buildingStats.costFavor
       ) {
         world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - buildingStats.costFood;
         world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - buildingStats.costWood;
+        world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - buildingStats.costGold;
+        world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - buildingStats.costFavor;
         spawnBuilding(world, command.tileX, command.tileZ, command.issuer, buildingType, false);
       }
     }

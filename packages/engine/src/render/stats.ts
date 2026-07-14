@@ -12,6 +12,8 @@ export interface GameStats {
   chunksTotal: number;
   food: number;
   wood: number;
+  gold: number;
+  favor: number;
   pop: number;
   popCap: number;
 }
@@ -38,6 +40,8 @@ export function createStatsCollector(): {
     chunksTotal: number;
     food: number;
     wood: number;
+    gold: number;
+    favor: number;
     pop: number;
     popCap: number;
   };
@@ -60,6 +64,8 @@ export function createStatsCollector(): {
     chunksTotal: 0,
     food: 0,
     wood: 0,
+    gold: 0,
+    favor: 0,
     pop: 0,
     popCap: 0,
   };
@@ -76,6 +82,8 @@ export function createStatsCollector(): {
     chunksTotal: 0,
     food: 0,
     wood: 0,
+    gold: 0,
+    favor: 0,
     pop: 0,
     popCap: 0,
   };
@@ -123,6 +131,8 @@ export function createStatsCollector(): {
     stats.chunksTotal = frameGauges.chunksTotal;
     stats.food = frameGauges.food;
     stats.wood = frameGauges.wood;
+    stats.gold = frameGauges.gold;
+    stats.favor = frameGauges.favor;
     stats.pop = frameGauges.pop;
     stats.popCap = frameGauges.popCap;
     frameGauges.tickMsMax = 0;

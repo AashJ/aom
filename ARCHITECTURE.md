@@ -600,7 +600,7 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 
 ### Sequential build order
 
-1. **Four-resource ledger.** Add Gold/Favor ids, costs, stockpiles, carrying, hashing, and snapshots while preserving Food/Wood behavior. _Verify: existing economy tests remain unchanged in meaning; non-contiguous player ids receive isolated four-resource rows; every resource change affects the hash._
+1. **Four-resource ledger (complete).** Gold/Favor ids, cost columns, stockpiles, carrying, hashing, snapshots, and HUD counters now preserve the existing Food/Wood behavior while establishing the full ledger. _Verified: existing economy tests remain unchanged in meaning; non-contiguous player ids receive isolated four-resource rows; Gold changes affect the hash._
 2. **Gold Mines.** Add seeded symmetric mines through the resource-node path. _Verify: villagers mine, haul, deposit, deplete, and retarget with the same deterministic behavior as trees and berries._
 3. **Player progression state.** Add Archaic age and god-selection storage per active player, hashing, and viewer snapshots. _Verify: worlds initialize and hash identically; state remains attached to real player ids regardless of dense visibility slots._
 4. **Availability rules.** Add required-age/prerequisite content metadata and one shared sim query used by command validation and UI consumers. _Verify: forged locked Place/Train commands are no-ops and visible menus report the same result._

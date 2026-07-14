@@ -16,7 +16,7 @@ export function ResourceBar({ game }: { game: GameHandle | null }) {
     }
 
     return game.onStats((stats) => {
-      el.textContent = `food ${stats.food}  wood ${stats.wood}  pop ${stats.pop}/${stats.popCap}`;
+      el.textContent = `food ${stats.food}  wood ${stats.wood}  gold ${stats.gold}  favor ${stats.favor}  pop ${stats.pop}/${stats.popCap}`;
     });
   }, [game]);
 
@@ -25,7 +25,7 @@ export function ResourceBar({ game }: { game: GameHandle | null }) {
       ref={readoutRef}
       className="pointer-events-none absolute top-3 left-3 rounded-full bg-black/50 px-3 py-1 font-mono text-xs text-slate-200 whitespace-pre select-none"
     >
-      {"food 100  wood 100  pop 0/0"}
+      {"food 100  wood 100  gold 0  favor 0  pop 0/0"}
     </div>
   );
 }

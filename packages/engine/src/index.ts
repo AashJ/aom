@@ -22,7 +22,9 @@ export type { BeginInfo, NetEvent, NetSession } from "./net/relay";
 export type { PlayerInfo } from "@aom/relay";
 // The web app reads outcome sentinels through the engine API surface.
 export {
+  FAVOR,
   FOOD,
+  GOLD,
   MATCH_DRAW,
   TYPE_BARRACKS,
   TYPE_HOUSE,

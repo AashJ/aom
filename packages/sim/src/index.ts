@@ -6,9 +6,11 @@ export { idGeneration, idIndex, packId } from "./ecs/id";
 export {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
+  FAVOR,
   FOOD,
   GATHER_COOLDOWN_TICKS,
   GATHER_PER_STRIKE,
+  GOLD,
   LEASH_FACTOR,
   NODE_RETARGET_RADIUS,
   RESOURCE_COUNT,

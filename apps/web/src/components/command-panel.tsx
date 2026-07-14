@@ -12,7 +12,7 @@ import {
 
 export function CommandPanel({ game }: { game: GameHandle | null }) {
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
-  const [resources, setResources] = useState({ food: 0, wood: 0 });
+  const [resources, setResources] = useState({ food: 0, wood: 0, gold: 0, favor: 0 });
   const [progress, setProgress] = useState(-1);
   const producerId = selection?.producerId ?? -1;
 
@@ -23,7 +23,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
 
     const unsubscribeSelection = game.onSelection(setSelection);
     const unsubscribeStats = game.onStats((stats) => {
-      setResources({ food: stats.food, wood: stats.wood });
+      setResources({ food: stats.food, wood: stats.wood, gold: stats.gold, favor: stats.favor });
     });
 
     return () => {
@@ -71,7 +71,14 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 label="House"
                 costFood={house.costFood}
                 costWood={house.costWood}
-                disabled={resources.food < house.costFood || resources.wood < house.costWood}
+                costGold={house.costGold}
+                costFavor={house.costFavor}
+                disabled={
+                  resources.food < house.costFood ||
+                  resources.wood < house.costWood ||
+                  resources.gold < house.costGold ||
+                  resources.favor < house.costFavor
+                }
                 onClick={() => game.startPlacement(TYPE_HOUSE)}
               />
               <CommandTile
@@ -79,7 +86,14 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 label="Barracks"
                 costFood={barracks.costFood}
                 costWood={barracks.costWood}
-                disabled={resources.food < barracks.costFood || resources.wood < barracks.costWood}
+                costGold={barracks.costGold}
+                costFavor={barracks.costFavor}
+                disabled={
+                  resources.food < barracks.costFood ||
+                  resources.wood < barracks.costWood ||
+                  resources.gold < barracks.costGold ||
+                  resources.favor < barracks.costFavor
+                }
                 onClick={() => game.startPlacement(TYPE_BARRACKS)}
               />
             </div>
@@ -98,8 +112,13 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                   label={trained === TYPE_VILLAGER ? "Villager" : "Militia"}
                   costFood={trainedStats.costFood}
                   costWood={trainedStats.costWood}
+                  costGold={trainedStats.costGold}
+                  costFavor={trainedStats.costFavor}
                   disabled={
-                    resources.food < trainedStats.costFood || resources.wood < trainedStats.costWood
+                    resources.food < trainedStats.costFood ||
+                    resources.wood < trainedStats.costWood ||
+                    resources.gold < trainedStats.costGold ||
+                    resources.favor < trainedStats.costFavor
                   }
                   progress={progress}
                   // Population cap is enforced by the sim; impossible orders die silently.
@@ -121,6 +140,8 @@ function CommandTile({
   label,
   costFood,
   costWood,
+  costGold,
+  costFavor,
   disabled,
   progress,
   onClick,
@@ -129,6 +150,8 @@ function CommandTile({
   label: string;
   costFood: number;
   costWood: number;
+  costGold: number;
+  costFavor: number;
   disabled: boolean;
   progress?: number;
   onClick(): void;
@@ -160,6 +183,16 @@ function CommandTile({
         {costWood > 0 && (
           <span className="rounded bg-orange-900/90 px-1 text-[9px] leading-3 font-bold text-orange-100">
             {costWood}
+          </span>
+        )}
+        {costGold > 0 && (
+          <span className="rounded bg-yellow-500/90 px-1 text-[9px] leading-3 font-bold text-yellow-950">
+            {costGold}
+          </span>
+        )}
+        {costFavor > 0 && (
+          <span className="rounded bg-violet-700/90 px-1 text-[9px] leading-3 font-bold text-violet-100">
+            {costFavor}
           </span>
         )}
       </div>
