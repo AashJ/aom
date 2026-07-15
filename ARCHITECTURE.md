@@ -911,6 +911,14 @@ The first infrastructure slice registers every existing Gate A assignment plus t
 - **Lifecycle timing:** no model exists before the sim exposes a released projectile, and the model disappears on the authoritative impact/expiry boundary. Unit attack animation remains driven by the same authoritative cooldown that queues the release; B5 must pin Toxotes' `Attack` animation tag to `launchDelayTicks` and prove the first complete release/flight/impact sequence.
 - **Device recreation:** projectile models are part of `MODEL_CONFIGS`, so initial GPU creation and the existing device-loss rebuild execute one registry-loading path. Catalog tests require complete stable projectile coverage and parse every model contract.
 
+### B5 serial Toxotes boundary
+
+- **Candidate gameplay slice:** the Greek Archery Range is a distinct Classical-age 4×4 producer at Greek villager build slot 6; Toxotes occupies its authored train slot 0. The generated reverse catalogs, production commands, availability rules, fog, snapshot, and generic renderer/audio paths need no Toxotes switch.
+- **Pinned Classic timing:** the hashed Trial Toxotes row supplies the projectile and balance fields. Its one-second reload is `20` ticks, and the source animation's `Attack 0.40` tag is `launchDelayTicks: 8`. Focused sim and presentation tests prove the pre-release snapshot gap, release boundary, stable arrow identity, and 0.40 attack-clip phase.
+- **Exact-unit bonuses:** the discriminated `DamageBonus.target` represents either a logical class predicate or one named proto identity. Toxotes' `0.9×` Raiding Cavalry modifier is preserved without inventing a broad class; B6 may reuse the exact-unit target for Throwing Axeman, Hypaspist, and Axeman counters.
+- **Known presentation asset gap:** the Trial includes the Greek Archery Range proto, portrait, and completion sound but not its Greek model archive. The producer media entry deliberately isolates an existing Classic Greek-building stand-in behind one named model asset. B5 remains integration-owned and is not considered visually complete until a legally sourced Classic Archery Range model replaces that stand-in; this does not alter simulation or open B6 lanes early.
+- **Reference freeze ordering:** the candidate implementation is committed and reviewed before its integration-owned final-ruleset reference is authored. Until that follow-up freeze can cite the actual implementation commit, the Toxotes roster lane remains explicitly blocked; a foundation or presentation commit may not stand in as unit-review evidence.
+
 ### Exit criteria
 
 - Queued releases, in-flight projectiles, impact/removal, expiry, misses, moving-target dodges, collision ordering, and any opened impact-area behavior are deterministic and hash-sensitive.

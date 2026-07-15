@@ -8,6 +8,7 @@ import {
   TYPE_EGYPTIAN_TOWN_CENTER,
   TYPE_GASTRAPHETES,
   TYPE_GREEK_FORTRESS,
+  TYPE_GREEK_ARCHERY_RANGE,
   TYPE_GREEK_MILITARY_ACADEMY,
   TYPE_GREEK_STABLE,
   TYPE_HETAIROI,
@@ -323,7 +324,20 @@ function blockedProjectile(
 }
 
 const projectileEntries = [
-  blockedProjectile(TYPE_TOXOTES, "greek-toxotes", "Toxotes", CULTURE_GREEK),
+  defineUnitLane({
+    id: TYPE_TOXOTES,
+    key: "greek-toxotes",
+    label: "Toxotes",
+    culture: CULTURE_GREEK,
+    family: "ordinary-projectile",
+    gate: "B",
+    foundationLane: PROJECTILE_FOUNDATION,
+    status: "blocked",
+    blocker:
+      "Gate B5: freeze the final-ruleset reference after the reviewed implementation commit.",
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_GREEK_ARCHERY_RANGE, commandSlot: 0 }],
+  }),
   blockedProjectile(TYPE_PELTAST, "greek-peltast", "Peltast", CULTURE_GREEK),
   blockedProjectile(TYPE_GASTRAPHETES, "greek-gastraphetes", "Gastraphetes", CULTURE_GREEK),
   blockedProjectile(TYPE_SLINGER, "egyptian-slinger", "Slinger", CULTURE_EGYPTIAN),

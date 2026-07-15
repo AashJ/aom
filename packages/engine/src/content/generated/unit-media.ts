@@ -11,6 +11,7 @@ import { definition as greekHouse } from "../unit-media/greek/house";
 import { definition as egyptianHouse } from "../unit-media/egyptian/house";
 import { definition as greekMilitaryAcademy } from "../unit-media/greek/military-academy";
 import { definition as egyptianBarracks } from "../unit-media/egyptian/barracks";
+import { definition as greekArcheryRange } from "../unit-media/greek/archery-range";
 import { definition as greekStable } from "../unit-media/greek/stable";
 import { definition as greekFortress } from "../unit-media/greek/fortress";
 import { definition as egyptianTemple } from "../unit-media/egyptian/temple";
@@ -25,6 +26,7 @@ import { definition as egyptianSpearman } from "../unit-media/egyptian/spearman"
 import { definition as egyptianAxeman } from "../unit-media/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-media/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-media/egyptian/war-elephant";
+import { definition as greekToxotes } from "../unit-media/greek/toxotes";
 import { definition as greekHetairoi } from "../unit-media/greek/hetairoi";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
@@ -53,6 +55,7 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianHouse,
   greekMilitaryAcademy,
   egyptianBarracks,
+  greekArcheryRange,
   greekStable,
   greekFortress,
   egyptianTemple,
@@ -67,6 +70,7 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianAxeman,
   egyptianCamelry,
   egyptianWarElephant,
+  greekToxotes,
   greekHetairoi,
 ] as const satisfies readonly UnitMediaDefinition[];
 

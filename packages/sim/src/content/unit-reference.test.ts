@@ -75,6 +75,7 @@ describe("agentic unit references", () => {
   test("rejects a reference that disagrees with the canonical assignment", () => {
     const lane = UNIT_ROSTER.find((entry) => entry.key === "greek-hoplite")!;
     const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key)!;
+    if (reference.family !== "ordinary-melee") throw new Error("Hoplite reference is not melee.");
     const driftedReference = {
       ...reference,
       expected: { ...reference.expected, requiredGod: reference.expected.requiredGod + 1 },

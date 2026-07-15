@@ -11,6 +11,7 @@ import { definition as greekHouse } from "../unit-types/greek/house";
 import { definition as egyptianHouse } from "../unit-types/egyptian/house";
 import { definition as greekMilitaryAcademy } from "../unit-types/greek/military-academy";
 import { definition as egyptianBarracks } from "../unit-types/egyptian/barracks";
+import { definition as greekArcheryRange } from "../unit-types/greek/archery-range";
 import { definition as greekStable } from "../unit-types/greek/stable";
 import { definition as greekFortress } from "../unit-types/greek/fortress";
 import { definition as egyptianTemple } from "../unit-types/egyptian/temple";
@@ -25,6 +26,7 @@ import { definition as egyptianSpearman } from "../unit-types/egyptian/spearman"
 import { definition as egyptianAxeman } from "../unit-types/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-types/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-types/egyptian/war-elephant";
+import { definition as greekToxotes } from "../unit-types/greek/toxotes";
 import { definition as greekHetairoi } from "../unit-types/greek/hetairoi";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
 
@@ -41,6 +43,7 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianHouse,
   greekMilitaryAcademy,
   egyptianBarracks,
+  greekArcheryRange,
   greekStable,
   greekFortress,
   egyptianTemple,
@@ -55,6 +58,7 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianAxeman,
   egyptianCamelry,
   egyptianWarElephant,
+  greekToxotes,
   greekHetairoi,
 ] as const satisfies readonly UnitTypeStats[];
 

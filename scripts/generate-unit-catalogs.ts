@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { unlinkSync } from "node:fs";
 import {
   CULTURE_SHARED,
+  UNIT_CLASS_ARCHER,
   UNIT_CLASS_BUILDING,
   UNIT_CLASS_MELEE,
   UNIT_CLASS_MILITARY,
@@ -287,6 +288,15 @@ for (const lane of UNIT_ROSTER) {
     ) {
       throw new Error(`${lane.key} must satisfy the ordinary-melee family contract.`);
     }
+    if (
+      lane.status !== "blocked" &&
+      lane.family === "ordinary-projectile" &&
+      ((definition.classes & (UNIT_CLASS_MILITARY | UNIT_CLASS_ARCHER)) !==
+        (UNIT_CLASS_MILITARY | UNIT_CLASS_ARCHER) ||
+        definition.attack?.kind !== "projectile")
+    ) {
+      throw new Error(`${lane.key} must satisfy the ordinary-projectile family contract.`);
+    }
 
     const reference = unitReferenceEntry(lane.key);
     if (reference !== undefined) validateDefinitionAgainstReference(definition, reference);
@@ -505,11 +515,12 @@ for (const entry of mediaEntries) {
   }
 
   const rosterLane = UNIT_ROSTER.find((lane) => lane.id === sim.id);
-  const requiresCompleteMeleeMedia =
-    rosterLane?.status !== "blocked" && rosterLane?.family === "ordinary-melee";
-  if (requiresCompleteMeleeMedia) {
+  const requiresCompleteOrdinaryMedia =
+    rosterLane?.status !== "blocked" &&
+    (rosterLane?.family === "ordinary-melee" || rosterLane?.family === "ordinary-projectile");
+  if (requiresCompleteOrdinaryMedia) {
     if (media.presentation.kind !== "model") {
-      throw new Error(`${media.key} requires model presentation for Gate A.`);
+      throw new Error(`${media.key} requires model presentation for its ordinary-unit gate.`);
     }
     for (const action of ["idle", "walk", "attack", "death"] as const) {
       if (media.presentation.actions[action] === undefined) {
@@ -522,7 +533,7 @@ for (const entry of mediaEntries) {
       media.audio.acknowledge === undefined ||
       media.audio.attackAcknowledge === undefined
     ) {
-      throw new Error(`${media.key} is missing required Gate A icon or voice audio.`);
+      throw new Error(`${media.key} is missing required ordinary-unit icon or voice audio.`);
     }
   }
 }

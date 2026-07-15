@@ -37,7 +37,7 @@ describe("Egyptian Camelry unit pack", () => {
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: UNIT_CLASS_CAVALRY, multiplier: 1.75 }],
+        bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_CAVALRY }, multiplier: 1.75 }],
       },
       isStatic: false,
       resource: -1,

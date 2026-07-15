@@ -29,8 +29,11 @@ export const definition = {
     aggroRange: 16,
     cooldownTicks: 30,
     bonuses: [
-      { requiredClasses: UNIT_CLASS_INFANTRY, multiplier: 4.25 },
-      { requiredClasses: UNIT_CLASS_HERO, requiredCulture: CULTURE_NORSE, multiplier: 4.25 },
+      { target: { kind: "classes", classes: UNIT_CLASS_INFANTRY }, multiplier: 4.25 },
+      {
+        target: { kind: "classes", classes: UNIT_CLASS_HERO, requiredCulture: CULTURE_NORSE },
+        multiplier: 4.25,
+      },
     ],
   },
   isStatic: false,

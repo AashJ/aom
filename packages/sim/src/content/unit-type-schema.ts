@@ -79,12 +79,22 @@ export interface ProjectileAttack extends AttackBase {
 
 export type Attack = MeleeAttack | ProjectileAttack;
 
+export type DamageBonusTarget =
+  | {
+      readonly kind: "classes";
+      readonly classes: number;
+      readonly requiredCulture?: number;
+      readonly excludedCulture?: number;
+    }
+  | {
+      // Classic sometimes names one proto rather than a logical class. Keep that
+      // identity explicit instead of encoding it as the magic class mask zero.
+      readonly kind: "unit";
+      readonly key: string;
+    };
+
 export interface DamageBonus {
-  // Every bit must be present. Target classes and optional culture gates cover
-  // Classic logical target sets without inventing a second attack shape.
-  readonly requiredClasses: number;
-  readonly requiredCulture?: number;
-  readonly excludedCulture?: number;
+  readonly target: DamageBonusTarget;
   readonly multiplier: number;
 }
 

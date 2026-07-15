@@ -33,7 +33,7 @@ export const definition = {
     range: 0.3,
     aggroRange: 16,
     cooldownTicks: 30,
-    bonuses: [{ requiredClasses: UNIT_CLASS_BUILDING, multiplier: 3 }],
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_BUILDING }, multiplier: 3 }],
   },
   isStatic: false,
   resource: -1,

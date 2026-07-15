@@ -1,5 +1,5 @@
 import {
-  meleeUnitExpected,
+  ordinaryUnitExpected,
   type TrialFidelityDelta,
   type UnitReferenceSpec,
 } from "../unit-reference-schema";
@@ -50,7 +50,7 @@ export const GATE_A_UNIT_REFERENCES = [
           "The final pinned ruleset uses 50 Food / 40 Gold; the 2002 Trial uses 60 Food / 35 Gold.",
       },
     ]),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Hoplite",
       culture: 1,
       classes: 54,
@@ -58,7 +58,7 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 4.2,
       armor: [0.35, 0.15, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
@@ -88,7 +88,7 @@ export const GATE_A_UNIT_REFERENCES = [
         reason: "The final pinned ruleset uses 95 HP; the 2002 Trial uses 85 HP.",
       },
     ]),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Hypaspist",
       culture: 1,
       classes: 54,
@@ -96,15 +96,18 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 4.3,
       armor: [0.35, 0.1, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [5, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
         bonuses: [
-          { requiredClasses: 4, multiplier: 4.25 },
-          { requiredClasses: 2048, requiredCulture: 3, multiplier: 4.25 },
+          { target: { kind: "classes", classes: 4 }, multiplier: 4.25 },
+          {
+            target: { kind: "classes", classes: 2048, requiredCulture: 3 },
+            multiplier: 4.25,
+          },
         ],
       },
       bodyRadius: 0.49,
@@ -122,7 +125,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 66,
     key: "greek-hippikon",
     source: source("greek", 441, "Hippikon", "hippikon_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Hippikon",
       culture: 1,
       classes: 58,
@@ -130,13 +133,13 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 8,
       movementSpeed: 5.5,
       armor: [0.1, 0.25, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [10, 0, 0],
         range: 0.3,
         aggroRange: 8,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: 1024, multiplier: 1.25 }],
+        bonuses: [{ target: { kind: "classes", classes: 1024 }, multiplier: 1.25 }],
       },
       bodyRadius: 0.7,
       cost: [40, 0, 80, 0],
@@ -153,7 +156,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 67,
     key: "greek-prodromos",
     source: source("greek", 442, "Prodromos", "prodromos_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Prodromos",
       culture: 1,
       classes: 58,
@@ -161,13 +164,13 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 6,
       armor: [0.2, 0.1, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [6, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: 8, multiplier: 3 }],
+        bonuses: [{ target: { kind: "classes", classes: 8 }, multiplier: 3 }],
       },
       bodyRadius: 0.7,
       cost: [70, 0, 40, 0],
@@ -184,7 +187,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 68,
     key: "greek-myrmidon",
     source: source("greek", 450, "Myrmidon", "myrmidon_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Myrmidon",
       culture: 1,
       classes: 54,
@@ -192,13 +195,13 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 4,
       armor: [0.45, 0.2, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [10, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: 4096, multiplier: 1.5 }],
+        bonuses: [{ target: { kind: "classes", classes: 4096 }, multiplier: 1.5 }],
       },
       bodyRadius: 0.49,
       cost: [70, 0, 50, 0],
@@ -218,7 +221,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 84,
     key: "greek-hetairoi",
     source: source("greek", 451, "Hetairoi", "hetairoi_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Hetairoi",
       culture: 1,
       classes: 58,
@@ -226,13 +229,13 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 4.8,
       armor: [0.1, 0.4, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: 64, multiplier: 3.5 }],
+        bonuses: [{ target: { kind: "classes", classes: 64 }, multiplier: 3.5 }],
       },
       bodyRadius: 0.7,
       cost: [60, 0, 100, 0],
@@ -253,17 +256,17 @@ export const GATE_A_UNIT_REFERENCES = [
     key: "egyptian-spearman",
     source: source("egyptian", 291, "Spearman", "spearman_anim.txt", [
       {
-        field: "meleeAttack.bonuses",
-        trial: [{ requiredClasses: 8, multiplier: 1.1 }],
+        field: "attack.bonuses",
+        trial: [{ target: { kind: "classes", classes: 8 }, multiplier: 1.1 }],
         final: [
-          { requiredClasses: 8, multiplier: 1.1 },
-          { requiredClasses: 512, multiplier: 2 },
+          { target: { kind: "classes", classes: 8 }, multiplier: 1.1 },
+          { target: { kind: "classes", classes: 512 }, multiplier: 2 },
         ],
         reason:
           "The final pinned ruleset includes the 2x siege bonus in addition to the Trial cavalry bonus.",
       },
     ]),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Spearman",
       culture: 2,
       classes: 4150,
@@ -271,15 +274,15 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 5,
       armor: [0.4, 0.2, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [7, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
         bonuses: [
-          { requiredClasses: 8, multiplier: 1.1 },
-          { requiredClasses: 512, multiplier: 2 },
+          { target: { kind: "classes", classes: 8 }, multiplier: 1.1 },
+          { target: { kind: "classes", classes: 512 }, multiplier: 2 },
         ],
       },
       bodyRadius: 0.49,
@@ -297,7 +300,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 70,
     key: "egyptian-axeman",
     source: source("egyptian", 292, "Axeman", "axeman_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Axeman",
       culture: 2,
       classes: 54,
@@ -305,15 +308,18 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 4.3,
       armor: [0.4, 0.05, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [5, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
         bonuses: [
-          { requiredClasses: 4, multiplier: 4 },
-          { requiredClasses: 2048, requiredCulture: 3, multiplier: 4 },
+          { target: { kind: "classes", classes: 4 }, multiplier: 4 },
+          {
+            target: { kind: "classes", classes: 2048, requiredCulture: 3 },
+            multiplier: 4,
+          },
         ],
       },
       bodyRadius: 0.49,
@@ -331,7 +337,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 71,
     key: "egyptian-camelry",
     source: source("egyptian", 295, "Camelry", "camelry_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "Camelry",
       culture: 2,
       classes: 4154,
@@ -339,13 +345,13 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 6,
       armor: [0.15, 0.3, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: 8, multiplier: 1.75 }],
+        bonuses: [{ target: { kind: "classes", classes: 8 }, multiplier: 1.75 }],
       },
       bodyRadius: 0.7,
       cost: [50, 0, 70, 0],
@@ -362,7 +368,7 @@ export const GATE_A_UNIT_REFERENCES = [
     id: 72,
     key: "egyptian-war-elephant",
     source: source("egyptian", 553, "War Elephant", "war elephant_anim.txt"),
-    expected: meleeUnitExpected({
+    expected: ordinaryUnitExpected({
       label: "War Elephant",
       culture: 2,
       classes: 4154,
@@ -370,13 +376,13 @@ export const GATE_A_UNIT_REFERENCES = [
       lineOfSight: 16,
       movementSpeed: 2.9,
       armor: [0.1, 0.4, 0.99],
-      meleeAttack: {
+      attack: {
         kind: "melee",
         damage: [12, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: 64, multiplier: 3 }],
+        bonuses: [{ target: { kind: "classes", classes: 64 }, multiplier: 3 }],
       },
       bodyRadius: 0.99,
       cost: [180, 0, 70, 0],

@@ -37,7 +37,7 @@ describe("Greek Hetairoi unit pack", () => {
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: UNIT_CLASS_BUILDING, multiplier: 3.5 }],
+        bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_BUILDING }, multiplier: 3.5 }],
       },
       isStatic: false,
       resource: -1,

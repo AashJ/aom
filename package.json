@@ -33,7 +33,7 @@
     "generate:unit-catalogs": "bun scripts/generate-unit-catalogs.ts",
     "validate:unit-packs": "bun scripts/generate-unit-catalogs.ts --validate-only && bun run test:unit-infra",
     "check:unit-catalogs": "bun scripts/generate-unit-catalogs.ts --check",
-    "test:unit-infra": "bun test scripts/lib/xmb.test.ts scripts/lib/unit-lanes.test.ts packages/sim/src/content/unit-reference.test.ts",
+    "test:unit-infra": "bun test scripts/lib/xmb.test.ts scripts/lib/trial-unit.test.ts scripts/lib/unit-lanes.test.ts packages/sim/src/content/unit-reference.test.ts",
     "unit:lanes": "bun scripts/unit-lane.ts list",
     "unit:lane": "bun scripts/unit-lane.ts",
     "verify:unit-sources": "bun scripts/verify-unit-sources.ts",

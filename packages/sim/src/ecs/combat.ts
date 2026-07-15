@@ -1,9 +1,19 @@
 import {
   DAMAGE_CLASS_COUNT,
   type Attack,
+  type DamageBonusTarget,
   type MeleeAttack,
   type UnitTypeStats,
 } from "../content/unit-type-schema";
+
+function matchesDamageBonusTarget(target: DamageBonusTarget, stats: UnitTypeStats): boolean {
+  if (target.kind === "unit") return stats.key === target.key;
+  return (
+    (stats.classes & target.classes) === target.classes &&
+    (target.requiredCulture === undefined || stats.culture === target.requiredCulture) &&
+    (target.excludedCulture === undefined || stats.culture !== target.excludedCulture)
+  );
+}
 
 export function resolveAttackDamage(attack: Attack, targetStats: UnitTypeStats): number {
   let damage = 0;
@@ -13,11 +23,7 @@ export function resolveAttackDamage(attack: Attack, targetStats: UnitTypeStats):
   }
 
   for (const bonus of attack.bonuses) {
-    if (
-      (targetStats.classes & bonus.requiredClasses) === bonus.requiredClasses &&
-      (bonus.requiredCulture === undefined || targetStats.culture === bonus.requiredCulture) &&
-      (bonus.excludedCulture === undefined || targetStats.culture !== bonus.excludedCulture)
-    ) {
+    if (matchesDamageBonusTarget(bonus.target, targetStats)) {
       damage *= bonus.multiplier;
     }
   }

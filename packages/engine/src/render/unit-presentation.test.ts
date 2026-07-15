@@ -19,6 +19,7 @@ import {
   TYPE_HOPLITE,
   TYPE_MILITIA,
   TYPE_SPEARMAN,
+  TYPE_TOXOTES,
   TYPE_TREE,
   UNIT_TYPES,
   createSnapshot,
@@ -251,5 +252,24 @@ describe("unit presentation", () => {
     );
     expect(UNIT_MEDIA[TYPE_HOPLITE]!.presentation).toMatchObject({ kind: "model" });
     expect(UNIT_MEDIA[TYPE_SPEARMAN]!.presentation).toMatchObject({ kind: "model" });
+  });
+
+  test("binds the Toxotes attack clip to the authored projectile release tag", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.unitType[0] = TYPE_TOXOTES;
+    const attack = UNIT_TYPES[TYPE_TOXOTES]!.attack;
+    if (attack?.kind !== "projectile") throw new Error("Toxotes requires a projectile attack");
+
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekToxotesIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe("greekToxotesWalk");
+
+    snapshot.actionCooldown[0] = attack.cooldownTicks - attack.launchDelayTicks;
+    const presentation = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(presentation)).toBe("greekToxotesAttack");
+    expect(modelAnimationTime(presentation, snapshot, 0, 0, 1)).toBeCloseTo(0.4, 8);
+    expect(modelKey(resolveModelDeathPresentation(TYPE_TOXOTES, packId(0, 0)))).toBe(
+      "greekToxotesDeath",
+    );
   });
 });

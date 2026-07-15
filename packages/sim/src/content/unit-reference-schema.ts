@@ -2,9 +2,11 @@ import type { UnitRosterEntry } from "./unit-roster";
 import {
   CULTURE_EGYPTIAN,
   CULTURE_GREEK,
+  type Attack,
   type ArmorProfile,
   type DamageBonus,
   type MeleeAttack,
+  type ProjectileAttack,
   type TypeCommandRelationship,
   type UnitTypeStats,
 } from "./unit-type-schema";
@@ -18,9 +20,19 @@ export type TrialComparableField =
   | "lineOfSight"
   | "movementSpeed"
   | "armor"
-  | "meleeAttack.damage"
-  | "meleeAttack.range"
-  | "meleeAttack.bonuses"
+  | "attack.damage"
+  | "attack.range"
+  | "attack.bonuses"
+  | "attack.accuracy"
+  | "attack.accuracyReductionFactor"
+  | "attack.aimBonus"
+  | "attack.spreadFactor"
+  | "attack.maxSpread"
+  | "attack.trackRating"
+  | "attack.unintentionalDamageMultiplier"
+  | "attack.projectile.speed"
+  | "attack.projectile.lifespanTicks"
+  | "attack.projectile.collisionRadius"
   | "bodyRadius"
   | "collidesWithProjectiles"
   | "cost"
@@ -42,19 +54,28 @@ export interface TrialFidelityDelta {
   readonly reason: string;
 }
 
+export interface UnitAssetInventoryEvidence {
+  readonly sha256: string;
+  readonly rosterName: string;
+  readonly rootAnimation: string;
+}
+
+export interface ProjectileReleaseEvidence {
+  readonly sha256: string;
+  readonly action: string;
+  readonly tag: "Attack";
+  readonly fraction: number;
+}
+
 export interface UnitReferenceSource {
   readonly culture: ReferenceCulture;
-  readonly ruleset: "Age of Mythology Extended Edition / The Titans";
+  readonly ruleset: "Age of Mythology Classic" | "Age of Mythology Extended Edition / The Titans";
   readonly trialProto: {
     readonly sha256: string;
     readonly unitId: number;
     readonly unitName: string;
   };
-  readonly assetInventory: {
-    readonly sha256: string;
-    readonly rosterName: string;
-    readonly rootAnimation: string;
-  };
+  readonly assetInventory: UnitAssetInventoryEvidence;
   readonly trialDeltas: readonly TrialFidelityDelta[];
   readonly finalRulesetReview: {
     readonly commit: string;
@@ -62,7 +83,13 @@ export interface UnitReferenceSource {
   };
 }
 
-export interface MeleeUnitReferenceExpected {
+export interface ProjectileUnitReferenceSource extends Omit<UnitReferenceSource, "assetInventory"> {
+  readonly assetInventory: UnitAssetInventoryEvidence & {
+    readonly attackRelease: ProjectileReleaseEvidence;
+  };
+}
+
+interface UnitReferenceCommonExpected {
   readonly label: string;
   readonly culture: number;
   readonly classes: number;
@@ -71,7 +98,6 @@ export interface MeleeUnitReferenceExpected {
   readonly movementSpeed: number;
   readonly workRange: number | null;
   readonly armor: ArmorProfile;
-  readonly meleeAttack: MeleeAttack;
   readonly isStatic: boolean;
   readonly resource: number;
   readonly bodyRadius: number;
@@ -90,8 +116,17 @@ export interface MeleeUnitReferenceExpected {
   readonly builtBy: readonly TypeCommandRelationship[];
 }
 
-type MeleeExpectedInput = Omit<
-  MeleeUnitReferenceExpected,
+export interface OrdinaryUnitReferenceExpected<
+  A extends Attack,
+> extends UnitReferenceCommonExpected {
+  readonly attack: A;
+}
+
+export type MeleeUnitReferenceExpected = OrdinaryUnitReferenceExpected<MeleeAttack>;
+export type ProjectileUnitReferenceExpected = OrdinaryUnitReferenceExpected<ProjectileAttack>;
+
+type OrdinaryExpectedInput<A extends Attack> = Omit<
+  OrdinaryUnitReferenceExpected<A>,
   | "workRange"
   | "isStatic"
   | "resource"
@@ -103,7 +138,9 @@ type MeleeExpectedInput = Omit<
   | "builtBy"
 >;
 
-export function meleeUnitExpected(expected: MeleeExpectedInput): MeleeUnitReferenceExpected {
+export function ordinaryUnitExpected<A extends Attack>(
+  expected: OrdinaryExpectedInput<A>,
+): OrdinaryUnitReferenceExpected<A> {
   return {
     ...expected,
     workRange: null,
@@ -126,7 +163,15 @@ export interface MeleeUnitReferenceSpec {
   readonly expected: MeleeUnitReferenceExpected;
 }
 
-export type UnitReferenceSpec = MeleeUnitReferenceSpec;
+export interface ProjectileUnitReferenceSpec {
+  readonly family: "ordinary-projectile";
+  readonly id: number;
+  readonly key: string;
+  readonly source: ProjectileUnitReferenceSource;
+  readonly expected: ProjectileUnitReferenceExpected;
+}
+
+export type UnitReferenceSpec = MeleeUnitReferenceSpec | ProjectileUnitReferenceSpec;
 
 export function structurallyEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
@@ -155,18 +200,16 @@ export function structurallyEqual(left: unknown, right: unknown): boolean {
 }
 
 export function trialComparableExpected(
-  expected: MeleeUnitReferenceExpected,
-): Readonly<Record<TrialComparableField, TrialComparableValue>> {
-  return {
+  reference: UnitReferenceSpec,
+): Readonly<Partial<Record<TrialComparableField, TrialComparableValue>>> {
+  const expected = reference.expected;
+  const common = {
     label: expected.label,
     classes: expected.classes,
     maxHp: expected.maxHp,
     lineOfSight: expected.lineOfSight,
     movementSpeed: expected.movementSpeed,
     armor: expected.armor,
-    "meleeAttack.damage": expected.meleeAttack.damage,
-    "meleeAttack.range": expected.meleeAttack.range,
-    "meleeAttack.bonuses": expected.meleeAttack.bonuses,
     bodyRadius: expected.bodyRadius,
     collidesWithProjectiles: expected.collidesWithProjectiles,
     cost: expected.cost,
@@ -174,13 +217,29 @@ export function trialComparableExpected(
     populationCost: expected.populationCost,
     requiredAge: expected.requiredAge,
   };
-}
 
-function relationshipsMatch(
-  left: readonly TypeCommandRelationship[],
-  right: readonly TypeCommandRelationship[],
-): boolean {
-  return structurallyEqual(left, right);
+  const attack = expected.attack;
+  const attackFields = {
+    ...common,
+    "attack.damage": attack.damage,
+    "attack.range": attack.range,
+    "attack.bonuses": attack.bonuses,
+  };
+
+  if (reference.family === "ordinary-melee") return attackFields;
+  return {
+    ...attackFields,
+    "attack.accuracy": reference.expected.attack.accuracy,
+    "attack.accuracyReductionFactor": reference.expected.attack.accuracyReductionFactor,
+    "attack.aimBonus": reference.expected.attack.aimBonus,
+    "attack.spreadFactor": reference.expected.attack.spreadFactor,
+    "attack.maxSpread": reference.expected.attack.maxSpread,
+    "attack.trackRating": reference.expected.attack.trackRating,
+    "attack.unintentionalDamageMultiplier": reference.expected.attack.unintentionalDamageMultiplier,
+    "attack.projectile.speed": reference.expected.attack.projectile.speed,
+    "attack.projectile.lifespanTicks": reference.expected.attack.projectile.lifespanTicks,
+    "attack.projectile.collisionRadius": reference.expected.attack.projectile.collisionRadius,
+  };
 }
 
 export function validateUnitReferences(
@@ -218,6 +277,24 @@ export function validateUnitReferences(
       }
       deltaFields.add(delta.field);
     }
+    if (reference.family === "ordinary-projectile") {
+      const release = reference.source.assetInventory.attackRelease;
+      if (
+        !/^[0-9a-f]{64}$/.test(release.sha256) ||
+        release.action.trim().length === 0 ||
+        !Number.isFinite(release.fraction) ||
+        release.fraction < 0 ||
+        release.fraction >= 1
+      ) {
+        throw new Error(`${reference.key} has invalid projectile release evidence.`);
+      }
+      if (
+        Math.round(release.fraction * reference.expected.attack.cooldownTicks) !==
+        reference.expected.attack.launchDelayTicks
+      ) {
+        throw new Error(`${reference.key} release evidence does not match launchDelayTicks.`);
+      }
+    }
 
     const lane = rosterByKey.get(reference.key);
     if (lane === undefined) throw new Error(`Unit reference ${reference.key} has no roster lane.`);
@@ -228,7 +305,7 @@ export function validateUnitReferences(
       reference.expected.culture !== lane.culture ||
       reference.expected.requiredGod !== lane.requiredGod ||
       lane.trainedAt === null ||
-      !relationshipsMatch(reference.expected.trainedAt, lane.trainedAt)
+      !structurallyEqual(reference.expected.trainedAt, lane.trainedAt)
     ) {
       throw new Error(`Unit reference ${reference.key} does not match its canonical roster lane.`);
     }
@@ -241,10 +318,9 @@ export function validateUnitReferences(
   }
 }
 
-function meleeDefinitionSnapshot(definition: UnitTypeStats): MeleeUnitReferenceExpected {
-  if (definition.attack?.kind !== "melee") {
-    throw new Error(`${definition.key} reference requires a melee attack.`);
-  }
+function definitionSnapshot(definition: UnitTypeStats): OrdinaryUnitReferenceExpected<Attack> {
+  if (definition.attack === null)
+    throw new Error(`${definition.key} reference requires an attack.`);
   return {
     label: definition.label,
     culture: definition.culture,
@@ -254,7 +330,7 @@ function meleeDefinitionSnapshot(definition: UnitTypeStats): MeleeUnitReferenceE
     movementSpeed: definition.movementSpeed,
     workRange: definition.workRange ?? null,
     armor: definition.armor,
-    meleeAttack: definition.attack,
+    attack: definition.attack,
     isStatic: definition.isStatic,
     resource: definition.resource,
     bodyRadius: definition.bodyRadius,
@@ -274,6 +350,10 @@ function meleeDefinitionSnapshot(definition: UnitTypeStats): MeleeUnitReferenceE
   };
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unsupported unit reference family ${JSON.stringify(value)}.`);
+}
+
 export function validateDefinitionAgainstReference(
   definition: UnitTypeStats,
   reference: UnitReferenceSpec,
@@ -286,13 +366,25 @@ export function validateDefinitionAgainstReference(
 
   switch (reference.family) {
     case "ordinary-melee": {
-      const actual = meleeDefinitionSnapshot(definition);
-      if (!structurallyEqual(actual, reference.expected)) {
-        throw new Error(
-          `${reference.key} differs from its integration-owned ${reference.family} reference spec.\nExpected: ${JSON.stringify(reference.expected)}\nActual:   ${JSON.stringify(actual)}`,
-        );
+      if (definition.attack?.kind !== "melee") {
+        throw new Error(`${definition.key} reference requires a melee attack.`);
       }
-      return;
+      break;
     }
+    case "ordinary-projectile": {
+      if (definition.attack?.kind !== "projectile") {
+        throw new Error(`${definition.key} reference requires a projectile attack.`);
+      }
+      break;
+    }
+    default:
+      return assertNever(reference);
+  }
+
+  const actual = definitionSnapshot(definition);
+  if (!structurallyEqual(actual, reference.expected)) {
+    throw new Error(
+      `${reference.key} differs from its integration-owned ${reference.family} reference spec.\nExpected: ${JSON.stringify(reference.expected)}\nActual:   ${JSON.stringify(actual)}`,
+    );
   }
 }

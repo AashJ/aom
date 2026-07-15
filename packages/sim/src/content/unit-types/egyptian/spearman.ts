@@ -35,8 +35,8 @@ export const definition = {
     aggroRange: 16,
     cooldownTicks: 30,
     bonuses: [
-      { requiredClasses: UNIT_CLASS_CAVALRY, multiplier: 1.1 },
-      { requiredClasses: UNIT_CLASS_SIEGE, multiplier: 2 },
+      { target: { kind: "classes", classes: UNIT_CLASS_CAVALRY }, multiplier: 1.1 },
+      { target: { kind: "classes", classes: UNIT_CLASS_SIEGE }, multiplier: 2 },
     ],
   },
   isStatic: false,

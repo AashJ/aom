@@ -14,6 +14,7 @@ import peacefulSlacksUrl from "../assets/audio/music/NEVERM_1.mp3";
 import peacefulBalladUrl from "../assets/audio/music/THEBAL_1.mp3";
 import peacefulSlaysenfliteUrl from "../assets/audio/music/_FINEL_1.mp3";
 import barracksUrl from "../assets/audio/ui/barracks.wav";
+import archeryRangeUrl from "../assets/audio/ui/archeryrange.wav";
 import fortressUrl from "../assets/audio/ui/fortress.wav";
 import houseUrl from "../assets/audio/ui/house.wav";
 import interfaceClickUrl from "../assets/audio/ui/interface_click.wav";
@@ -98,6 +99,7 @@ function cue(files: readonly string[], volume: number, maxVoices = 3): AudioCue 
 // These groupings and relative levels mirror the Classic trial's soundsets.xml.
 export const AUDIO_CUES = {
   ambient: cue([ambientBirdUrl, ambientWindUrl, ambientWoodsUrl], 0.18, 1),
+  archeryRange: cue([archeryRangeUrl], 1, 1),
   barracks: cue([barracksUrl], 1, 1),
   build: cue([build1Url, build2Url, build3Url, build4Url, build5Url], 0.3),
   buildingDeath: cue([buildingDeathUrl], 0.9, 1),

@@ -32,7 +32,7 @@ describe("Greek Hippikon unit pack", () => {
         range: 0.3,
         aggroRange: 8,
         cooldownTicks: 30,
-        bonuses: [{ requiredClasses: UNIT_CLASS_ARCHER, multiplier: 1.25 }],
+        bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_ARCHER }, multiplier: 1.25 }],
       },
       isStatic: false,
       resource: -1,

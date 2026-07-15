@@ -46,10 +46,10 @@ describe("generated unit media catalog", () => {
     }
   });
 
-  test("requires complete ordinary-melee media for every implemented roster entry", () => {
+  test("requires complete media for every implemented ordinary-unit roster entry", () => {
     const implemented = UNIT_ROSTER.filter(
       (entry) =>
-        entry.family === "ordinary-melee" &&
+        (entry.family === "ordinary-melee" || entry.family === "ordinary-projectile") &&
         entry.status === "implemented" &&
         UNIT_MEDIA[entry.id] !== undefined,
     );

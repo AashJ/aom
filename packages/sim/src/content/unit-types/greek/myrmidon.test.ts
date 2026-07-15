@@ -43,7 +43,7 @@ describe("Greek Myrmidon unit pack", () => {
         cooldownTicks: 30,
         bonuses: [
           {
-            requiredClasses: UNIT_CLASS_NON_GREEK_UNIT,
+            target: { kind: "classes", classes: UNIT_CLASS_NON_GREEK_UNIT },
             multiplier: 1.5,
           },
         ],
