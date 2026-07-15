@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { UNIT_CLASS_RESOURCE, UNIT_ROSTER, UNIT_TYPE_DEFINITIONS } from "@aom/sim";
+import {
+  PROJECTILE_TYPE_COUNT,
+  UNIT_CLASS_RESOURCE,
+  UNIT_ROSTER,
+  UNIT_TYPE_DEFINITIONS,
+} from "@aom/sim";
 import { TYPE_ICONS } from "../assets/icons";
-import { MODEL_CONFIGS, UNIT_MEDIA, UNIT_MEDIA_DEFINITIONS } from "./generated/unit-media";
+import {
+  MODEL_CONFIGS,
+  PROJECTILE_PRESENTATIONS,
+  UNIT_MEDIA,
+  UNIT_MEDIA_DEFINITIONS,
+} from "./generated/unit-media";
+import { PROJECTILE_MEDIA_DEFINITIONS } from "./projectile-media";
 
 describe("generated unit media catalog", () => {
   test("matches implemented sim ids and keys in stable numeric order", () => {
@@ -18,6 +29,20 @@ describe("generated unit media catalog", () => {
     expect(new Set(MODEL_CONFIGS.map((model) => model.key)).size).toBe(MODEL_CONFIGS.length);
     for (const media of UNIT_MEDIA_DEFINITIONS) {
       if (media.icon) expect(TYPE_ICONS[media.type]).toBe(media.icon);
+    }
+  });
+
+  test("requires complete shared media for every stable projectile type", () => {
+    const projectileTypes: number[] = PROJECTILE_MEDIA_DEFINITIONS.map(
+      (definition) => definition.type,
+    );
+    expect(projectileTypes).toEqual(
+      Array.from({ length: PROJECTILE_TYPE_COUNT }, (_, index) => index),
+    );
+    expect(PROJECTILE_PRESENTATIONS).toHaveLength(PROJECTILE_TYPE_COUNT);
+    for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
+      const presentation = PROJECTILE_PRESENTATIONS[definition.type]!;
+      expect(MODEL_CONFIGS[presentation.modelIndex]?.key).toBe(definition.model.key);
     }
   });
 

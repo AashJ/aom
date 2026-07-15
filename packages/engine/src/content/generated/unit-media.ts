@@ -26,9 +26,11 @@ import { definition as egyptianAxeman } from "../unit-media/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-media/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-media/egyptian/war-elephant";
 import { definition as greekHetairoi } from "../unit-media/greek/hetairoi";
+import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
   IconConfig,
   ModelAssetDefinition,
+  RuntimeProjectilePresentation,
   RuntimeModelActionDefinition,
   RuntimeModelAssetDefinition,
   RuntimeModelUnitPresentation,
@@ -87,6 +89,14 @@ for (const definition of UNIT_MEDIA_DEFINITIONS) {
   }
 }
 
+for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
+  if (modelIndex[definition.model.key] !== undefined) {
+    throw new Error(`Duplicate model key ${definition.model.key}.`);
+  }
+  modelIndex[definition.model.key] = authoredModelConfigs.length;
+  authoredModelConfigs.push(definition.model);
+}
+
 const modelConfigs: RuntimeModelAssetDefinition[] = authoredModelConfigs.map((model) => ({
   key: model.key,
   url: model.url,
@@ -127,7 +137,19 @@ for (const definition of UNIT_MEDIA_DEFINITIONS) {
   icons[definition.type] = definition.icon ?? undefined;
 }
 
+const projectilePresentations: RuntimeProjectilePresentation[] = [];
+for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
+  projectilePresentations[definition.type] = {
+    modelIndex: modelIndex[definition.model.key]!,
+    flightHeight: definition.flightHeight,
+    arcHeight: definition.arcHeight,
+    forwardAxis: definition.forwardAxis,
+  };
+}
+
 export const UNIT_MEDIA: readonly UnitMediaDefinition[] = Object.freeze(unitMedia);
 export const UNIT_PRESENTATIONS: readonly RuntimeUnitPresentation[] = Object.freeze(presentations);
+export const PROJECTILE_PRESENTATIONS: readonly RuntimeProjectilePresentation[] =
+  Object.freeze(projectilePresentations);
 export const MODEL_CONFIGS: readonly RuntimeModelAssetDefinition[] = Object.freeze(modelConfigs);
 export const TYPE_ICONS: readonly (IconConfig | undefined)[] = Object.freeze(icons);

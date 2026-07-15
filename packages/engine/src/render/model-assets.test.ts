@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseClassicModelGlb } from "./glb";
-import { MODEL_CONFIGS } from "./model-assets";
+import { MODEL_CONFIGS, PROJECTILE_PRESENTATIONS } from "./model-assets";
 
 describe("named model registry", () => {
   test("derives every GPU index and attachment target from a named model", () => {
@@ -10,6 +10,12 @@ describe("named model registry", () => {
       for (const attachment of config.attachments ?? []) {
         expect(MODEL_CONFIGS[attachment.modelIndex]).toBeDefined();
       }
+    }
+  });
+
+  test("keeps projectile models in the same registry rebuilt after device loss", () => {
+    for (const presentation of PROJECTILE_PRESENTATIONS) {
+      expect(MODEL_CONFIGS[presentation.modelIndex]).toBeDefined();
     }
   });
 

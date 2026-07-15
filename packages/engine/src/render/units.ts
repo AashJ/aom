@@ -29,10 +29,11 @@ export async function createUnitsRenderer(
   device: GPUDevice,
   format: GPUTextureFormat,
   maxInstances: number,
+  maxProjectiles: number,
   heights: Float32Array,
 ): Promise<UnitsRenderer> {
   const [models, sprites] = await Promise.all([
-    createModelRenderer(device, format, maxInstances),
+    createModelRenderer(device, format, maxInstances, maxProjectiles),
     createStaticSpriteRenderer(device, format, maxInstances, heights),
   ]);
   const overlays = createUnitOverlayRenderer(device, format, maxInstances, heights);

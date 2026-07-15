@@ -70,6 +70,26 @@ export interface RuntimeModelAssetDefinition {
   readonly attachments?: readonly RuntimeModelAttachmentDefinition[];
 }
 
+export type ProjectileModelForwardAxis = "positive-z" | "negative-z" | "positive-y";
+
+interface ProjectilePresentationMetrics {
+  // Render-only height above terrain and parabolic arc. Gameplay collision
+  // remains entirely in the simulation's horizontal plane.
+  readonly flightHeight: number;
+  readonly arcHeight: number;
+  readonly forwardAxis: ProjectileModelForwardAxis;
+}
+
+export interface ProjectileMediaDefinition extends ProjectilePresentationMetrics {
+  readonly type: number;
+  readonly key: string;
+  readonly model: ModelAssetDefinition;
+}
+
+export interface RuntimeProjectilePresentation extends ProjectilePresentationMetrics {
+  readonly modelIndex: number;
+}
+
 export interface RuntimeModelActionDefinition {
   readonly modelIndices: readonly [number, ...number[]];
   readonly animationClock: ModelAnimationClock;

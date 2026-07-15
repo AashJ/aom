@@ -8,7 +8,7 @@ import {
   sampleModelAnimation,
   type ModelAnimationState,
 } from "./model-animation";
-import { MODEL_CONFIGS } from "./model-assets";
+import { MODEL_CONFIGS, PROJECTILE_PRESENTATIONS } from "./model-assets";
 import {
   MODEL_INSTANCE_ATTRIBUTES,
   MODEL_INSTANCE_FLOATS,
@@ -24,6 +24,18 @@ import {
   resolveModelGhostPresentation,
   resolveModelPresentation,
 } from "./unit-presentation";
+import {
+  PROJECTILE_VISUAL_FACING_X,
+  PROJECTILE_VISUAL_FACING_Z,
+  PROJECTILE_VISUAL_FLOATS,
+  PROJECTILE_VISUAL_PROGRESS,
+  PROJECTILE_VISUAL_X,
+  PROJECTILE_VISUAL_Z,
+  projectileFlightHeight,
+  resolveProjectilePresentation,
+  writeProjectileModelTransform,
+  writeProjectileVisualState,
+} from "./projectile-presentation";
 
 const VERTEX_FLOATS = 8;
 const VERTEX_STRIDE = VERTEX_FLOATS * 4;
@@ -217,6 +229,7 @@ export async function createModelRenderer(
   device: GPUDevice,
   format: GPUTextureFormat,
   maxInstances: number,
+  maxProjectiles: number,
 ): Promise<ModelRenderer> {
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   const assets = await Promise.all(
@@ -310,7 +323,7 @@ export async function createModelRenderer(
     (maximum, config) => Math.max(maximum, config.attachments?.length ?? 0),
     0,
   );
-  const instanceCapacity = (maxInstances * 2 + 1) * (1 + maxAttachments);
+  const instanceCapacity = (maxInstances * 2 + 1) * (1 + maxAttachments) + maxProjectiles;
   const instanceBuffer = device.createBuffer({
     size: instanceCapacity * MODEL_INSTANCE_STRIDE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -328,6 +341,13 @@ export async function createModelRenderer(
     nodeMatrix: mat4.create(),
   };
   const attachmentMatrix = mat4.create();
+  const modelInstanceMatrix = mat4.create();
+  const projectileVisualState = new Float32Array(PROJECTILE_VISUAL_FLOATS);
+  const projectileModelTransforms = PROJECTILE_PRESENTATIONS.map((presentation) => {
+    const transform = mat4.create();
+    writeProjectileModelTransform(transform, presentation.forwardAxis);
+    return transform;
+  });
   const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
   const deathInstances = new Map<number, DeathInstance>();
   let observedTick = -1;
@@ -350,6 +370,8 @@ export async function createModelRenderer(
     buildFraction: number,
     ghostMode: number,
     animationTime: number,
+    heightOffset: number,
+    localTransform: mat4.Mat4 | null,
     heights: Float32Array,
   ): void {
     const model = models[modelIndex]!;
@@ -360,7 +382,9 @@ export async function createModelRenderer(
     writeOffsets[modelIndex] = instanceIndex + 1;
     staging[offset] = x;
     staging[offset + 1] =
-      heightAt(heights, x, z) + (modelConfig.grounded ? model.asset.groundOffset : 0);
+      heightAt(heights, x, z) +
+      (modelConfig.grounded ? model.asset.groundOffset : 0) +
+      heightOffset;
     staging[offset + 2] = z;
     staging[offset + 3] = facingX;
     staging[offset + 4] = facingZ;
@@ -369,7 +393,10 @@ export async function createModelRenderer(
     staging[offset + 7] = buildFraction;
     staging[offset + 8] = ghostMode;
     staging.set(animationState.weights, offset + MODEL_INSTANCE_MORPH_OFFSET);
-    staging.set(animationState.nodeMatrix, offset + MODEL_INSTANCE_MATRIX_OFFSET);
+    const instanceMatrix = localTransform
+      ? mat4.multiply(modelInstanceMatrix, localTransform, animationState.nodeMatrix)
+      : animationState.nodeMatrix;
+    staging.set(instanceMatrix, offset + MODEL_INSTANCE_MATRIX_OFFSET);
 
     for (const attachment of model.attachments) {
       sampleModelAnimation(
@@ -383,7 +410,8 @@ export async function createModelRenderer(
       const attachmentOffset = attachmentIndex * MODEL_INSTANCE_FLOATS;
       writeOffsets[attachment.modelIndex] = attachmentIndex + 1;
       staging[attachmentOffset] = x;
-      staging[attachmentOffset + 1] = heightAt(heights, x, z) + model.asset.groundOffset;
+      staging[attachmentOffset + 1] =
+        heightAt(heights, x, z) + model.asset.groundOffset + heightOffset;
       staging[attachmentOffset + 2] = z;
       staging[attachmentOffset + 3] = facingX;
       staging[attachmentOffset + 4] = facingZ;
@@ -456,6 +484,11 @@ export async function createModelRenderer(
 
         const modelIndex = presentation.modelIndex;
         countModelInstances(modelIndex);
+      }
+
+      for (let i = 0; i < curr.projectileCount; i += 1) {
+        const presentation = resolveProjectilePresentation(curr, i);
+        if (presentation) countModelInstances(presentation.modelIndex);
       }
 
       const ghostPresentation =
@@ -536,6 +569,29 @@ export async function createModelRenderer(
           buildFrac,
           0,
           animationTime,
+          0,
+          null,
+          heights,
+        );
+      }
+
+      for (let i = 0; i < curr.projectileCount; i += 1) {
+        const presentation = resolveProjectilePresentation(curr, i);
+        if (!presentation) continue;
+        writeProjectileVisualState(projectileVisualState, prev, curr, i, alpha);
+        writeModelInstance(
+          presentation.modelIndex,
+          projectileVisualState[PROJECTILE_VISUAL_X]!,
+          projectileVisualState[PROJECTILE_VISUAL_Z]!,
+          projectileVisualState[PROJECTILE_VISUAL_FACING_X]!,
+          projectileVisualState[PROJECTILE_VISUAL_FACING_Z]!,
+          0,
+          curr.projectileOwners[i]!,
+          1,
+          0,
+          0,
+          projectileFlightHeight(presentation, projectileVisualState[PROJECTILE_VISUAL_PROGRESS]!),
+          projectileModelTransforms[curr.projectileTypes[i]!]!,
           heights,
         );
       }
@@ -554,6 +610,8 @@ export async function createModelRenderer(
           1,
           0,
           animationTime,
+          0,
+          null,
           heights,
         );
       }
@@ -571,6 +629,8 @@ export async function createModelRenderer(
           1,
           ghostValid ? 1 : 2,
           0,
+          0,
+          null,
           heights,
         );
       }

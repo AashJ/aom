@@ -190,7 +190,13 @@ export async function createGame(
             world.terrainMaterials,
             world.walkable,
           ),
-          createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS, heights),
+          createUnitsRenderer(
+            nextGpu.device,
+            nextGpu.format,
+            MAX_UNITS,
+            currSnap.projectileIds.length,
+            heights,
+          ),
         ]);
 
         if (disposed) {
@@ -279,7 +285,7 @@ export async function createGame(
 
   let [terrain, units] = await Promise.all([
     createTerrainRenderer(gpu.device, gpu.format, heights, world.terrainMaterials, world.walkable),
-    createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights),
+    createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, currSnap.projectileIds.length, heights),
   ]);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let marker = createMarkerRenderer(gpu.device, gpu.format, heights);
