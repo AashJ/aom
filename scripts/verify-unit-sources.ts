@@ -124,6 +124,12 @@ function damageBonus(type: string, multiplier: number): DamageBonus {
       return { target: { kind: "classes", classes: UNIT_CLASS_NON_GREEK_UNIT }, multiplier };
     case "Raiding Cavalry":
       return { target: { kind: "unit", key: "norse-raiding-cavalry" }, multiplier };
+    case "Throwing Axeman":
+      return { target: { kind: "unit", key: "norse-throwing-axeman" }, multiplier };
+    case "Hypaspist":
+      return { target: { kind: "unit", key: "greek-hypaspist" }, multiplier };
+    case "Axeman":
+      return { target: { kind: "unit", key: "egyptian-axeman" }, multiplier };
     case "Hero Norse":
     case "Hero Ragnorok":
       return {

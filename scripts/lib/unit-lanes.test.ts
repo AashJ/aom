@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, unlinkSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unitRosterEntry, type UnitRosterEntry } from "../../packages/sim/src/content/unit-roster";
+import type { UnitReferenceSpec } from "../../packages/sim/src/content/unit-reference-schema";
 import { unitReferenceEntry } from "../../packages/sim/src/content/unit-references";
 import { collectLaneChangedPaths, runGit } from "./unit-lane-git";
 import {
@@ -14,6 +15,15 @@ import {
 } from "./unit-lanes";
 
 const hoplite = unitRosterEntry("greek-hoplite")!;
+
+function candidateReference(reference: UnitReferenceSpec): UnitReferenceSpec {
+  if (reference.source.stage !== "final") return reference;
+  const { stage: _stage, finalRulesetReview: _review, ...source } = reference.source;
+  return {
+    ...reference,
+    source: { ...source, stage: "candidate" },
+  } as UnitReferenceSpec;
+}
 
 describe("unit lane ownership", () => {
   test("accepts only the unit's authored files and asset subtree", () => {
@@ -71,6 +81,8 @@ describe("unit lane ownership", () => {
 
   test("requires a complete ready-lane handoff on its isolated branch", () => {
     const readyLane: UnitRosterEntry = { ...hoplite, status: "ready" };
+    const finalReference = unitReferenceEntry(readyLane.key)!;
+    const reference = candidateReference(finalReference);
     const changedPaths = readyLane.ownedPaths.map((ownedPath) =>
       ownedPath.kind === "file" ? ownedPath.path : `${ownedPath.path}/hoplite.glb`,
     );
@@ -78,7 +90,14 @@ describe("unit lane ownership", () => {
       validateLaneHandoff(readyLane, {
         branch: "unit/greek-hoplite",
         changedPaths,
-        reference: unitReferenceEntry(readyLane.key),
+        reference: finalReference,
+      }),
+    ).toThrow("requires a candidate reference spec");
+    expect(() =>
+      validateLaneHandoff(readyLane, {
+        branch: "unit/greek-hoplite",
+        changedPaths,
+        reference,
       }),
     ).not.toThrow();
 
@@ -86,7 +105,7 @@ describe("unit lane ownership", () => {
       validateLaneHandoff(readyLane, {
         branch: "unit/greek-hoplite",
         changedPaths: changedPaths.filter((path) => !path.includes("unit-media/")),
-        reference: unitReferenceEntry(readyLane.key),
+        reference,
       }),
     ).toThrow("missing required file");
   });

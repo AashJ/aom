@@ -67,7 +67,7 @@ export interface ProjectileReleaseEvidence {
   readonly fraction: number;
 }
 
-export interface UnitReferenceSource {
+interface UnitReferenceSourceCommon<A extends UnitAssetInventoryEvidence> {
   readonly culture: ReferenceCulture;
   readonly ruleset: "Age of Mythology Classic" | "Age of Mythology Extended Edition / The Titans";
   readonly trialProto: {
@@ -75,19 +75,27 @@ export interface UnitReferenceSource {
     readonly unitId: number;
     readonly unitName: string;
   };
-  readonly assetInventory: UnitAssetInventoryEvidence;
+  readonly assetInventory: A;
   readonly trialDeltas: readonly TrialFidelityDelta[];
-  readonly finalRulesetReview: {
-    readonly commit: string;
-    readonly scope: string;
-  };
 }
 
-export interface ProjectileUnitReferenceSource extends Omit<UnitReferenceSource, "assetInventory"> {
-  readonly assetInventory: UnitAssetInventoryEvidence & {
+export type UnitReferenceSource<A extends UnitAssetInventoryEvidence = UnitAssetInventoryEvidence> =
+    | (UnitReferenceSourceCommon<A> & {
+        readonly stage: "candidate";
+      })
+    | (UnitReferenceSourceCommon<A> & {
+        readonly stage: "final";
+        readonly finalRulesetReview: {
+          readonly commit: string;
+          readonly scope: string;
+        };
+      });
+
+export type ProjectileUnitReferenceSource = UnitReferenceSource<
+  UnitAssetInventoryEvidence & {
     readonly attackRelease: ProjectileReleaseEvidence;
-  };
-}
+  }
+>;
 
 interface UnitReferenceCommonExpected {
   readonly label: string;
@@ -264,11 +272,15 @@ export function validateUnitReferences(
     if (reference.expected.culture !== sourceCulture) {
       throw new Error(`Unit reference ${reference.key} has inconsistent source culture.`);
     }
-    if (
-      !/^[0-9a-f]{40}$/.test(reference.source.finalRulesetReview.commit) ||
-      reference.source.finalRulesetReview.scope.trim().length === 0
-    ) {
-      throw new Error(`Unit reference ${reference.key} has invalid final-ruleset review evidence.`);
+    if (reference.source.stage === "final") {
+      if (
+        !/^[0-9a-f]{40}$/.test(reference.source.finalRulesetReview.commit) ||
+        reference.source.finalRulesetReview.scope.trim().length === 0
+      ) {
+        throw new Error(
+          `Unit reference ${reference.key} has invalid final-ruleset review evidence.`,
+        );
+      }
     }
     const deltaFields = new Set<TrialComparableField>();
     for (const delta of reference.source.trialDeltas) {
@@ -298,6 +310,15 @@ export function validateUnitReferences(
 
     const lane = rosterByKey.get(reference.key);
     if (lane === undefined) throw new Error(`Unit reference ${reference.key} has no roster lane.`);
+    if (lane.status === "blocked") {
+      throw new Error(`Blocked unit lane ${lane.lane} cannot own a reference spec.`);
+    }
+    const requiredStage = lane.status === "ready" ? "candidate" : "final";
+    if (reference.source.stage !== requiredStage) {
+      throw new Error(
+        `${lane.status === "ready" ? "Ready" : "Implemented"} unit lane ${lane.lane} requires a ${requiredStage} reference spec.`,
+      );
+    }
     if (
       reference.id !== lane.id ||
       reference.family !== lane.family ||

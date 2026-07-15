@@ -1,4 +1,4 @@
-import { GOD_POSEIDON, GOD_ZEUS, NO_GOD } from "../ecs/progression";
+import { GOD_HADES, GOD_POSEIDON, GOD_ZEUS, NO_GOD } from "../ecs/progression";
 import {
   TYPE_AXEMAN,
   TYPE_CAMELRY,
@@ -108,8 +108,6 @@ function defineUnitLane(entry: UnitRosterDraft): UnitRosterEntry {
 
 const DIRECT_HIT_MELEE_FOUNDATION = "serial-direct-hit-melee-foundation";
 const PROJECTILE_FOUNDATION = "serial-projectile-foundation";
-const PROJECTILE_BLOCKER =
-  "Gate B: deterministic projectile launch, flight, impact, snapshot/hash, presentation, and a reviewed producer/slot assignment.";
 
 const gateAEntries = [
   defineUnitLane({
@@ -302,11 +300,13 @@ const gateAEntries = [
   }),
 ];
 
-function blockedProjectile(
+function readyProjectile(
   id: number,
   key: string,
   label: string,
   culture: number,
+  requiredGod: number,
+  trainedAt: readonly TypeCommandRelationship[],
 ): UnitRosterEntry {
   return defineUnitLane({
     id,
@@ -316,10 +316,10 @@ function blockedProjectile(
     family: "ordinary-projectile",
     gate: "B",
     foundationLane: PROJECTILE_FOUNDATION,
-    status: "blocked",
-    blocker: PROJECTILE_BLOCKER,
-    requiredGod: NO_GOD,
-    trainedAt: null,
+    status: "ready",
+    blocker: null,
+    requiredGod,
+    trainedAt,
   });
 }
 
@@ -337,14 +337,27 @@ const projectileEntries = [
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_ARCHERY_RANGE, commandSlot: 0 }],
   }),
-  blockedProjectile(TYPE_PELTAST, "greek-peltast", "Peltast", CULTURE_GREEK),
-  blockedProjectile(TYPE_GASTRAPHETES, "greek-gastraphetes", "Gastraphetes", CULTURE_GREEK),
-  blockedProjectile(TYPE_SLINGER, "egyptian-slinger", "Slinger", CULTURE_EGYPTIAN),
-  blockedProjectile(
+  readyProjectile(TYPE_PELTAST, "greek-peltast", "Peltast", CULTURE_GREEK, NO_GOD, [
+    { type: TYPE_GREEK_ARCHERY_RANGE, commandSlot: 1 },
+  ]),
+  readyProjectile(
+    TYPE_GASTRAPHETES,
+    "greek-gastraphetes",
+    "Gastraphetes",
+    CULTURE_GREEK,
+    GOD_HADES,
+    [{ type: TYPE_GREEK_FORTRESS, commandSlot: 2 }],
+  ),
+  readyProjectile(TYPE_SLINGER, "egyptian-slinger", "Slinger", CULTURE_EGYPTIAN, NO_GOD, [
+    { type: TYPE_EGYPTIAN_BARRACKS, commandSlot: 2 },
+  ]),
+  readyProjectile(
     TYPE_CHARIOT_ARCHER,
     "egyptian-chariot-archer",
     "Chariot Archer",
     CULTURE_EGYPTIAN,
+    NO_GOD,
+    [{ type: TYPE_EGYPTIAN_MIGDOL_STRONGHOLD, commandSlot: 0 }],
   ),
 ];
 

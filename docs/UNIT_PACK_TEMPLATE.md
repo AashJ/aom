@@ -1,9 +1,10 @@
-# Gate A unit-pack template
+# Ordinary unit-pack template
 
-Each parallel task owns one lane from [GATE_A_MELEE_MANIFEST.md](GATE_A_MELEE_MANIFEST.md). The
-machine manifest has already chosen identity, producer relationships, command slots, and god gates.
-The family-neutral task state and filesystem ownership contract live in
-`packages/sim/src/content/unit-roster.ts`.
+Each parallel task owns one ready lane from [the Gate A melee manifest](GATE_A_MELEE_MANIFEST.md) or
+[the Gate B projectile manifest](GATE_B_PROJECTILE_MANIFEST.md). The machine manifest has already
+chosen identity, producer relationships, command slots, god gates, projectile identity when needed,
+and a complete candidate reference. The family-neutral task state and filesystem ownership contract
+live in `packages/sim/src/content/unit-roster.ts`.
 
 Create and inspect an open lane through the workcell command:
 
@@ -24,10 +25,11 @@ packages/engine/src/content/unit-media/<culture>/<unit>.ts
 packages/engine/src/assets/units/<culture>/<unit>/...
 ```
 
-The sim test is required. It pins the Extended Edition / The Titans base-unit contract: identity,
-cost, build time, population, hit points, speed, line of sight, armor, direct-hit melee damage and
-cooldown, bonuses, age/god/prerequisites, and producer/slot relationships. Add focused behavior tests
-there when the pack's data has a meaningful predicate such as a counter bonus.
+The sim test is required. It pins the lane reference's named ruleset: identity, cost, build time,
+population, hit points, speed, line of sight, armor, attack shape/damage/cooldown, bonuses,
+age/god/prerequisites, and producer/slot relationships. Projectile lanes additionally pin release
+delay, accuracy fields, and projectile flight identity. Add focused behavior tests there when the
+pack's data has a meaningful predicate such as a counter bonus or release boundary.
 
 The media definition owns the icon, model assets, attachments, idle/walk/attack/death actions, and
 selection/acknowledgement/attack audio. Every action and attachment must reference a model declared
@@ -58,7 +60,8 @@ bun run unit:lane validate <lane> --base <integration-base>
 
 `validate:unit-packs` discovers and validates the combined authored pack in memory and leaves the
 worktree unchanged. It rejects duplicate IDs/keys/slots, manifest drift, invalid relationships,
-missing media/actions/audio, cross-pack model references, and unsupported Gate A combat shapes.
+missing media/actions/audio, cross-pack model references, and unsupported ordinary-unit combat
+shapes.
 
 Do not commit generated catalog changes from a parallel lane. After merging all authored packs, the
 integration owner runs `bun run generate:unit-catalogs`, reviews the single generated diff, runs

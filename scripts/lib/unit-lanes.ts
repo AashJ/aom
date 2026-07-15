@@ -51,7 +51,7 @@ export function laneBrief(lane: UnitRosterEntry, reference: UnitReferenceSpec | 
   if (lane.blocker !== null) lines.push(`Blocker: ${lane.blocker}`);
   if (reference !== undefined) {
     lines.push(
-      `Reference: ${reference.key} (${reference.family})`,
+      `Reference: ${reference.key} (${reference.family}, ${reference.source.stage})`,
       "",
       "Expected implementation:",
       JSON.stringify(reference.expected, null, 2),
@@ -88,6 +88,9 @@ export function validateLaneHandoff(lane: UnitRosterEntry, context: LaneHandoffC
   }
   if (context.reference === undefined) {
     throw new Error(`Ready unit lane ${lane.lane} has no integration-owned reference spec.`);
+  }
+  if (context.reference.source.stage !== "candidate") {
+    throw new Error(`Ready unit lane ${lane.lane} requires a candidate reference spec.`);
   }
   const expectedBranch = `unit/${lane.lane}`;
   if (context.branch !== expectedBranch) {

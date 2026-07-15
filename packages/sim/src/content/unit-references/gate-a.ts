@@ -19,6 +19,7 @@ function source(
   trialDeltas: readonly TrialFidelityDelta[] = [],
 ) {
   return {
+    stage: "final",
     culture,
     ruleset: "Age of Mythology Extended Edition / The Titans",
     trialProto: { sha256: TRIAL_PROTO_SHA256, unitId, unitName },

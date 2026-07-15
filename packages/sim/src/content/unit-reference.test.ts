@@ -8,6 +8,15 @@ import {
 } from "./unit-reference-schema";
 import { UNIT_REFERENCE_SPECS } from "./unit-references";
 
+function asCandidateReference(reference: UnitReferenceSpec): UnitReferenceSpec {
+  if (reference.source.stage !== "final") return reference;
+  const { stage: _stage, finalRulesetReview: _review, ...source } = reference.source;
+  return {
+    ...reference,
+    source: { ...source, stage: "candidate" },
+  } as UnitReferenceSpec;
+}
+
 describe("agentic unit references", () => {
   test("keeps the roster structurally valid and uniquely owned", () => {
     expect(() => validateUnitRoster(UNIT_ROSTER)).not.toThrow();
@@ -51,6 +60,27 @@ describe("agentic unit references", () => {
     };
     expect(() => validateUnitReferences([invalidReadyLane], [])).toThrow(
       "has no integration-owned reference spec",
+    );
+  });
+
+  test("requires candidate references for ready lanes and final references after integration", () => {
+    const lane = UNIT_ROSTER.find((entry) => entry.key === "greek-hoplite")!;
+    const finalReference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key)!;
+    const candidateReference = asCandidateReference(finalReference);
+    if (lane.trainedAt === null) throw new Error("Hoplite assignment is not frozen.");
+    const readyLane: UnitRosterEntry = {
+      ...lane,
+      status: "ready",
+      blocker: null,
+      trainedAt: lane.trainedAt,
+    };
+
+    expect(() => validateUnitReferences([readyLane], [candidateReference])).not.toThrow();
+    expect(() => validateUnitReferences([lane], [candidateReference])).toThrow(
+      "requires a final reference spec",
+    );
+    expect(() => validateUnitReferences([readyLane], [finalReference])).toThrow(
+      "requires a candidate reference spec",
     );
   });
 
