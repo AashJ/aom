@@ -332,9 +332,8 @@ const projectileEntries = [
     family: "ordinary-projectile",
     gate: "B",
     foundationLane: PROJECTILE_FOUNDATION,
-    status: "blocked",
-    blocker:
-      "Gate B5: freeze the final-ruleset reference after the reviewed implementation commit.",
+    status: "implemented",
+    blocker: null,
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_ARCHERY_RANGE, commandSlot: 0 }],
   }),
