@@ -4,6 +4,8 @@ import {
   FOOD,
   getTypeAvailability,
   GOLD,
+  NO_AGE,
+  NO_GOD,
   RESOURCE_COUNT,
   UNIT_TYPES,
   WOOD,
@@ -13,6 +15,7 @@ import {
 
 export interface PlayerState {
   age: number;
+  majorGod: number;
   food: number;
   wood: number;
   gold: number;
@@ -20,6 +23,16 @@ export interface PlayerState {
   pop: number;
   popCap: number;
   completedBuildings: Uint8Array;
+  ageAdvancement: AgeAdvancementState | null;
+}
+
+export interface AgeAdvancementState {
+  targetAge: number;
+  minorGod: number;
+  remainingTicks: number;
+  totalTicks: number;
+  buildingId: number;
+  progress: number;
 }
 
 export type PlayerStateCallback = (state: PlayerState) => void;
@@ -48,6 +61,7 @@ function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
 export function createPlayerStateStore(playerId: number): PlayerStateStore {
   let state: PlayerState = {
     age: AGE_ARCHAIC,
+    majorGod: NO_GOD,
     food: 0,
     wood: 0,
     gold: 0,
@@ -55,18 +69,31 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     pop: 0,
     popCap: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    ageAdvancement: null,
   };
   const callbacks = new Set<PlayerStateCallback>();
 
   function update(snapshot: RenderSnapshot): void {
     const stockpileBase = playerId * RESOURCE_COUNT;
     const age = snapshot.age;
+    const majorGod = snapshot.majorGod;
     const food = snapshot.stockpiles[stockpileBase + FOOD] ?? 0;
     const wood = snapshot.stockpiles[stockpileBase + WOOD] ?? 0;
     const gold = snapshot.stockpiles[stockpileBase + GOLD] ?? 0;
     const favor = snapshot.stockpiles[stockpileBase + FAVOR] ?? 0;
     let pop = 0;
     let popCap = 0;
+    const ageAdvancement =
+      snapshot.ageAdvanceTarget === NO_AGE
+        ? null
+        : {
+            targetAge: snapshot.ageAdvanceTarget,
+            minorGod: snapshot.ageAdvanceGod,
+            remainingTicks: snapshot.ageAdvanceRemaining,
+            totalTicks: snapshot.ageAdvanceTotal,
+            buildingId: snapshot.ageAdvanceBuilding,
+            progress: 1 - snapshot.ageAdvanceRemaining / Math.max(1, snapshot.ageAdvanceTotal),
+          };
 
     for (let index = 0; index < snapshot.count; index += 1) {
       if (snapshot.owner[index] !== playerId) {
@@ -88,12 +115,18 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
 
     if (
       age === state.age &&
+      majorGod === state.majorGod &&
       food === state.food &&
       wood === state.wood &&
       gold === state.gold &&
       favor === state.favor &&
       pop === state.pop &&
       popCap === state.popCap &&
+      ageAdvancement?.targetAge === state.ageAdvancement?.targetAge &&
+      ageAdvancement?.minorGod === state.ageAdvancement?.minorGod &&
+      ageAdvancement?.remainingTicks === state.ageAdvancement?.remainingTicks &&
+      ageAdvancement?.totalTicks === state.ageAdvancement?.totalTicks &&
+      ageAdvancement?.buildingId === state.ageAdvancement?.buildingId &&
       arraysEqual(state.completedBuildings, snapshot.completedBuildings)
     ) {
       return;
@@ -101,6 +134,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
 
     state = {
       age,
+      majorGod,
       food,
       wood,
       gold,
@@ -108,6 +142,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       pop,
       popCap,
       completedBuildings: snapshot.completedBuildings.slice(),
+      ageAdvancement,
     };
 
     for (const callback of callbacks) {

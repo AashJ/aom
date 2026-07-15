@@ -15,6 +15,7 @@ import {
   MAX_UNITS,
   RESOURCE_COUNT,
   registerPlayer,
+  resolveId,
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
@@ -98,6 +99,7 @@ export interface GameHandle {
   startPlacement(buildingType: number): void;
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
+  advanceAge(buildingId: number, minorGod: number): void;
   submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
@@ -744,6 +746,24 @@ export async function createGame(
         audio.uiClick();
         return;
       }
+    },
+    advanceAge(buildingId: number, minorGod: number): void {
+      const building = resolveId(world, buildingId);
+
+      if (
+        building < 0 ||
+        world.selected[building] !== 1 ||
+        world.owner[building] !== selfPlayerId ||
+        world.unitType[building] !== TYPE_TOWN_CENTER ||
+        world.buildProgress[building]! < UNIT_TYPES[TYPE_TOWN_CENTER]!.buildTicks
+      ) {
+        return;
+      }
+
+      // Preview-validation only. Food, Temple, age, and god choice are all
+      // revalidated by the deterministic sim when the command lands.
+      sink.submitAdvanceAge(buildingId, minorGod);
+      audio.uiClick();
     },
     submitCheat(code: string): boolean {
       const cheat = cheatFromChat(code);

@@ -1,8 +1,10 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
 import { RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
+import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
-import { resolveId, unitIdAt, type World } from "./ecs/world";
-import { AGE_ARCHAIC, AGE_COUNT, NO_GOD } from "./ecs/progression";
+import { findAgeAdvanceResearch } from "./ecs/research";
+import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
+import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
 import { isEntityVisibleTo, VISIBILITY_TILES } from "./visibility";
 
 export interface RenderSnapshot {
@@ -32,6 +34,11 @@ export interface RenderSnapshot {
   age: number;
   majorGod: number;
   minorGods: Uint8Array;
+  ageAdvanceTarget: number;
+  ageAdvanceGod: number;
+  ageAdvanceRemaining: number;
+  ageAdvanceTotal: number;
+  ageAdvanceBuilding: number;
   completedBuildings: Uint8Array;
   winner: number;
 }
@@ -64,6 +71,11 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
     minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
+    ageAdvanceTarget: NO_AGE,
+    ageAdvanceGod: NO_GOD,
+    ageAdvanceRemaining: 0,
+    ageAdvanceTotal: 0,
+    ageAdvanceBuilding: NO_TARGET,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     winner: -1,
   };
@@ -78,12 +90,31 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.stockpiles.set(world.stockpiles);
   out.completedBuildings.fill(0);
   const viewerSlot = world.playerSlotById[viewerId]!;
+  out.ageAdvanceTarget = NO_AGE;
+  out.ageAdvanceGod = NO_GOD;
+  out.ageAdvanceRemaining = 0;
+  out.ageAdvanceTotal = 0;
+  out.ageAdvanceBuilding = NO_TARGET;
 
   if (viewerSlot >= 0) {
     out.age = world.playerAge[viewerId]!;
     out.majorGod = world.playerMajorGod[viewerId]!;
     const minorGodStart = viewerId * AGE_COUNT;
     out.minorGods.set(world.playerMinorGods.subarray(minorGodStart, minorGodStart + AGE_COUNT));
+    const researchBuilding = findAgeAdvanceResearch(world, viewerId);
+
+    if (researchBuilding >= 0) {
+      const rule = getAgeAdvanceRuleByResearchId(world.researchId[researchBuilding]!);
+
+      if (rule) {
+        out.ageAdvanceTarget = rule.targetAge;
+        out.ageAdvanceGod = world.researchChoice[researchBuilding]!;
+        out.ageAdvanceRemaining = world.researchRemaining[researchBuilding]!;
+        out.ageAdvanceTotal = rule.durationTicks;
+        out.ageAdvanceBuilding = unitIdAt(world, researchBuilding);
+      }
+    }
+
     const start = viewerSlot * VISIBILITY_TILES;
     out.fog.set(world.visibility.subarray(start, start + VISIBILITY_TILES));
   } else {

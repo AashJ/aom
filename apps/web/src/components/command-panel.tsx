@@ -1,13 +1,23 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   AGE_NAMES,
+  FAVOR,
+  FOOD,
+  getAgeAdvanceAvailability,
   getTypeAvailability,
+  GOLD,
+  GOD_ATHENA,
+  GOD_HERMES,
+  NO_AGE,
   TYPE_BARRACKS,
   TYPE_HOUSE,
   TYPE_ICONS,
+  TYPE_TEMPLE,
   TYPE_TOWN_CENTER,
   TYPE_VILLAGER,
   UNIT_TYPES,
+  WOOD,
+  type AgeAdvanceAvailability,
   type GameHandle,
   type IconConfig,
   type PlayerState,
@@ -20,9 +30,12 @@ import goldIconUrl from "@/assets/resource-gold.png";
 import woodIconUrl from "@/assets/resource-wood.png";
 import { ClassicHudPanel } from "./classic-hud-panel";
 
+const AGE_SYMBOLS = ["I", "II", "III", "IV"] as const;
+
 export function CommandPanel({ game }: { game: GameHandle | null }) {
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
   const [playerState, setPlayerState] = useState<PlayerState | null>(null);
+  const [choosingMinorGod, setChoosingMinorGod] = useState(false);
 
   useEffect(() => {
     if (!game) {
@@ -38,12 +51,31 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     };
   }, [game]);
 
+  useEffect(() => {
+    if (!choosingMinorGod) {
+      return;
+    }
+
+    const producer = selection?.producer;
+    const ageAdvanceAvailability = ageAdvanceAvailabilityFor(playerState);
+
+    if (
+      !producer ||
+      !producer.complete ||
+      ageAdvanceAvailability?.available !== true ||
+      producer.type !== ageAdvanceAvailability.rule.producerType
+    ) {
+      setChoosingMinorGod(false);
+    }
+  }, [choosingMinorGod, playerState, selection]);
+
   if (!game) {
     return null;
   }
 
   const house = UNIT_TYPES[TYPE_HOUSE]!;
   const barracks = UNIT_TYPES[TYPE_BARRACKS]!;
+  const temple = UNIT_TYPES[TYPE_TEMPLE]!;
   const producer = selection?.producer ?? null;
   const trained = producer ? UNIT_TYPES[producer.type]!.trains : -1;
   const trainedStats = trained !== -1 ? UNIT_TYPES[trained]! : null;
@@ -59,7 +91,12 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
       : null;
   const houseAvailability = availability(TYPE_HOUSE);
   const barracksAvailability = availability(TYPE_BARRACKS);
+  const templeAvailability = availability(TYPE_TEMPLE);
   const trainedAvailability = trainedStats ? availability(trained) : null;
+  const ageAdvanceAvailability = ageAdvanceAvailabilityFor(playerState);
+  const ageAdvanceRule =
+    ageAdvanceAvailability && "rule" in ageAdvanceAvailability ? ageAdvanceAvailability.rule : null;
+  const ageAdvanceUnavailable = ageAdvanceReason(ageAdvanceAvailability);
 
   return (
     <>
@@ -105,6 +142,23 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 }
                 onClick={() => game.startPlacement(TYPE_BARRACKS)}
               />
+              <CommandTile
+                icon={TYPE_ICONS.get(TYPE_TEMPLE)}
+                label="Temple"
+                costFood={temple.costFood}
+                costWood={temple.costWood}
+                costGold={temple.costGold}
+                costFavor={temple.costFavor}
+                unavailableReason={availabilityReason(templeAvailability)}
+                disabled={
+                  templeAvailability?.available !== true ||
+                  (playerState?.food ?? 0) < temple.costFood ||
+                  (playerState?.wood ?? 0) < temple.costWood ||
+                  (playerState?.gold ?? 0) < temple.costGold ||
+                  (playerState?.favor ?? 0) < temple.costFavor
+                }
+                onClick={() => game.startPlacement(TYPE_TEMPLE)}
+              />
             </>
           )}
 
@@ -128,6 +182,25 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
               onClick={() => game.trainSelected(trained)}
             />
           )}
+
+          {producer &&
+            producer.complete &&
+            ageAdvanceRule &&
+            producer.type === ageAdvanceRule.producerType && (
+              <CommandTile
+                symbol={
+                  AGE_SYMBOLS[ageAdvanceRule.targetAge] ?? String(ageAdvanceRule.targetAge + 1)
+                }
+                label={`Advance to ${AGE_NAMES[ageAdvanceRule.targetAge] ?? "the next age"}`}
+                costFood={ageAdvanceRule.cost[FOOD]}
+                costWood={ageAdvanceRule.cost[WOOD]}
+                costGold={ageAdvanceRule.cost[GOLD]}
+                costFavor={ageAdvanceRule.cost[FAVOR]}
+                unavailableReason={ageAdvanceUnavailable}
+                disabled={ageAdvanceUnavailable !== undefined}
+                onClick={() => setChoosingMinorGod(true)}
+              />
+            )}
         </div>
 
         {producer && !producer.complete && (
@@ -145,12 +218,28 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
           progress={producer?.progress ?? 0}
         />
       )}
+
+      {choosingMinorGod &&
+        producer &&
+        ageAdvanceAvailability?.available === true &&
+        producer.type === ageAdvanceAvailability.rule.producerType && (
+          <MinorGodChoice
+            ageName={AGE_NAMES[ageAdvanceAvailability.rule.targetAge] ?? "next age"}
+            minorGods={ageAdvanceAvailability.minorGods}
+            onChoose={(minorGod) => {
+              game.advanceAge(producer.id, minorGod);
+              setChoosingMinorGod(false);
+            }}
+            onCancel={() => setChoosingMinorGod(false)}
+          />
+        )}
     </>
   );
 }
 
 function CommandTile({
   icon,
+  symbol,
   label,
   costFood,
   costWood,
@@ -160,7 +249,8 @@ function CommandTile({
   disabled,
   onClick,
 }: {
-  icon: IconConfig | undefined;
+  icon?: IconConfig;
+  symbol?: string;
   label: string;
   costFood: number;
   costWood: number;
@@ -204,9 +294,97 @@ function CommandTile({
             backgroundSize: icon ? `${icon.columns * 100}% 100%` : undefined,
           }}
         />
+        {symbol && (
+          <span className="absolute inset-1 flex items-center justify-center font-serif text-xl font-bold text-[#f4db78] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] sm:text-lg">
+            {symbol}
+          </span>
+        )}
       </button>
       <RolloverHelp label={label} costs={costs} unavailableReason={unavailableReason} />
     </div>
+  );
+}
+
+function MinorGodChoice({
+  ageName,
+  minorGods,
+  onChoose,
+  onCancel,
+}: {
+  ageName: string;
+  minorGods: readonly number[];
+  onChoose(minorGod: number): void;
+  onCancel(): void;
+}) {
+  return (
+    <ClassicHudPanel
+      as="section"
+      ariaLabel={`Choose a ${ageName} minor god`}
+      className="fixed bottom-[10.5rem] left-1/2 z-30 w-[min(25rem,calc(100vw-2rem))] -translate-x-1/2 select-none px-3 pt-3 pb-2.5 sm:bottom-[9.25rem] sm:px-4"
+    >
+      <div className="relative">
+        <p className="text-center font-serif text-base font-semibold text-[#f4db78] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] sm:text-sm">
+          Choose a minor god
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {minorGods.map((minorGod) => {
+            const presentation = minorGodPresentation(minorGod);
+
+            return (
+              <MinorGodButton
+                key={minorGod}
+                name={presentation.name}
+                detail={presentation.detail}
+                onClick={() => onChoose(minorGod)}
+              />
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          className="mt-2 min-h-12 w-full border border-[#19130d] bg-[#302719] px-3 font-serif text-base text-[#eee9d7] [box-shadow:inset_0_0_0_1px_#8c7742,inset_0_0_5px_rgb(0_0_0/75%)] hover:brightness-115 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78] active:translate-y-px sm:min-h-10 sm:text-sm"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </ClassicHudPanel>
+  );
+}
+
+function minorGodPresentation(minorGod: number): { name: string; detail: string } {
+  switch (minorGod) {
+    case GOD_ATHENA:
+      return { name: "Athena", detail: "Restoration · Minotaur" };
+    case GOD_HERMES:
+      return { name: "Hermes", detail: "Ceasefire · Centaur" };
+    default:
+      return { name: `God ${minorGod}`, detail: "Minor god" };
+  }
+}
+
+function MinorGodButton({
+  name,
+  detail,
+  onClick,
+}: {
+  name: string;
+  detail: string;
+  onClick(): void;
+}) {
+  return (
+    <button
+      type="button"
+      className="min-h-16 border border-[#19130d] bg-[#17130f] px-2 py-2 font-serif [box-shadow:inset_0_0_0_1px_#c9b86f,inset_0_0_0_3px_#5e4b28,inset_0_0_7px_rgb(0_0_0/90%),0_1px_0_rgb(235_226_183/45%)] hover:brightness-115 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78] active:translate-y-px"
+      onClick={onClick}
+    >
+      <span className="block text-base font-semibold text-[#f4db78] [text-shadow:0_1px_1px_rgb(0_0_0/85%)] sm:text-sm">
+        {name}
+      </span>
+      <span className="mt-0.5 block text-sm text-[#d8cfb7] [text-shadow:0_1px_1px_rgb(0_0_0/85%)] sm:text-xs">
+        {detail}
+      </span>
+    </button>
   );
 }
 
@@ -331,6 +509,58 @@ function availabilityReason(availability: TypeAvailability | null): string | und
   }
 }
 
+function ageAdvanceAvailabilityFor(playerState: PlayerState | null): AgeAdvanceAvailability | null {
+  if (!playerState) {
+    return null;
+  }
+
+  return getAgeAdvanceAvailability({
+    age: playerState.age,
+    majorGod: playerState.majorGod,
+    activeTargetAge: playerState.ageAdvancement?.targetAge ?? NO_AGE,
+    resources: [playerState.food, playerState.wood, playerState.gold, playerState.favor],
+    hasCompletedBuilding: (buildingType) => playerState.completedBuildings[buildingType] === 1,
+  });
+}
+
+function ageAdvanceReason(availability: AgeAdvanceAvailability | null): string | undefined {
+  if (!availability) {
+    return "Checking availability";
+  }
+
+  if (availability.available) {
+    return undefined;
+  }
+
+  switch (availability.reason) {
+    case "max-age":
+      return "No further age available";
+    case "in-progress":
+      return "Advance already in progress";
+    case "minor-god":
+      return "No minor gods available for this advance";
+    case "building":
+      return `Requires a completed ${buildingLabel(availability.buildingType)}`;
+    case "resource":
+      return `Requires ${availability.required} ${resourceLabel(availability.resource).toLowerCase()}`;
+  }
+}
+
+function resourceLabel(resource: number): string {
+  switch (resource) {
+    case FOOD:
+      return "Food";
+    case WOOD:
+      return "Wood";
+    case GOLD:
+      return "Gold";
+    case FAVOR:
+      return "Favor";
+    default:
+      return "Resource";
+  }
+}
+
 function buildingLabel(buildingType: number): string {
   switch (buildingType) {
     case TYPE_TOWN_CENTER:
@@ -339,6 +569,8 @@ function buildingLabel(buildingType: number): string {
       return "Barracks";
     case TYPE_HOUSE:
       return "House";
+    case TYPE_TEMPLE:
+      return "Temple";
     default:
       return "prerequisite building";
   }

@@ -4,7 +4,7 @@ import barracksUrl from "./barracks.png";
 import houseUrl from "./house.png";
 import militiaUrl from "./militia-walk.png";
 import villagerUrl from "./villager.png";
-import { TYPE_BARRACKS, TYPE_HOUSE, TYPE_MILITIA, TYPE_VILLAGER } from "@aom/sim";
+import { TYPE_BARRACKS, TYPE_HOUSE, TYPE_MILITIA, TYPE_TEMPLE, TYPE_VILLAGER } from "@aom/sim";
 
 export interface IconConfig {
   url: string;
@@ -17,4 +17,7 @@ export const TYPE_ICONS: ReadonlyMap<number, IconConfig> = new Map([
   [TYPE_MILITIA, { url: militiaUrl, columns: 7 }],
   [TYPE_HOUSE, { url: houseUrl, columns: 6 }],
   [TYPE_BARRACKS, { url: barracksUrl, columns: 1 }],
+  // The Temple simulation type lands before its extracted Greek render asset;
+  // keep the command legible with the closest existing Greek building plate.
+  [TYPE_TEMPLE, { url: barracksUrl, columns: 1 }],
 ]);

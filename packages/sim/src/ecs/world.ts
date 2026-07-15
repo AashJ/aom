@@ -7,6 +7,7 @@ import {
   CHEAT_ADD_WOOD,
   CHEAT_FULL_FAVOR,
   CHEAT_REVEAL_MAP,
+  COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
   COMMAND_CHEAT,
@@ -34,8 +35,15 @@ import {
 } from "../visibility";
 import { idGeneration, idIndex, packId } from "./id";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
+import { NO_RESEARCH } from "./age-advancement";
 import { registerPlayer } from "./players";
 import { AGE_COUNT, GOD_ZEUS, NO_GOD } from "./progression";
+import {
+  cancelBuildingResearch,
+  isBuildingResearching,
+  tickBuildingResearch,
+  tryStartAgeAdvance,
+} from "./research";
 import {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
@@ -152,6 +160,10 @@ export interface World {
   trainType: Uint8Array;
   trainRemaining: Uint16Array;
   trainQueueLength: Uint8Array;
+  // Research is owned by its building and shares that producer's countdown slot.
+  researchId: Uint8Array;
+  researchChoice: Uint8Array;
+  researchRemaining: Uint16Array;
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
@@ -202,11 +214,15 @@ export function createWorld(seed: number): World {
   const playerSlotById = new Int16Array(256);
   const playerMajorGod = new Uint8Array(256);
   const playerMinorGods = new Uint8Array(256 * AGE_COUNT);
+  const researchId = new Uint8Array(MAX_UNITS);
+  const researchChoice = new Uint8Array(MAX_UNITS);
 
   slotOf.fill(-1);
   playerSlotById.fill(-1);
   playerMajorGod.fill(NO_GOD);
   playerMinorGods.fill(NO_GOD);
+  researchId.fill(NO_RESEARCH);
+  researchChoice.fill(NO_GOD);
 
   return {
     tick: 0,
@@ -243,6 +259,9 @@ export function createWorld(seed: number): World {
     trainType: new Uint8Array(MAX_UNITS),
     trainRemaining: new Uint16Array(MAX_UNITS),
     trainQueueLength: new Uint8Array(MAX_UNITS),
+    researchId,
+    researchChoice,
+    researchRemaining: new Uint16Array(MAX_UNITS),
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
@@ -419,6 +438,9 @@ export function spawnUnit(
   world.trainType[index] = 0;
   world.trainRemaining[index] = 0;
   world.trainQueueLength[index] = 0;
+  world.researchId[index] = NO_RESEARCH;
+  world.researchChoice[index] = NO_GOD;
+  world.researchRemaining[index] = 0;
   world.attackCooldown[index] = 0;
   world.attackTarget[index] = NO_TARGET;
   world.attackOrdered[index] = 0;
@@ -1544,13 +1566,19 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 6. Production countdown - queued units train sequentially, and completed spawns append at
-  // world.count without being iterated this tick.
+  // 6. Production countdown - research occupies its building; queued units resume
+  // on the completion tick. Completed spawns append after producedThrough.
   const producedThrough = world.count;
 
   for (let i = 0; i < producedThrough; i += 1) {
+    if (tickBuildingResearch(world, i)) {
+      continue;
+    }
+
     // A building destroyed mid-train loses its entire queue with no refund.
-    if (world.trainRemaining[i] === 0 || world.dying[i] === 1 || world.hp[i] === 0) continue;
+    if (world.trainRemaining[i] === 0 || world.dying[i] === 1 || world.hp[i] === 0) {
+      continue;
+    }
     world.trainRemaining[i] = world.trainRemaining[i]! - 1;
     if (world.trainRemaining[i] !== 0) continue;
     // South edge first, then walkableCellNear's spiral - deterministic and footprint-safe.
@@ -1810,6 +1838,9 @@ function applyDeaths(world: World): void {
     const handle = world.handleOf[i]!;
     const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
 
+    // Building-owned research is canceled before the producer's components disappear.
+    cancelBuildingResearch(world, i);
+
     if (footprint > 0) {
       // Exact because building centers are constructed from integer origin tiles.
       const tileX = Math.round(world.posX[i]! - footprint / 2);
@@ -1849,6 +1880,9 @@ function applyDeaths(world: World): void {
       world.trainType[i] = world.trainType[last]!;
       world.trainRemaining[i] = world.trainRemaining[last]!;
       world.trainQueueLength[i] = world.trainQueueLength[last]!;
+      world.researchId[i] = world.researchId[last]!;
+      world.researchChoice[i] = world.researchChoice[last]!;
+      world.researchRemaining[i] = world.researchRemaining[last]!;
       world.attackCooldown[i] = world.attackCooldown[last]!;
       world.attackTarget[i] = world.attackTarget[last]!;
       world.attackOrdered[i] = world.attackOrdered[last]!;
@@ -2082,6 +2116,7 @@ function applyPendingCommands(world: World): void {
           producerStats.trains === command.unitType &&
           world.buildProgress[building]! >= producerStats.buildTicks &&
           world.trainQueueLength[building]! < MAX_TRAIN_QUEUE &&
+          !isBuildingResearching(world, building) &&
           isTypeAvailableToPlayer(world, command.issuer, command.unitType)
         ) {
           const unitStats = UNIT_TYPES[command.unitType]!;
@@ -2132,6 +2167,10 @@ function applyPendingCommands(world: World): void {
           }
         }
       }
+    } else if (command.type === COMMAND_ADVANCE_AGE) {
+      const building = resolveId(world, command.buildingId);
+
+      tryStartAgeAdvance(world, command.issuer, building, command.minorGod);
     } else if (command.type === COMMAND_CHEAT) {
       const playerId = command.issuer;
       const playerSlot = world.playerSlotById[playerId] ?? -1;

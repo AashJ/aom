@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   AGE_ARCHAIC,
   AGE_CLASSICAL,
+  CLASSICAL_AGE_ADVANCE_TICKS,
   FOOD,
+  GOD_ATHENA,
+  GOD_ZEUS,
   RESOURCE_COUNT,
   TYPE_BARRACKS,
   TYPE_MILITIA,
@@ -20,6 +23,7 @@ function populatedSnapshot() {
   const stockpileBase = PLAYER_ID * RESOURCE_COUNT;
 
   snapshot.age = AGE_CLASSICAL;
+  snapshot.majorGod = GOD_ZEUS;
   snapshot.stockpiles[stockpileBase + FOOD] = 275;
   snapshot.count = 2;
   snapshot.owner[0] = PLAYER_ID;
@@ -45,10 +49,37 @@ describe("player state store", () => {
 
     expect(received).not.toBeNull();
     expect(received!.age).toBe(AGE_CLASSICAL);
+    expect(received!.majorGod).toBe(GOD_ZEUS);
     expect(received!.food).toBe(275);
     expect(received!.pop).toBe(3);
     expect(received!.popCap).toBe(UNIT_TYPES[TYPE_TOWN_CENTER]!.popBonus);
     expect(received!.completedBuildings[TYPE_TOWN_CENTER]).toBe(1);
+  });
+
+  test("projects authoritative age-advance progress", () => {
+    const store = createPlayerStateStore(PLAYER_ID);
+    const snapshot = populatedSnapshot();
+    let received: PlayerState | null = null;
+
+    snapshot.age = AGE_ARCHAIC;
+    snapshot.ageAdvanceTarget = AGE_CLASSICAL;
+    snapshot.ageAdvanceGod = GOD_ATHENA;
+    snapshot.ageAdvanceRemaining = CLASSICAL_AGE_ADVANCE_TICKS / 4;
+    snapshot.ageAdvanceTotal = CLASSICAL_AGE_ADVANCE_TICKS;
+    snapshot.ageAdvanceBuilding = 17;
+    store.update(snapshot);
+    store.subscribe((state) => {
+      received = state;
+    });
+
+    expect(received!.ageAdvancement).toEqual({
+      targetAge: AGE_CLASSICAL,
+      minorGod: GOD_ATHENA,
+      remainingTicks: CLASSICAL_AGE_ADVANCE_TICKS / 4,
+      totalTicks: CLASSICAL_AGE_ADVANCE_TICKS,
+      buildingId: 17,
+      progress: 0.75,
+    });
   });
 
   test("notifies subscribers only when projected gameplay state changes", () => {

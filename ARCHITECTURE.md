@@ -609,17 +609,47 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 
 ### Deferred directly to the next progression slices
 
-- Town Center age-up research, costs/timing, prerequisite buildings, and minor-god choice.
-- Greek Temple construction and Villager prayer as the first Favor-generation mechanic.
+- Villager prayer at the Greek Temple as the first Favor-generation mechanic.
 - The first Classical human unit, Greek hero, myth unit, and single-use god power.
 - Infantry/cavalry/archer counters, armor and damage classes, and deterministic ranged projectiles.
 - Map-seed validation/regeneration for starts whose reachable terrain component cannot satisfy a required resource band; placement currently rejects such a seed rather than spawning unreachable or out-of-profile mines.
 
 ---
 
+## Milestone 9 — Extended Edition Classical advance
+
+Scope: complete the first playable Archaic → Classical progression loop using Extended Edition / The Titans rules. Greeks construct a Temple, select a completed Town Center, pay 400 Food, choose one of Zeus's Classical minor gods, and research the advance for 60 seconds before Classical content unlocks.
+
+### Decisions
+
+| Decision           | Choice                                                                      | Rationale                                                                                                                                                        |
+| ------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ruleset            | **Extended Edition / The Titans**                                           | This is the project's progression baseline. The Classical Town Center unlock from The Titans remains in the content table.                                       |
+| Research ownership | **Building-owned research order**                                           | The Town Center owns the research id, choice, and countdown; player progression stores only completed ages/gods, and one active age order is allowed per player. |
+| Minor gods         | **Zeus chooses Athena or Hermes in the command**                            | The authoritative sim validates the major/minor-god pairing and commits the choice only when the research completes.                                             |
+| Production         | **Research and unit training share the building production step**           | An active research order occupies the producer; queued Villagers resume on the completion tick and new train orders are rejected while it is busy.               |
+| Destruction        | **Destroying the researching Town Center cancels and refunds the 400 Food** | This follows the Classic technology-queue refund behavior and prevents stale packed ids from completing research after the owning building is gone.              |
+
+### Sequential build order
+
+1. **Temple content (complete).** Greek Temples cost 150 Wood and 150 Gold, take 40 seconds for one Villager to construct, and satisfy the completed-building prerequisite for the Classical advance.
+2. **Deterministic age research (complete).** One canonical age rule supplies producer, prerequisites, cost, duration, and major/minor-god choices to command validation and UI availability. `COMMAND_ADVANCE_AGE` starts a building-owned research order; its in-flight state is hashed and projected through the viewer snapshot.
+3. **Engine and multiplayer boundary (complete).** Loopback commands receive the standard input delay; relay commands remain tickless and carry only the Town Center and minor-god ids. Protocol versioning prevents older clients from silently dropping the new command.
+4. **HUD flow (complete).** Villagers can place the Temple, a selected Town Center exposes the Classical command with prerequisite rollover help, the choice panel offers Athena or Hermes, and the top-center bar follows authoritative research progress.
+
+**Exit criteria:** both single-player and networked matches can deterministically pay for, research, display, and complete the Zeus Classical advance; Classical availability unlocks only on completion and the chosen minor god is stored in player progression.
+
+### Deferred directly to the next progression slices
+
+- Greek Temple prayer and Favor generation.
+- Athena/Hermes god powers, free Classical myth-unit spawn, myth technologies, and trainable Minotaur/Centaur content.
+- Extracted Greek Temple and minor-god portrait art; the current Temple presentation temporarily uses the existing Greek Barracks sprite plate.
+
+---
+
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation remains deferred (instanced skinning; blocked on the asset-pipeline question; the current atlas keeps serving) → Town Center age advancement + Greek Favor/myth slice → combat classes + deterministic projectiles → settlements/map control → matchmaking/persistence in `apps/server`, and onward.
+M2 real unit meshes + animation remains deferred (instanced skinning; blocked on the asset-pipeline question; the current atlas keeps serving) → Greek Favor/myth slice → combat classes + deterministic projectiles → settlements/map control → matchmaking/persistence in `apps/server`, and onward.
 
 ## Open questions (parked, on purpose)
 

@@ -7,6 +7,7 @@ import {
   type TurnBuffer,
 } from "@aom/relay";
 import {
+  COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
   COMMAND_CHEAT,
@@ -100,6 +101,14 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_TRAIN, buildingId, unitType }],
+      });
+    },
+
+    submitAdvanceAge(buildingId: number, minorGod: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_ADVANCE_AGE, buildingId, minorGod }],
       });
     },
 

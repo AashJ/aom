@@ -13,6 +13,7 @@ import {
   type NetSession,
   type PlayerInfo,
 } from "@aom/engine";
+import { AgeAdvancementBar } from "@/components/age-advancement-bar";
 import { ChatBox } from "@/components/chat-box";
 import { CommandPanel } from "@/components/command-panel";
 import { PerfHud } from "@/components/perf-hud";
@@ -255,6 +256,7 @@ function GameComponent() {
   return (
     <div className="relative h-dvh w-screen">
       <canvas ref={canvasRef} className="block h-full w-full" />
+      <AgeAdvancementBar game={game} />
       <ChatBox game={game} />
       <ResourceBar game={game} />
       <PerfHud game={game} />

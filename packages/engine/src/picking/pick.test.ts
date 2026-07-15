@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   AGE_ARCHAIC,
   AGE_COUNT,
+  CLASSICAL_AGE_ADVANCE_TICKS,
   createSnapshot,
   createWorld,
   MAP_TILES,
   NO_GOD,
+  NO_AGE,
+  NO_TARGET,
   registerPlayer,
   RESOURCE_COUNT,
   setSelected,
@@ -83,6 +86,7 @@ function recordingSink(): CommandSink & { calls: string[]; targetIds: number[] }
     },
     submitPlace: () => calls.push("place"),
     submitTrain: () => calls.push("train"),
+    submitAdvanceAge: () => calls.push("advance-age"),
     submitCheat: () => calls.push("cheat"),
   };
 }
@@ -111,6 +115,11 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
     minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
+    ageAdvanceTarget: NO_AGE,
+    ageAdvanceGod: NO_GOD,
+    ageAdvanceRemaining: 0,
+    ageAdvanceTotal: CLASSICAL_AGE_ADVANCE_TICKS,
+    ageAdvanceBuilding: NO_TARGET,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),

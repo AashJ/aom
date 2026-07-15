@@ -13,4 +13,7 @@ export const GOD_ZEUS = 0;
 export const GOD_POSEIDON = 1;
 export const GOD_HADES = 2;
 export const GOD_ATHENA = 3;
+export const GOD_HERMES = 4;
 export const NO_GOD = 255;
+
+export const NO_AGE = 255;

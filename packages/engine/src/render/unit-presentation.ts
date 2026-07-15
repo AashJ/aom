@@ -100,6 +100,15 @@ export const UNIT_PRESENTATIONS: readonly UnitPresentation[] = [
     worldHeight: 2.8,
     bottomPadding: 0,
   },
+  {
+    // Temporary presentation until the Greek Temple model is added to the
+    // existing private-asset extraction pipeline.
+    kind: "sprite",
+    url: barracksSpriteUrl,
+    frames: { kind: "fixed", columns: 1 },
+    worldHeight: 4.8,
+    bottomPadding: 0,
+  },
 ];
 
 export interface ResolvedStaticSpritePresentation {
@@ -207,7 +216,6 @@ export function resolveModelPresentation(
   moved: boolean,
 ): ResolvedModelPresentation | null {
   const type = snapshot.unitType[index]!;
-
   if (type === TYPE_VILLAGER) {
     const sex: VillagerSex = (idIndex(snapshot.ids[index]!) & 1) === 0 ? "male" : "female";
     return VILLAGER_PRESENTATIONS[sex][villagerAction(snapshot, index, moved)];

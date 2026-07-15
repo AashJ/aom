@@ -55,6 +55,7 @@ export const TYPE_TOWN_CENTER = 4;
 export const TYPE_HOUSE = 5;
 export const TYPE_BARRACKS = 6;
 export const TYPE_GOLD_MINE = 7;
+export const TYPE_TEMPLE = 8;
 
 const NO_PREREQUISITE_BUILDINGS: readonly number[] = [];
 
@@ -235,6 +236,30 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     costGold: 0,
     costFavor: 0,
     buildTicks: 0,
+    popBonus: 0,
+    trains: -1,
+    isDropsite: false,
+    requiredAge: AGE_ARCHAIC,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  },
+  {
+    // Extended Edition Greek Temple: available in Archaic and required for
+    // the Classical advance.
+    maxHp: 1200,
+    lineOfSight: 10,
+    attackDamage: 0,
+    attackRange: 0,
+    aggroRange: 0,
+    attackCooldownTicks: 0,
+    isStatic: true,
+    resource: -1,
+    bodyRadius: 3.2,
+    footprint: 5,
+    costFood: 0,
+    costWood: 150,
+    costGold: 150,
+    costFavor: 0,
+    buildTicks: 800,
     popBonus: 0,
     trains: -1,
     isDropsite: false,

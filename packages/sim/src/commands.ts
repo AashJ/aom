@@ -10,7 +10,8 @@ export const COMMAND_GATHER = 3;
 export const COMMAND_PLACE = 4;
 export const COMMAND_BUILD = 5;
 export const COMMAND_TRAIN = 6;
-export const COMMAND_CHEAT = 7;
+export const COMMAND_ADVANCE_AGE = 7;
+export const COMMAND_CHEAT = 8;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -100,6 +101,16 @@ export interface TrainCommand {
   unitType: number;
 }
 
+export interface AdvanceAgeCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_ADVANCE_AGE;
+  // Age research occupies one completed Town Center. The target age is derived
+  // from authoritative player state; the command only carries the god choice.
+  buildingId: number;
+  minorGod: number;
+}
+
 export interface CheatCommand {
   tick: number;
   issuer: number;
@@ -115,6 +126,7 @@ export type Command =
   | PlaceCommand
   | BuildCommand
   | TrainCommand
+  | AdvanceAgeCommand
   | CheatCommand;
 
 export function enqueueCommand(world: World, command: Command): void {

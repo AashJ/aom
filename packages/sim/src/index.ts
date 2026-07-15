@@ -1,7 +1,17 @@
 // Load-bearing architecture rule: @aom/sim imports nothing from engine or DOM; violations
 // are bugs even when they work. See ARCHITECTURE.md determinism rules before editing sim.
 export * from "./commands";
-export { COMMAND_GATHER, COMMAND_PLACE, COMMAND_TRAIN } from "./commands";
+export { COMMAND_ADVANCE_AGE, COMMAND_GATHER, COMMAND_PLACE, COMMAND_TRAIN } from "./commands";
+export {
+  CLASSICAL_AGE_ADVANCE_RULE,
+  CLASSICAL_AGE_ADVANCE_TICKS,
+  CLASSICAL_AGE_COST_FOOD,
+  getAgeAdvanceAvailability,
+  type AgeAdvanceAvailability,
+  type AgeAdvanceAvailabilityState,
+  type AgeAdvanceRule,
+  type ResourceAmounts,
+} from "./ecs/age-advancement";
 export {
   getTypeAvailability,
   hasCompletedBuilding,
@@ -22,8 +32,10 @@ export {
   AGE_NAMES,
   GOD_ATHENA,
   GOD_HADES,
+  GOD_HERMES,
   GOD_POSEIDON,
   GOD_ZEUS,
+  NO_AGE,
   NO_GOD,
 } from "./ecs/progression";
 export {
@@ -43,6 +55,7 @@ export {
   TYPE_HOUSE,
   TYPE_MILITIA,
   TYPE_TOWN_CENTER,
+  TYPE_TEMPLE,
   TYPE_TREE,
   TYPE_VILLAGER,
   UNIT_TYPES,

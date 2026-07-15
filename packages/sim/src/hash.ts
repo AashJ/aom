@@ -249,6 +249,18 @@ export function hashWorld(world: World): number {
     word = world.trainQueueLength[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.researchId[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.researchChoice[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.researchRemaining[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
   }
 
   // The free-handle stack decides which handle the NEXT spawn gets. Without it, a

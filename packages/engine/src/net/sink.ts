@@ -5,6 +5,7 @@
 // fully typed and the sink builds the Command object, which is exactly the shape a wire
 // encoder wants anyway.
 import {
+  COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
   COMMAND_CHEAT,
@@ -30,6 +31,7 @@ export interface CommandSink {
   submitGather(unitIds: number[], targetId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
+  submitAdvanceAge(buildingId: number, minorGod: number): void;
   submitCheat(cheat: CheatId): void;
   submitPlace(buildingType: number, tileX: number, tileZ: number): void;
 }
@@ -94,6 +96,15 @@ export function createLoopbackSink(world: World): CommandSink {
         type: COMMAND_TRAIN,
         buildingId,
         unitType,
+      });
+    },
+    submitAdvanceAge(buildingId: number, minorGod: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_ADVANCE_AGE,
+        buildingId,
+        minorGod,
       });
     },
     submitCheat(cheat: CheatId): void {
