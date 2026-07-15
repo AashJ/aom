@@ -2,8 +2,14 @@
 // trunc/sign, integer ops, and comparisons. Banned: transcendental Math functions,
 // Math.random, Date, wall-clock or DOM state, and unordered iteration.
 import {
+  CHEAT_ADD_FOOD,
+  CHEAT_ADD_GOLD,
+  CHEAT_ADD_WOOD,
+  CHEAT_FULL_FAVOR,
+  CHEAT_REVEAL_MAP,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
@@ -23,12 +29,13 @@ import {
   isEntityVisibleTo,
   isFootprintVisibleTo,
   updateVisibility,
+  VIS_EXPLORED,
   VISIBILITY_TILES,
 } from "../visibility";
 import { idGeneration, idIndex, packId } from "./id";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { registerPlayer } from "./players";
-import { AGE_COUNT, NO_GOD } from "./progression";
+import { AGE_COUNT, GOD_ZEUS, NO_GOD } from "./progression";
 import {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
@@ -2125,6 +2132,25 @@ function applyPendingCommands(world: World): void {
           }
         }
       }
+    } else if (command.type === COMMAND_CHEAT) {
+      const playerId = command.issuer;
+      const playerSlot = world.playerSlotById[playerId] ?? -1;
+
+      if (playerSlot !== -1) {
+        if (command.cheat === CHEAT_ADD_FOOD) {
+          addCheatResource(world, playerId, FOOD);
+        } else if (command.cheat === CHEAT_ADD_WOOD) {
+          addCheatResource(world, playerId, WOOD);
+        } else if (command.cheat === CHEAT_ADD_GOLD) {
+          addCheatResource(world, playerId, GOLD);
+        } else if (command.cheat === CHEAT_FULL_FAVOR) {
+          world.stockpiles[playerId * RESOURCE_COUNT + FAVOR] =
+            world.playerMajorGod[playerId] === GOD_ZEUS ? 200 : 100;
+        } else if (command.cheat === CHEAT_REVEAL_MAP) {
+          const start = playerSlot * VISIBILITY_TILES;
+          world.visibility.fill(VIS_EXPLORED, start, start + VISIBILITY_TILES);
+        }
+      }
     } else if (command.type === COMMAND_PLACE) {
       const buildingType = command.buildingType;
       const buildingStats = UNIT_TYPES[buildingType];
@@ -2164,4 +2190,9 @@ function applyPendingCommands(world: World): void {
     // Rare path, allocation acceptable: command queue handling runs at click rate.
     world.commands.splice(i, 1);
   }
+}
+
+function addCheatResource(world: World, playerId: number, resource: number): void {
+  const index = playerId * RESOURCE_COUNT + resource;
+  world.stockpiles[index] = Math.min(0xffffffff, world.stockpiles[index]! + 1_000);
 }

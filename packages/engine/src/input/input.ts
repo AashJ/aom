@@ -142,6 +142,16 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
+    if (
+      event.target instanceof HTMLElement &&
+      (event.target.isContentEditable ||
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        event.target instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+
     if (event.code === "Backquote" && !event.repeat) {
       // A persistent flag read by the render loop each frame, not a consumed intent --
       // toggles are state, clicks are events.

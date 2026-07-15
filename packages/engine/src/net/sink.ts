@@ -7,12 +7,14 @@
 import {
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_STOP,
   COMMAND_TRAIN,
   enqueueCommand,
+  type CheatId,
   type World,
 } from "@aom/sim";
 
@@ -28,6 +30,7 @@ export interface CommandSink {
   submitGather(unitIds: number[], targetId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
+  submitCheat(cheat: CheatId): void;
   submitPlace(buildingType: number, tileX: number, tileZ: number): void;
 }
 
@@ -91,6 +94,14 @@ export function createLoopbackSink(world: World): CommandSink {
         type: COMMAND_TRAIN,
         buildingId,
         unitType,
+      });
+    },
+    submitCheat(cheat: CheatId): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_CHEAT,
+        cheat,
       });
     },
     submitPlace(buildingType: number, tileX: number, tileZ: number): void {

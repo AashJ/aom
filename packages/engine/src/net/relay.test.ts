@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { COMMAND_MOVE, COMMAND_STOP } from "@aom/sim";
+import { CHEAT_ADD_FOOD, COMMAND_CHEAT, COMMAND_MOVE, COMMAND_STOP } from "@aom/sim";
 import { PROTOCOL_VERSION, type ClientMessage } from "@aom/relay";
 import { createRelaySink } from "./relay";
 
@@ -32,6 +32,19 @@ describe("relay sink", () => {
       v: PROTOCOL_VERSION,
       kind: "commands",
       commands: [{ type: COMMAND_STOP, unitIds: [1] }],
+    });
+  });
+
+  test("submitCheat sends the tickless numeric cheat id", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitCheat(CHEAT_ADD_FOOD);
+
+    expect(sent[0]).toEqual({
+      v: PROTOCOL_VERSION,
+      kind: "commands",
+      commands: [{ type: COMMAND_CHEAT, cheat: CHEAT_ADD_FOOD }],
     });
   });
 });

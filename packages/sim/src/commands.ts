@@ -10,6 +10,20 @@ export const COMMAND_GATHER = 3;
 export const COMMAND_PLACE = 4;
 export const COMMAND_BUILD = 5;
 export const COMMAND_TRAIN = 6;
+export const COMMAND_CHEAT = 7;
+
+export const CHEAT_ADD_FOOD = 0;
+export const CHEAT_ADD_WOOD = 1;
+export const CHEAT_ADD_GOLD = 2;
+export const CHEAT_FULL_FAVOR = 3;
+export const CHEAT_REVEAL_MAP = 4;
+
+export type CheatId =
+  | typeof CHEAT_ADD_FOOD
+  | typeof CHEAT_ADD_WOOD
+  | typeof CHEAT_ADD_GOLD
+  | typeof CHEAT_FULL_FAVOR
+  | typeof CHEAT_REVEAL_MAP;
 
 export interface MoveCommand {
   tick: number;
@@ -86,6 +100,13 @@ export interface TrainCommand {
   unitType: number;
 }
 
+export interface CheatCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_CHEAT;
+  cheat: CheatId;
+}
+
 export type Command =
   | MoveCommand
   | StopCommand
@@ -93,7 +114,8 @@ export type Command =
   | GatherCommand
   | PlaceCommand
   | BuildCommand
-  | TrainCommand;
+  | TrainCommand
+  | CheatCommand;
 
 export function enqueueCommand(world: World, command: Command): void {
   // Command handling is deliberately NOT zero-allocation: it runs at human click rate, not

@@ -9,11 +9,13 @@ import {
 import {
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_STOP,
   COMMAND_TRAIN,
+  type CheatId,
 } from "@aom/sim";
 import type { CommandSink } from "./sink";
 
@@ -98,6 +100,14 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_TRAIN, buildingId, unitType }],
+      });
+    },
+
+    submitCheat(cheat: CheatId): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_CHEAT, cheat }],
       });
     },
 

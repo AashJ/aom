@@ -1,5 +1,10 @@
 import {
   canPlaceBuilding,
+  CHEAT_ADD_FOOD,
+  CHEAT_ADD_GOLD,
+  CHEAT_ADD_WOOD,
+  CHEAT_FULL_FAVOR,
+  CHEAT_REVEAL_MAP,
   createSnapshot,
   createWorld,
   FAVOR,
@@ -22,6 +27,7 @@ import {
   VIS_VISIBLE,
   WOOD,
   writeSnapshot,
+  type CheatId,
 } from "@aom/sim";
 import { createGameAudio } from "./audio/audio";
 import {
@@ -55,6 +61,23 @@ const placementRayOrigin = vec3.create();
 const placementRayDir = vec3.create();
 const placementHit = vec3.create();
 
+function cheatFromChat(code: string): CheatId | null {
+  switch (code) {
+    case "JUNK FOOD NIGHT":
+      return CHEAT_ADD_FOOD;
+    case "TROJAN HORSE FOR SALE":
+      return CHEAT_ADD_WOOD;
+    case "ATM OF EREBUS":
+      return CHEAT_ADD_GOLD;
+    case "MOUNT OLYMPUS":
+      return CHEAT_FULL_FAVOR;
+    case "LAY OF THE LAND":
+      return CHEAT_REVEAL_MAP;
+    default:
+      return null;
+  }
+}
+
 export interface SelectionSummary {
   // Selected OWN villagers - the build menu gate.
   villagers: number;
@@ -75,6 +98,7 @@ export interface GameHandle {
   startPlacement(buildingType: number): void;
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
+  submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
   onMatchEnd(cb: (winner: number) => void): () => void;
@@ -720,6 +744,16 @@ export async function createGame(
         audio.uiClick();
         return;
       }
+    },
+    submitCheat(code: string): boolean {
+      const cheat = cheatFromChat(code);
+
+      if (cheat === null) {
+        return false;
+      }
+
+      sink.submitCheat(cheat);
+      return true;
     },
     onSelection(cb: (sel: SelectionSummary) => void): () => void {
       selectionCbs.add(cb);

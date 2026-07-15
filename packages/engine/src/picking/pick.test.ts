@@ -83,6 +83,7 @@ function recordingSink(): CommandSink & { calls: string[]; targetIds: number[] }
     },
     submitPlace: () => calls.push("place"),
     submitTrain: () => calls.push("train"),
+    submitCheat: () => calls.push("cheat"),
   };
 }
 
