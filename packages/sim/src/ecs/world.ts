@@ -1546,9 +1546,14 @@ export function tickWorld(world: World): void {
     }
     world.trainRemaining[i] = world.trainRemaining[i]! - 1;
     if (world.trainRemaining[i] !== 0) continue;
-    // South edge first, then walkableCellNear's spiral - deterministic and footprint-safe.
-    const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
-    const cell = walkableCellNear(world, world.posX[i]!, world.posZ[i]! + footprint / 2 + 1);
+    // Classic buildings have a front-door exit on their -Z side. Their visible meshes overhang
+    // the smaller logical footprints, so each producer owns an explicit model-clear offset.
+    const producerStats = UNIT_TYPES[world.unitType[i]!]!;
+    const cell = walkableCellNear(
+      world,
+      world.posX[i]!,
+      world.posZ[i]! - producerStats.trainExitOffset,
+    );
 
     spawnUnit(
       world,

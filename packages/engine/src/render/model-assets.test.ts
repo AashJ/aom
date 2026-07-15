@@ -24,14 +24,21 @@ describe("named model registry", () => {
       "villager-g-female-pray-b.glb",
     ];
     const originalCreateImageBitmap = globalThis.createImageBitmap;
-    globalThis.createImageBitmap = (async () => ({}) as ImageBitmap) as typeof createImageBitmap;
+    const decodedTextureBytes: number[] = [];
+    globalThis.createImageBitmap = (async (source: ImageBitmapSource) => {
+      if (source instanceof Blob) decodedTextureBytes.push(source.size);
+      return {} as ImageBitmap;
+    }) as typeof createImageBitmap;
 
     try {
       for (const file of prayerFiles) {
         const url = new URL(`../assets/models/${file}`, import.meta.url);
+        const textureStart = decodedTextureBytes.length;
         const model = await parseClassicModelGlb(await Bun.file(url).arrayBuffer(), file);
         expect(model.primitives.length).toBeGreaterThan(0);
         expect(model.duration).toBeGreaterThan(0);
+        expect(decodedTextureBytes.slice(textureStart)).toHaveLength(2);
+        expect(decodedTextureBytes.slice(textureStart).every((bytes) => bytes > 1_000)).toBe(true);
       }
     } finally {
       globalThis.createImageBitmap = originalCreateImageBitmap;

@@ -1674,10 +1674,11 @@ describe("production", () => {
     const unit = world.count - 1;
     expect(world.unitType[unit]).toBe(TYPE_VILLAGER);
     expect(world.owner[unit]).toBe(0);
-    // Adjacent to the TC and standing on open ground, never inside the footprint.
+    // At the TC's front exit and standing on open ground, never inside the visible model.
     const dx = world.posX[unit]! - world.posX[tcIndex]!;
     const dz = world.posZ[unit]! - world.posZ[tcIndex]!;
-    expect(Math.sqrt(dx * dx + dz * dz)).toBeLessThan(6);
+    expect(Math.abs(dx)).toBeLessThanOrEqual(0.5);
+    expect(dz).toBeLessThanOrEqual(-UNIT_TYPES[TYPE_TOWN_CENTER]!.trainExitOffset + 0.5);
     expect(
       world.walkable[Math.floor(world.posZ[unit]!) * MAP_TILES + Math.floor(world.posX[unit]!)],
     ).toBe(1);
@@ -1849,7 +1850,19 @@ describe("production", () => {
     expect(world.stockpiles[FOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costFood);
     expect(world.stockpiles[WOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costWood);
     expect(world.count).toBe(countBefore + 1);
-    expect(world.unitType[world.count - 1]).toBe(TYPE_MILITIA);
+    const militia = world.count - 1;
+    const barracksIndex = resolveId(world, barracks);
+    expect(world.unitType[militia]).toBe(TYPE_MILITIA);
+    // The original-scale barracks mesh overhangs its logical footprint. Units emerge from the
+    // front door, clear of the model, instead of idling invisibly inside it.
+    expect(world.posZ[militia]).toBeLessThanOrEqual(
+      world.posZ[barracksIndex]! - UNIT_TYPES[TYPE_BARRACKS]!.trainExitOffset + 0.5,
+    );
+    expect(
+      world.walkable[
+        Math.floor(world.posZ[militia]!) * MAP_TILES + Math.floor(world.posX[militia]!)
+      ],
+    ).toBe(1);
   });
 });
 

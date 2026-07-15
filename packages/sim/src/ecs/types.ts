@@ -26,6 +26,8 @@ export interface UnitTypeStats {
   popBonus: number;
   // Unit type this building produces; -1 = not a producer. Single-slot, no queues in M6.
   trains: number;
+  // Distance along the building's forward (-Z) axis where trained units emerge.
+  trainExitOffset: number;
   isDropsite: boolean;
   requiredAge: number;
   prerequisiteBuildings: readonly number[];
@@ -80,6 +82,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 100,
     popBonus: 0,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_ARCHAIC,
     prerequisiteBuildings: [TYPE_TOWN_CENTER],
@@ -103,6 +106,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 160,
     popBonus: 0,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_CLASSICAL,
     prerequisiteBuildings: [TYPE_BARRACKS],
@@ -126,6 +130,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 0,
     popBonus: 0,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_ARCHAIC,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
@@ -148,6 +153,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 0,
     popBonus: 0,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_ARCHAIC,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
@@ -170,6 +176,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 300,
     popBonus: 15,
     trains: TYPE_VILLAGER,
+    trainExitOffset: 6.5,
     isDropsite: true,
     requiredAge: AGE_CLASSICAL,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
@@ -192,6 +199,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 120,
     popBonus: 10,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_ARCHAIC,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
@@ -214,6 +222,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 200,
     popBonus: 0,
     trains: TYPE_MILITIA,
+    trainExitOffset: 6,
     isDropsite: false,
     requiredAge: AGE_CLASSICAL,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
@@ -238,6 +247,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 0,
     popBonus: 0,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_ARCHAIC,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
@@ -262,6 +272,7 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     buildTicks: 800,
     popBonus: 0,
     trains: -1,
+    trainExitOffset: 0,
     isDropsite: false,
     requiredAge: AGE_ARCHAIC,
     prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,

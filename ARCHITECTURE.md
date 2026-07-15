@@ -675,9 +675,157 @@ Scope: make Favor a playable Greek economy by tasking Villagers to completed Tem
 
 ---
 
+## Milestone 11 — Parallel unit-content foundation
+
+**Scope:** build the shared data, production, presentation, and validation seams required for multiple contributors to add Greek and Egyptian units without editing the same authored source files. This milestone proves the workflow with two ordinary direct-hit ground melee units, then opens the complete roster subset that satisfies the same contract; it does not attempt to unlock every unit family at once.
+
+The Milestone 9 ruleset decision remains authoritative: unit data targets the Extended Edition / The Titans balance baseline, not Retold. Unit behavior must match the original game; the parallelization seam is an ownership change, not permission to generalize away unit-specific mechanics.
+
+### Decisions
+
+| Question                 | Decision                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Parallel ownership       | One unit pack owns one sim definition, one engine media definition, its unique assets, and focused behavior coverage. Unit contributors do not edit shared registries or generic systems.                                                                          |
+| Stable identity          | Reserve explicit 16-bit numeric IDs for the complete Greek and Egyptian unit roster, their culture-specific producer buildings, and the remaining Greek/Egyptian gods before parallel work starts. IDs are append-only and never derived from file order.          |
+| Culture-specific content | Replace generic shared identities where the games differ: Greek Villager and Egyptian Laborer are distinct unit types, and Greek/Egyptian military buildings are distinct producer types. Shared visuals or stats may be referenced, but gameplay identity is not. |
+| Catalog assembly         | A build-time generator discovers unit/media definition modules and emits static registries in stable numeric-ID order. Generated files are integration-owned; contributors may regenerate locally for validation but do not include generated diffs in unit packs. |
+| Runtime lookup           | The sim and engine use dense O(1) catalog lookup by stable ID. No filesystem discovery, dynamic imports, string-key maps, or catalog allocation occurs in the tick or render hot paths.                                                                            |
+| Relationship ownership   | A trainable unit declares `trainedAt` relationships and command slots; a constructible building declares `builtBy` relationships and command slots. Generated reverse indexes produce worker/producer menus, so adding content never edits an existing producer.   |
+| Production               | Producers use a fixed-capacity, mixed-type FIFO queue. Cost, population reservation, availability, cancellation, and completion are evaluated from each queued type's definition.                                                                                  |
+| Gate A combat            | The shared schema owns per-type speed, population cost, armor, attack classes, damage classes, and counter bonuses. M11 supports units whose complete combat behavior is deterministic direct-hit ground melee.                                                    |
+| Presentation             | The engine owns per-unit model, animation, portrait/icon, selection scale, and audio declarations. Generic render/UI/audio systems consume that declaration rather than switching on unit IDs.                                                                     |
+| Exceptional mechanics    | Do not add a generic behavior/plugin hook in anticipation of heroes, myth units, siege, ships, or flying units. Each family opens only after one faithful vertical slice establishes its actual deterministic state and ownership seam.                            |
+| Merge ownership          | An integration owner regenerates catalogs once after combining unit packs, resolves ID/catalog validation failures, and runs the full deterministic and presentation suites.                                                                                       |
+
+### Unit-pack contract
+
+A Gate A melee unit pack has an intentionally narrow authored surface:
+
+```
+packages/sim/src/content/unit-types/<culture>/<unit>.ts
+packages/engine/src/content/unit-media/<culture>/<unit>.ts
+packages/engine/src/assets/units/<culture>/<unit>/...
+packages/sim/src/content/unit-types/<culture>/<unit>.test.ts  # only when focused behavior coverage is needed
+```
+
+The sim definition declares the stable type ID, display key, culture, unit classes, costs, build time, population cost, movement and vision values, age/god/prerequisite requirements, `trainedAt` relationships with command slots, attacks, armor, and counter bonuses. A constructible building owns its corresponding `builtBy` relationships and slots. Definitions contain no renderer, DOM, audio, or asset imports.
+
+The engine media definition declares the icon/portrait, GLB model and scale, idle/walk/attack/death animation clips, selection presentation, and acknowledgement/selection/attack audio pools. It contains no gameplay numbers and cannot alter command legality or combat results.
+
+A unit pack is complete when its exact pinned-ruleset data is represented, it trains from the correct producer through the generic command path, it renders and animates through the media catalog, and its authored files can be merged without changing another unit pack or a shared hand-maintained table. Passing the Gate A eligibility contract is a prerequisite; proximity-based attack range alone does not make an exceptional unit a Gate A unit.
+
+### Serial foundation — simulation
+
+1. **Freeze stable IDs.** Add an explicit unit/building ID catalog covering the Greek and Egyptian roster planned after M11. Widen type storage in world components, commands/codecs, production queues, snapshots, and hashes to 16 bits before assigning IDs. Extend the god ID catalog for all Greek and Egyptian major/minor gods. Generators fail on duplicate IDs, missing media for implemented units, and accidental renumbering.
+2. **Split culture identities.** Migrate the current generic Villager and Barracks identities to Greek Villager / Egyptian Laborer and culture-specific producer buildings. Existing entities, commands, snapshots, and tests move directly to the new IDs; no compatibility alias remains in the runtime.
+3. **Expand `UnitTypeStats`.** Add stable key, label, culture, classes, movement speed, population cost, armor entries, attack entries, required god, and authored `trainedAt` / `builtBy` relationships with command slots. Resource nodes and buildings remain in the same immutable type catalog but use empty unit-only fields.
+4. **Generate reverse indexes.** Compile authored relationships into ordered `trainsByProducer` and `buildsByWorker` catalogs. Validation rejects duplicate command slots, culture-incompatible relationships, missing endpoints, and a trainable/buildable type with no legal source.
+5. **Make core mechanics type-driven.** Replace `UNIT_SPEED`, worker-type equality checks, one-pop-per-entity counting, flat damage, and the single `trains` field with catalog-driven values/classes and generated relationship indexes. Gather/build/repair/pray eligibility is class-based but remains sim-authoritative.
+6. **Generalize production.** Replace the producer's count-only/single-type queue assumption with a fixed-capacity FIFO of 16-bit unit type IDs and remaining ticks. `COMMAND_TRAIN` continues to carry the requested type; enqueue, cancel, completion, resource debit, and population reservation use that entry's definition.
+7. **Complete deterministic state handling.** Add queue contents and any new gameplay component fields to construction, death-swap copying, snapshots, serialization, and `hashWorld`. Two identical worlds receiving the same mixed queue and combat commands must hash identically every tick.
+8. **Keep availability authoritative.** Extend the existing sim availability query to evaluate culture, age, god, producer, and prerequisite buildings. Commands and UI consume the same result; the client never reconstructs unlock rules.
+
+The serial proof producers are the Greek Military Academy and Egyptian Barracks. Each building declares the correct worker relationship and command slot, while its generated train menu is initially empty. Greek Villagers and Egyptian Laborers receive the derived build options, and both buildings are complete production entities before unit lanes begin. Adding Hoplite and Spearman later populates those producers through the unit-owned relationships without editing either building.
+
+### Serial foundation — engine and UI
+
+1. **Generate media registries.** Add a deterministic generator that emits static imports for sim definitions and engine media definitions, sorted by numeric ID. A check mode fails when generated output is stale; no generator runs inside the game loop.
+2. **Replace central type switches.** `model-presentation`, icon lookup, selection geometry, and unit audio resolve through `UnitMediaDefinition`. Shared renderer/audio primitives remain central; per-unit choices move into the unit's media file.
+3. **Render generic actions.** The renderer selects idle, walk, attack, and death clips from media definitions using authoritative snapshot state/timing. It does not infer combat outcomes or maintain a second gameplay action state.
+4. **Make command panels list-driven.** Selection summaries expose the selected worker's legal build types and producer's legal train types plus ordered queue entries. The command panel maps those lists into stable grid cells and issues the existing generic build/train commands.
+5. **Keep media failure visible.** Missing required media is a catalog validation error for an implemented unit. Development-only geometric fallback remains available for diagnosis, but it is not accepted by M11 exit criteria for the proof units.
+
+### Generator and merge contract
+
+- Source discovery accepts only definition modules under the two unit-pack roots above, excludes tests, and emits deterministic output independent of filesystem enumeration order.
+- Sim and media entries must agree on type ID and content key; every implemented non-resource unit has exactly one of each.
+- Generated registries are checked in so a clean checkout remains buildable. Unit contributors may regenerate them locally to run broad checks, then exclude those generated diffs from their commits.
+- The integration owner combines all authored packs, runs the generator once, reviews the complete generated diff, and owns that single catalog commit.
+- Focused pack validation can generate catalogs into temporary output, run the pack and generic contract tests, and leave the worktree unchanged. Integration CI runs the checked-in generator in check mode and fails on catalog drift, duplicate IDs/keys/slots, missing definitions/media, invalid relationships, or references to unimplemented prerequisite content.
+
+### Parallel work opened by M11
+
+After the serial foundation lands, two independent proof lanes run in separate worktrees:
+
+| Lane     | Unit     | Required proof                                                                                                                                                            |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Greek    | Hoplite  | Exact pinned-ruleset cost/stats/classes, trained from the Greek Military Academy, correct population/queue behavior, direct-hit melee combat, model/actions/icon/audio.   |
+| Egyptian | Spearman | Exact pinned-ruleset cost/stats/classes, trained from the Egyptian Barracks, correct population/queue behavior, direct-hit melee combat and bonuses, model/actions/audio. |
+
+Neither lane may edit a shared authored source file. Any missing shared capability discovered by a lane is reported back to the integration owner and lands as a reviewed serial foundation change before the lane consumes it. Unit packs do not smuggle shared mechanics into their definition or media files.
+
+Once both proof lanes integrate cleanly, every Greek or Egyptian unit that passes the Gate A eligibility contract may be assigned one unit per contributor under the same contract.
+
+### Gate A eligibility contract
+
+A unit is eligible for the first parallel melee wave only when all of the following are true:
+
+- It uses ordinary ground navigation, occupancy, separation, targeting, and pursuit.
+- Every gameplay attack is a direct-hit melee attack resolved through the shared attack, armor, damage-class, and counter-bonus data. It has no projectile, area/splash damage, charge, throw, delayed impact, or special attack.
+- Its complete gameplay variation is expressible through common immutable data: cost, build time, population, speed, hit points, line of sight, armor, attacks, damage classes, bonuses, age/god/prerequisites, producer relationships, and command slots.
+- It enters play through the normal deterministic production queue. It has no free-age-up spawn, transformation, temporary lifetime, death-spawn, or other exceptional creation/removal rule.
+- It has no hero uniqueness/revival/regeneration rule, myth-unit favor/lifecycle rule, active ability, passive aura, healing/empowerment behavior, siege-only behavior, or formation-sensitive mechanic.
+- Its presentation uses the shared selection plus idle, walk, attack, and death action contract without unit-specific renderer or audio control flow.
+
+Infantry, cavalry, or elephants may enter Gate A when they pass every condition; the visual body or movement speed does not decide eligibility. Workers are part of the serial foundation because gather/build/repair/pray behavior is already shared infrastructure, not a parallel combat-unit pack. A melee-range unit that fails even one condition is assigned to the gate for its missing mechanic rather than receiving a simplified Gate A implementation.
+
+Before fan-out, the integration owner audits the Greek and Egyptian melee roster and publishes a fixed assignment manifest containing each unit's stable ID, culture, producer, command slot, owner lane, and either `Gate A` or the exact blocking mechanic/gate. Parallel work begins only from that manifest.
+
+### Family gates
+
+| Gate | Unit families                                                                                        | Required substrate before parallel packs open                                                                                                   |
+| ---- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| A    | Ordinary direct-hit ground melee units that pass the eligibility contract                            | M11 foundation, roster audit, and Hoplite/Spearman proof complete.                                                                              |
+| B    | Archers, ranged heroes, ranged myth units, and projectile siege                                      | Deterministic projectile entities, launch/impact timing, misses, area damage, animation timing, snapshot/hash coverage, and one vertical slice. |
+| C    | Heroes and myth units                                                                                | Faithful hero limits/revival, myth-vs-hero bonuses, favor costs, special attacks, lifecycle state, and one representative vertical slice.       |
+| D    | Non-projectile siege, formation-sensitive counters, or units with charged/special deterministic acts | The exact mechanic exists in the sim with command, snapshot, hash, presentation, and focused determinism coverage.                              |
+| E    | Ships, transports, amphibious units, and flying units                                                | Water/air navigation, occupancy, embark/disembark or flight targeting rules, visibility, and renderer/camera support.                           |
+
+The first unit that needs a new deterministic mechanic is a serial feature slice, not a parallel content pack. Subsequent units may parallelize only after that mechanic's contract is explicit and proven.
+
+### Performance and determinism budgets
+
+- Catalog lookup is a direct indexed read with no per-tick object creation.
+- Production queues use fixed-capacity typed storage; queue operations do not allocate in `World.step()`.
+- Unit classes, armor, damage classes, and bonuses compile to numeric masks/dense arrays used directly by combat.
+- Registry generation and validation are build-time work only.
+- The existing 20 Hz tick budget remains green at the Milestone 1 benchmark scale after the two proof units and mixed queues are active.
+- Two-world determinism tests cover mixed-type training, cancellation/completion, per-type movement, population reservation, bonuses/armor, deaths, and queue compaction.
+
+### Build order
+
+1. Reserve 16-bit IDs, widen type-ID storage/codecs, and add catalog/code-generation checks.
+2. Split culture-specific workers/buildings and migrate snapshots/tests.
+3. Land the expanded sim schema and type-driven movement, population, eligibility, armor, and direct-hit damage.
+4. Land mixed-type production queues plus availability, snapshot, hash, and UI queue support.
+5. Land the engine media schema, generated registry, generic presentation/audio consumers, and list-driven command panels.
+6. Freeze the unit-pack template, Gate A eligibility contract, and validation commands.
+7. Audit the Greek/Egyptian melee roster and publish the fixed Gate A assignment/exclusion manifest.
+8. Implement Hoplite and Spearman in parallel worktrees without shared authored-file edits.
+9. Integrate once, regenerate catalogs, run the complete suite, audit the merged diff for ownership violations, and release the remaining Gate A manifest entries for parallel implementation.
+
+### Exit criteria
+
+- Stable 16-bit Greek/Egyptian unit and building IDs plus Greek/Egyptian god IDs are reserved and protected against renumbering.
+- Greek Villager/Egyptian Laborer and their culture-specific proof producers replace the old generic identities end to end.
+- Mixed-type queues, per-type movement/population/combat, culture/god availability, snapshots, death copying, and `hashWorld` are deterministic and covered.
+- Model presentation, icons, action clips, selection geometry, and audio contain no Hoplite/Spearman type switch or central hand-added entry.
+- Hoplite and Spearman are authored in disjoint unit packs, train through the real UI, fight with their exact ordinary-unit rules, and render with production media.
+- Integrating both proof lanes requires only adding their authored files/assets and one integration-owned registry generation; their `trainedAt` relationships populate the existing producers without either lane modifying a shared authored source file.
+- Every Greek/Egyptian melee roster entry has a reviewed Gate A eligibility result; each exclusion names the exact missing mechanic and later gate rather than accepting a simplified implementation.
+- Every eligible entry has a stable ID, producer/slot assignment, and isolated unit-pack task brief ready to hand to a parallel contributor.
+- Catalog validation, sim tests, engine/web tests, typecheck, formatting, and two-world determinism checks pass.
+- The 20 Hz simulation budget remains green at the established benchmark scale.
+
+### Explicitly deferred
+
+Projectile simulation; hero limits/revival; myth-unit favor/lifecycle rules; special attacks; area/splash damage; charged, thrown, or delayed-impact actions; temporary or exceptional spawn/death rules; technology upgrades; formation bonuses; siege-specific behavior; naval, transport, amphibious, and flying movement; garrisoning; and any melee-range unit whose correct behavior depends on those systems.
+
+---
+
 ## Later milestones (direction, not commitments)
 
-M2 real unit meshes + animation remains deferred (instanced skinning; blocked on the asset-pipeline question; the current atlas keeps serving) → Greek Favor/myth slice → combat classes + deterministic projectiles → settlements/map control → matchmaking/persistence in `apps/server`, and onward.
+Parallel Gate A melee-unit packs → deterministic projectiles and the ranged roster → first hero/myth behavior slice → god powers → naval/air/transport → gates/walls → AI → deterministic physics kernel.
 
 ## Open questions (parked, on purpose)
 
