@@ -24,7 +24,8 @@ describe("Greek Hypaspist unit pack", () => {
       requiredGod: NO_GOD,
       prerequisiteBuildings: [TYPE_GREEK_MILITARY_ACADEMY],
       trainedAt: [{ type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 1 }],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [5, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -46,8 +47,8 @@ describe("Greek Hypaspist unit pack", () => {
       culture: CULTURE_NORSE,
       classes: nonInfantryTarget.classes | UNIT_CLASS_HERO,
     };
-    expect(resolveMeleeDamage(definition.meleeAttack, infantryTarget)).toBeCloseTo(13.8125, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, nonInfantryTarget)).toBeCloseTo(3.25, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, norseHeroTarget)).toBeCloseTo(13.8125, 8);
+    expect(resolveMeleeDamage(definition.attack, infantryTarget)).toBeCloseTo(13.8125, 8);
+    expect(resolveMeleeDamage(definition.attack, nonInfantryTarget)).toBeCloseTo(3.25, 8);
+    expect(resolveMeleeDamage(definition.attack, norseHeroTarget)).toBeCloseTo(13.8125, 8);
   });
 });

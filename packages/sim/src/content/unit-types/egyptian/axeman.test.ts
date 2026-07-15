@@ -28,7 +28,8 @@ describe("Egyptian Axeman unit pack", () => {
       lineOfSight: 16,
       movementSpeed: 4.3,
       armor: [0.4, 0.05, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [5, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -75,9 +76,9 @@ describe("Egyptian Axeman unit pack", () => {
       culture: CULTURE_GREEK,
     };
 
-    expect(resolveMeleeDamage(definition.meleeAttack, hoplite)).toBeCloseTo(13, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, nonInfantryTarget)).toBeCloseTo(3.25, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, norseHeroTarget)).toBeCloseTo(13, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, greekHeroTarget)).toBeCloseTo(3.25, 8);
+    expect(resolveMeleeDamage(definition.attack, hoplite)).toBeCloseTo(13, 8);
+    expect(resolveMeleeDamage(definition.attack, nonInfantryTarget)).toBeCloseTo(3.25, 8);
+    expect(resolveMeleeDamage(definition.attack, norseHeroTarget)).toBeCloseTo(13, 8);
+    expect(resolveMeleeDamage(definition.attack, greekHeroTarget)).toBeCloseTo(3.25, 8);
   });
 });

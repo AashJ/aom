@@ -37,7 +37,8 @@ describe("Egyptian War Elephant unit pack", () => {
       lineOfSight: 16,
       movementSpeed: 2.9,
       armor: [0.1, 0.4, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [12, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -69,7 +70,7 @@ describe("Egyptian War Elephant unit pack", () => {
     const hoplite = UNIT_TYPES[TYPE_HOPLITE]!;
     const house = UNIT_TYPES[TYPE_GREEK_HOUSE]!;
 
-    expect(resolveMeleeDamage(definition.meleeAttack, hoplite)).toBeCloseTo(7.8, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, house)).toBeCloseTo(36, 8);
+    expect(resolveMeleeDamage(definition.attack, hoplite)).toBeCloseTo(7.8, 8);
+    expect(resolveMeleeDamage(definition.attack, house)).toBeCloseTo(36, 8);
   });
 });

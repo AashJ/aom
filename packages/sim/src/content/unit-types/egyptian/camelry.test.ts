@@ -31,7 +31,8 @@ describe("Egyptian Camelry unit pack", () => {
       lineOfSight: 16,
       movementSpeed: 6,
       armor: [0.15, 0.3, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -63,7 +64,7 @@ describe("Egyptian Camelry unit pack", () => {
     const hoplite = UNIT_TYPES[TYPE_HOPLITE]!;
     const cavalryTarget = { ...hoplite, classes: hoplite.classes | UNIT_CLASS_CAVALRY };
 
-    expect(resolveMeleeDamage(definition.meleeAttack, hoplite)).toBeCloseTo(5.2, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, cavalryTarget)).toBeCloseTo(9.1, 8);
+    expect(resolveMeleeDamage(definition.attack, hoplite)).toBeCloseTo(5.2, 8);
+    expect(resolveMeleeDamage(definition.attack, cavalryTarget)).toBeCloseTo(9.1, 8);
   });
 });

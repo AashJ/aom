@@ -16,16 +16,14 @@ describe("Greek Hoplite unit pack", () => {
       costGold: 40,
       buildTicks: 14 * 20,
       populationCost: 2,
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
         cooldownTicks: 30,
       },
     });
-    expect(resolveMeleeDamage(definition.meleeAttack, UNIT_TYPES[TYPE_SPEARMAN]!)).toBeCloseTo(
-      4.8,
-      8,
-    );
+    expect(resolveMeleeDamage(definition.attack, UNIT_TYPES[TYPE_SPEARMAN]!)).toBeCloseTo(4.8, 8);
   });
 });

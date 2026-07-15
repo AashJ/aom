@@ -21,7 +21,8 @@ export const definition = {
   movementSpeed: 3.8,
   workRange: 1.2,
   armor: [0.25, 0.35, 0.99],
-  meleeAttack: {
+  attack: {
+    kind: "melee",
     damage: [8, 0, 0],
     range: 0.1,
     aggroRange: 14,

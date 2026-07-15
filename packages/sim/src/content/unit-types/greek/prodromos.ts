@@ -20,7 +20,8 @@ export const definition = {
   lineOfSight: 16,
   movementSpeed: 6,
   armor: [0.2, 0.1, 0.99],
-  meleeAttack: {
+  attack: {
+    kind: "melee",
     damage: [6, 0, 0],
     range: 0.3,
     aggroRange: 16,

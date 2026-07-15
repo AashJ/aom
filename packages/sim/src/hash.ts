@@ -182,6 +182,56 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // Queued releases and in-flight projectiles determine future damage. Hash the
+  // complete lifecycle, including stable identities used by snapshots.
+  word = world.projectiles.count >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+  word = world.projectiles.nextId >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
+  const projectileIntegerArrays = [
+    world.projectiles.ids,
+    world.projectiles.owners,
+    world.projectiles.sourceTypes,
+    world.projectiles.sourceIds,
+    world.projectiles.targetIds,
+    world.projectiles.launchTicks,
+    world.projectiles.impactTicks,
+    world.projectiles.expiresBeforeImpact,
+  ];
+  for (const values of projectileIntegerArrays) {
+    for (let i = 0; i < world.projectiles.count; i += 1) {
+      word = values[i]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+  }
+
+  const projectilePositionArrays = [
+    world.projectiles.launchX,
+    world.projectiles.launchZ,
+    world.projectiles.impactX,
+    world.projectiles.impactZ,
+  ];
+  for (const values of projectilePositionArrays) {
+    const view = new DataView(
+      values.buffer,
+      values.byteOffset,
+      world.projectiles.count * Float64Array.BYTES_PER_ELEMENT,
+    );
+    for (let i = 0; i < world.projectiles.count; i += 1) {
+      const byteOffset = i * Float64Array.BYTES_PER_ELEMENT;
+      word = view.getUint32(byteOffset, true);
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+      word = view.getUint32(byteOffset + Uint32Array.BYTES_PER_ELEMENT, true);
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+  }
+
   // The whole economy state machine is shared state.
   for (let i = 0; i < world.count; i += 1) {
     word = world.mode[i]!;

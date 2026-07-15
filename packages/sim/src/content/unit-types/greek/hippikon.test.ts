@@ -26,7 +26,8 @@ describe("Greek Hippikon unit pack", () => {
       lineOfSight: 8,
       movementSpeed: 5.5,
       armor: [0.1, 0.25, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [10, 0, 0],
         range: 0.3,
         aggroRange: 8,
@@ -58,7 +59,7 @@ describe("Greek Hippikon unit pack", () => {
     const hoplite = UNIT_TYPES[TYPE_HOPLITE]!;
     const archerTarget = { ...hoplite, classes: hoplite.classes | UNIT_CLASS_ARCHER };
 
-    expect(resolveMeleeDamage(definition.meleeAttack, hoplite)).toBeCloseTo(6.5, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, archerTarget)).toBeCloseTo(8.125, 8);
+    expect(resolveMeleeDamage(definition.attack, hoplite)).toBeCloseTo(6.5, 8);
+    expect(resolveMeleeDamage(definition.attack, archerTarget)).toBeCloseTo(8.125, 8);
   });
 });

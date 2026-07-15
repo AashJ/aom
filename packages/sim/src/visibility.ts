@@ -140,6 +140,17 @@ export function isTypeAtPositionVisibleTo(
     return false;
   }
 
+  return isPositionVisibleTo(world, playerId, positionX, positionZ);
+}
+
+export function isPositionVisibleTo(
+  world: World,
+  playerId: number,
+  positionX: number,
+  positionZ: number,
+): boolean {
+  const slot = world.playerSlotById[playerId]!;
+  if (slot < 0) return false;
   const tileX = Math.max(0, Math.min(MAP_TILES - 1, Math.floor(positionX)));
   const tileZ = Math.max(0, Math.min(MAP_TILES - 1, Math.floor(positionZ)));
 

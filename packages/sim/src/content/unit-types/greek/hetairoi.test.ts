@@ -31,7 +31,8 @@ describe("Greek Hetairoi unit pack", () => {
       lineOfSight: 16,
       movementSpeed: 4.8,
       armor: [0.1, 0.4, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -63,11 +64,8 @@ describe("Greek Hetairoi unit pack", () => {
   });
 
   test("applies its multiplier only to buildings", () => {
-    expect(resolveMeleeDamage(definition.meleeAttack, UNIT_TYPES[TYPE_HOPLITE]!)).toBeCloseTo(
-      5.2,
-      8,
-    );
-    expect(resolveMeleeDamage(definition.meleeAttack, UNIT_TYPES[TYPE_GREEK_STABLE]!)).toBeCloseTo(
+    expect(resolveMeleeDamage(definition.attack, UNIT_TYPES[TYPE_HOPLITE]!)).toBeCloseTo(5.2, 8);
+    expect(resolveMeleeDamage(definition.attack, UNIT_TYPES[TYPE_GREEK_STABLE]!)).toBeCloseTo(
       16.8,
       8,
     );

@@ -19,7 +19,7 @@ export const definition = {
   lineOfSight: 10,
   movementSpeed: 0,
   armor: NO_ARMOR,
-  meleeAttack: null,
+  attack: null,
   isStatic: true,
   resource: -1,
   bodyRadius: 2.2,

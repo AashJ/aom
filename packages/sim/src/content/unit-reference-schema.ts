@@ -232,7 +232,7 @@ export function validateUnitReferences(
 }
 
 function meleeDefinitionSnapshot(definition: UnitTypeStats): MeleeUnitReferenceExpected {
-  if (definition.meleeAttack === null) {
+  if (definition.attack?.kind !== "melee") {
     throw new Error(`${definition.key} reference requires a melee attack.`);
   }
   return {
@@ -244,7 +244,7 @@ function meleeDefinitionSnapshot(definition: UnitTypeStats): MeleeUnitReferenceE
     movementSpeed: definition.movementSpeed,
     workRange: definition.workRange ?? null,
     armor: definition.armor,
-    meleeAttack: definition.meleeAttack,
+    meleeAttack: definition.attack,
     isStatic: definition.isStatic,
     resource: definition.resource,
     bodyRadius: definition.bodyRadius,

@@ -1911,7 +1911,7 @@ describe("production", () => {
 
 describe("combat", () => {
   const stats = UNIT_TYPES[TYPE_VILLAGER]!;
-  const attack = stats.meleeAttack!;
+  const attack = stats.attack!;
 
   test("adjacent enemies auto-acquire, trade damage, and produce a winner", () => {
     const world = flatWorld(42, [0, 1]);

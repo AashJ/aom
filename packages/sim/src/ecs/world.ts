@@ -59,6 +59,12 @@ import {
   MAX_TRAIN_QUEUE,
 } from "./production";
 import {
+  createProjectileStore,
+  queueProjectile,
+  tickProjectileStore,
+  type ProjectileStore,
+} from "./projectiles";
+import {
   cancelBuildingResearch,
   isBuildingResearching,
   tickBuildingResearch,
@@ -209,6 +215,7 @@ export interface World {
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
+  projectiles: ProjectileStore;
   mode: Uint8Array;
   carried: Uint16Array;
   carriedResource: Uint8Array;
@@ -320,6 +327,7 @@ export function createWorld(seed: number): World {
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
+    projectiles: createProjectileStore(),
     mode: new Uint8Array(MAX_UNITS),
     carried: new Uint16Array(MAX_UNITS),
     carriedResource: new Uint8Array(MAX_UNITS),
@@ -995,11 +1003,16 @@ export function tickWorld(world: World): void {
     world.cellCount[cell] = world.cellCount[cell]! + 1;
   }
 
-  // 4. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
+  // 4. Existing projectile entities launch, fly, and impact before units decide
+  // whether to begin a new attack cycle. A newly queued projectile cannot advance
+  // until the next tick, preserving its animation-timed release boundary.
+  tickProjectileStore(world, world.projectiles, UNIT_TYPES, dealDamage);
+
+  // 5. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
-    const attack = stats.meleeAttack;
+    const attack = stats.attack;
 
     if (stats.isStatic || attack === null) {
       // Static and unarmed rows never auto-acquire or strike.
@@ -1053,7 +1066,18 @@ export function tickWorld(world: World): void {
           setFacingToward(world, i, targetX, targetZ);
 
           if (world.attackCooldown[i] === 0) {
-            dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
+            if (attack.kind === "melee") {
+              dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
+            } else {
+              queueProjectile(world.projectiles, {
+                sourceId: unitIdAt(world, i),
+                sourceType: world.unitType[i]!,
+                owner: world.owner[i]!,
+                targetId: unitIdAt(world, target),
+                attackTick: world.tick,
+                attack,
+              });
+            }
             world.attackCooldown[i] = attack.cooldownTicks;
           }
         } else {
@@ -1164,7 +1188,7 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 5. Economy reads the same fresh grid as combat and writes moveTarget/moving for
+  // 6. Economy reads the same fresh grid as combat and writes moveTarget/moving for
   // movement to consume - the third costume for chase/strike.
   const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
 

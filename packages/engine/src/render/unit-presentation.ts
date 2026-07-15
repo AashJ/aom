@@ -196,7 +196,7 @@ export function modelAnimationTime(
     const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
     const actionTicks =
       presentation.action === "attack"
-        ? (stats.meleeAttack?.cooldownTicks ?? GATHER_COOLDOWN_TICKS)
+        ? (stats.attack?.cooldownTicks ?? GATHER_COOLDOWN_TICKS)
         : GATHER_COOLDOWN_TICKS;
     const elapsedTicks = Math.min(
       actionTicks,

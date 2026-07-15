@@ -25,7 +25,8 @@ describe("Greek Prodromos unit pack", () => {
       lineOfSight: 16,
       movementSpeed: 6,
       armor: [0.2, 0.1, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [6, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -57,7 +58,7 @@ describe("Greek Prodromos unit pack", () => {
     const hoplite = UNIT_TYPES[TYPE_HOPLITE]!;
     const cavalryTarget = { ...hoplite, classes: hoplite.classes | UNIT_CLASS_CAVALRY };
 
-    expect(resolveMeleeDamage(definition.meleeAttack, hoplite)).toBeCloseTo(3.9, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, cavalryTarget)).toBeCloseTo(11.7, 8);
+    expect(resolveMeleeDamage(definition.attack, hoplite)).toBeCloseTo(3.9, 8);
+    expect(resolveMeleeDamage(definition.attack, cavalryTarget)).toBeCloseTo(11.7, 8);
   });
 });

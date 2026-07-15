@@ -35,7 +35,8 @@ describe("Greek Myrmidon unit pack", () => {
       lineOfSight: 16,
       movementSpeed: 4,
       armor: [0.45, 0.2, 0.99],
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [10, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -76,10 +77,10 @@ describe("Greek Myrmidon unit pack", () => {
     const egyptianBuilding = UNIT_TYPES[TYPE_EGYPTIAN_BARRACKS]!;
     const neutralResource = UNIT_TYPES[TYPE_TREE]!;
 
-    expect(resolveMeleeDamage(definition.meleeAttack, spearman)).toBeCloseTo(9, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, axemanDefinition)).toBeCloseTo(6, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, laborerDefinition)).toBeCloseTo(7.5, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, egyptianBuilding)).toBeCloseTo(10, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, neutralResource)).toBeCloseTo(10, 8);
+    expect(resolveMeleeDamage(definition.attack, spearman)).toBeCloseTo(9, 8);
+    expect(resolveMeleeDamage(definition.attack, axemanDefinition)).toBeCloseTo(6, 8);
+    expect(resolveMeleeDamage(definition.attack, laborerDefinition)).toBeCloseTo(7.5, 8);
+    expect(resolveMeleeDamage(definition.attack, egyptianBuilding)).toBeCloseTo(10, 8);
+    expect(resolveMeleeDamage(definition.attack, neutralResource)).toBeCloseTo(10, 8);
   });
 });

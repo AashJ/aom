@@ -59,6 +59,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 4.2,
       armor: [0.35, 0.15, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -96,6 +97,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 4.3,
       armor: [0.35, 0.1, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [5, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -129,6 +131,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 5.5,
       armor: [0.1, 0.25, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [10, 0, 0],
         range: 0.3,
         aggroRange: 8,
@@ -159,6 +162,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 6,
       armor: [0.2, 0.1, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [6, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -189,6 +193,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 4,
       armor: [0.45, 0.2, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [10, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -222,6 +227,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 4.8,
       armor: [0.1, 0.4, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -266,6 +272,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 5,
       armor: [0.4, 0.2, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [7, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -299,6 +306,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 4.3,
       armor: [0.4, 0.05, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [5, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -332,6 +340,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 6,
       armor: [0.15, 0.3, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [8, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -362,6 +371,7 @@ export const GATE_A_UNIT_REFERENCES = [
       movementSpeed: 2.9,
       armor: [0.1, 0.4, 0.99],
       meleeAttack: {
+        kind: "melee",
         damage: [12, 0, 0],
         range: 0.3,
         aggroRange: 16,

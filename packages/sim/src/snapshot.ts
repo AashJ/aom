@@ -1,13 +1,20 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
 import { FAVOR, NO_UNIT_TYPE, RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
+import type { UnitTypeStats } from "./content/unit-type-schema";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
 import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
 import { findAgeAdvanceResearch } from "./ecs/research";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
+import { MAX_PROJECTILES, NO_PROJECTILE_TICK, projectileProgressAt } from "./ecs/projectiles";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
-import { isEntityVisibleTo, isTypeAtPositionVisibleTo, VISIBILITY_TILES } from "./visibility";
+import {
+  isEntityVisibleTo,
+  isPositionVisibleTo,
+  isTypeAtPositionVisibleTo,
+  VISIBILITY_TILES,
+} from "./visibility";
 
 export interface RenderSnapshot {
   tick: number;
@@ -26,6 +33,16 @@ export interface RenderSnapshot {
   selected: Uint8Array;
   owner: Uint8Array;
   unitType: Uint16Array;
+  projectileCount: number;
+  projectileIds: Uint32Array;
+  projectileTypes: Uint8Array;
+  projectilePosX: Float32Array;
+  projectilePosZ: Float32Array;
+  projectileFacingX: Float32Array;
+  projectileFacingZ: Float32Array;
+  projectileProgress: Float32Array;
+  projectileOwners: Uint8Array;
+  projectileVisible: Uint8Array;
   deathCount: number;
   deathIds: Uint32Array;
   deathTypes: Uint16Array;
@@ -56,7 +73,10 @@ export interface RenderSnapshot {
   winner: number;
 }
 
-export function createSnapshot(capacity: number): RenderSnapshot {
+export function createSnapshot(
+  capacity: number,
+  projectileCapacity = Math.min(MAX_PROJECTILES, Math.max(1, capacity * 4)),
+): RenderSnapshot {
   return {
     tick: 0,
     count: 0,
@@ -74,6 +94,16 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     selected: new Uint8Array(capacity),
     owner: new Uint8Array(capacity),
     unitType: new Uint16Array(capacity),
+    projectileCount: 0,
+    projectileIds: new Uint32Array(projectileCapacity),
+    projectileTypes: new Uint8Array(projectileCapacity),
+    projectilePosX: new Float32Array(projectileCapacity),
+    projectilePosZ: new Float32Array(projectileCapacity),
+    projectileFacingX: new Float32Array(projectileCapacity),
+    projectileFacingZ: new Float32Array(projectileCapacity),
+    projectileProgress: new Float32Array(projectileCapacity),
+    projectileOwners: new Uint8Array(projectileCapacity),
+    projectileVisible: new Uint8Array(projectileCapacity),
     deathCount: 0,
     deathIds: new Uint32Array(capacity),
     deathTypes: new Uint16Array(capacity),
@@ -103,6 +133,49 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     winner: -1,
   };
+}
+
+export function writeProjectileSnapshot(
+  world: World,
+  out: RenderSnapshot,
+  viewerId: number,
+  unitTypes: readonly (UnitTypeStats | undefined)[] = UNIT_TYPES,
+): void {
+  out.projectileCount = 0;
+
+  for (let index = 0; index < world.projectiles.count; index += 1) {
+    const impactTick = world.projectiles.impactTicks[index]!;
+    if (impactTick === NO_PROJECTILE_TICK) continue;
+    const output = out.projectileCount;
+    if (output >= out.projectileIds.length) {
+      throw new RangeError("Render snapshot projectile capacity exceeded.");
+    }
+    const progress = projectileProgressAt(world.projectiles, index, world.tick);
+    const launchX = world.projectiles.launchX[index]!;
+    const launchZ = world.projectiles.launchZ[index]!;
+    const dx = world.projectiles.impactX[index]! - launchX;
+    const dz = world.projectiles.impactZ[index]! - launchZ;
+    const directionLength = Math.sqrt(dx * dx + dz * dz);
+    const x = launchX + dx * progress;
+    const z = launchZ + dz * progress;
+    const sourceType = world.projectiles.sourceTypes[index]!;
+    const attack = unitTypes[sourceType]?.attack;
+    if (!attack || attack.kind !== "projectile") continue;
+
+    out.projectileIds[output] = world.projectiles.ids[index]!;
+    out.projectileTypes[output] = attack.projectile.type;
+    out.projectilePosX[output] = x;
+    out.projectilePosZ[output] = z;
+    out.projectileFacingX[output] = directionLength > 0 ? dx / directionLength : 0;
+    out.projectileFacingZ[output] = directionLength > 0 ? dz / directionLength : 1;
+    out.projectileProgress[output] = progress;
+    out.projectileOwners[output] = world.projectiles.owners[index]!;
+    out.projectileVisible[output] =
+      world.projectiles.owners[index] === viewerId || isPositionVisibleTo(world, viewerId, x, z)
+        ? 1
+        : 0;
+    out.projectileCount = output + 1;
+  }
 }
 
 export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): void {
@@ -174,6 +247,8 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
       ? 1
       : 0;
   }
+
+  writeProjectileSnapshot(world, out, viewerId);
 
   for (let i = 0; i < world.count; i += 1) {
     // The renderer will use id equality to decide interpolate-vs-snap once swap-remove exists;

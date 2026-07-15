@@ -239,8 +239,8 @@ describe("unit presentation", () => {
     expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("egyptianSpearmanIdle");
     expect(modelKey(resolveModelPresentation(snapshot, 1, true))).toBe("egyptianSpearmanWalk");
 
-    snapshot.actionCooldown[0] = UNIT_TYPES[TYPE_HOPLITE]!.meleeAttack!.cooldownTicks;
-    snapshot.actionCooldown[1] = UNIT_TYPES[TYPE_SPEARMAN]!.meleeAttack!.cooldownTicks;
+    snapshot.actionCooldown[0] = UNIT_TYPES[TYPE_HOPLITE]!.attack!.cooldownTicks;
+    snapshot.actionCooldown[1] = UNIT_TYPES[TYPE_SPEARMAN]!.attack!.cooldownTicks;
     expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekHopliteAttackA");
     expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("egyptianSpearmanAttack");
     expect(modelKey(resolveModelDeathPresentation(TYPE_HOPLITE, packId(0, 0)))).toBe(

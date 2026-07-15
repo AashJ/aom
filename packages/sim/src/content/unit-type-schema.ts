@@ -9,7 +9,9 @@ export interface UnitTypeStats {
   readonly movementSpeed: number;
   readonly workRange?: number;
   readonly armor: ArmorProfile;
-  readonly meleeAttack: MeleeAttack | null;
+  // Exactly one primary attack shape or none. The discriminant is authoritative:
+  // combat never guesses delivery behavior from classes, range, or presentation.
+  readonly attack: Attack | null;
   readonly isStatic: boolean;
   readonly resource: number;
   // Melee reach measures to the target's surface, not center.
@@ -36,13 +38,34 @@ export interface UnitTypeStats {
 export type DamageProfile = readonly [hack: number, pierce: number, crush: number];
 export type ArmorProfile = readonly [hack: number, pierce: number, crush: number];
 
-export interface MeleeAttack {
+interface AttackBase {
   readonly damage: DamageProfile;
   readonly range: number;
   readonly aggroRange: number;
   readonly cooldownTicks: number;
   readonly bonuses: readonly DamageBonus[];
 }
+
+export interface MeleeAttack extends AttackBase {
+  readonly kind: "melee";
+}
+
+export interface ProjectileFlight {
+  // Stable simulation/presentation identity. Projectile kinds are append-only.
+  readonly type: number;
+  readonly speed: number;
+  readonly lifespanTicks: number;
+  readonly collisionRadius: number;
+}
+
+export interface ProjectileAttack extends AttackBase {
+  readonly kind: "projectile";
+  // Ticks from attack-cycle start to the animation's release event.
+  readonly launchDelayTicks: number;
+  readonly projectile: ProjectileFlight;
+}
+
+export type Attack = MeleeAttack | ProjectileAttack;
 
 export interface DamageBonus {
   // Every bit must be present. Target classes and optional culture gates cover

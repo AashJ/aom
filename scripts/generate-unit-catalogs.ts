@@ -16,6 +16,8 @@ import { UNIT_ROSTER, unitRosterEntry } from "../packages/sim/src/content/unit-r
 import { validateDefinitionAgainstReference } from "../packages/sim/src/content/unit-reference-schema";
 import { unitReferenceEntry } from "../packages/sim/src/content/unit-references";
 import { NO_GOD } from "../packages/sim/src/ecs/progression";
+import { TICK_HZ } from "../packages/sim/src/clock";
+import { PROJECTILE_TYPE_COUNT } from "../packages/sim/src/ecs/projectiles";
 import type {
   ModelAssetDefinition,
   UnitMediaDefinition,
@@ -137,6 +139,50 @@ function relationshipsMatch(
 const relationshipSlots = new Map<string, UnitTypeStats[]>();
 for (const entry of entries) {
   const definition = entry.definition;
+  const attack = definition.attack;
+
+  if (attack !== null) {
+    if (
+      !Number.isFinite(attack.range) ||
+      attack.range < 0 ||
+      !Number.isFinite(attack.aggroRange) ||
+      attack.aggroRange < attack.range ||
+      !Number.isInteger(attack.cooldownTicks) ||
+      attack.cooldownTicks < 1
+    ) {
+      throw new Error(`${definition.key} has an invalid ${attack.kind} attack envelope.`);
+    }
+    if (
+      attack.damage.length !== 3 ||
+      attack.damage.some((damage) => !Number.isFinite(damage) || damage < 0)
+    ) {
+      throw new Error(`${definition.key} has invalid attack damage.`);
+    }
+
+    if (attack.kind === "projectile") {
+      const flight = attack.projectile;
+      if (
+        !Number.isInteger(attack.launchDelayTicks) ||
+        attack.launchDelayTicks < 0 ||
+        attack.launchDelayTicks >= attack.cooldownTicks ||
+        !Number.isInteger(flight.type) ||
+        flight.type < 0 ||
+        flight.type >= PROJECTILE_TYPE_COUNT ||
+        !Number.isFinite(flight.speed) ||
+        flight.speed <= 0 ||
+        !Number.isInteger(flight.lifespanTicks) ||
+        flight.lifespanTicks < 1 ||
+        !Number.isFinite(flight.collisionRadius) ||
+        flight.collisionRadius < 0
+      ) {
+        throw new Error(`${definition.key} has an invalid projectile attack contract.`);
+      }
+      const maximumTravel = flight.speed * (flight.lifespanTicks / TICK_HZ);
+      if (maximumTravel < attack.range) {
+        throw new Error(`${definition.key} projectile lifespan cannot cover its attack range.`);
+      }
+    }
+  }
 
   for (const prerequisiteType of definition.prerequisiteBuildings) {
     const prerequisite = definitionsById.get(prerequisiteType);
@@ -217,7 +263,7 @@ for (const lane of UNIT_ROSTER) {
       lane.family === "ordinary-melee" &&
       ((definition.classes & (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE)) !==
         (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE) ||
-        definition.meleeAttack === null)
+        definition.attack?.kind !== "melee")
     ) {
       throw new Error(`${lane.key} must satisfy the ordinary-melee family contract.`);
     }

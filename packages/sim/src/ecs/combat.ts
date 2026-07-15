@@ -1,10 +1,11 @@
 import {
   DAMAGE_CLASS_COUNT,
+  type Attack,
   type MeleeAttack,
   type UnitTypeStats,
 } from "../content/unit-type-schema";
 
-export function resolveMeleeDamage(attack: MeleeAttack, targetStats: UnitTypeStats): number {
+export function resolveAttackDamage(attack: Attack, targetStats: UnitTypeStats): number {
   let damage = 0;
 
   for (let damageClass = 0; damageClass < DAMAGE_CLASS_COUNT; damageClass += 1) {
@@ -22,4 +23,10 @@ export function resolveMeleeDamage(attack: MeleeAttack, targetStats: UnitTypeSta
   }
 
   return damage;
+}
+
+// Gate A compatibility surface for focused melee unit-pack tests. Delivery is
+// decided by Attack.kind; armor/bonus resolution is shared across every kind.
+export function resolveMeleeDamage(attack: MeleeAttack, targetStats: UnitTypeStats): number {
+  return resolveAttackDamage(attack, targetStats);
 }

@@ -17,7 +17,8 @@ describe("Egyptian Spearman unit pack", () => {
       costGold: 20,
       buildTicks: 9 * 20,
       populationCost: 2,
-      meleeAttack: {
+      attack: {
+        kind: "melee",
         damage: [7, 0, 0],
         range: 0.3,
         aggroRange: 16,
@@ -32,8 +33,8 @@ describe("Egyptian Spearman unit pack", () => {
     const hoplite = UNIT_TYPES[TYPE_HOPLITE]!;
     const cavalryTarget = { ...hoplite, classes: hoplite.classes | UNIT_CLASS_CAVALRY };
     const siegeTarget = { ...hoplite, classes: hoplite.classes | UNIT_CLASS_SIEGE };
-    expect(resolveMeleeDamage(definition.meleeAttack, hoplite)).toBeCloseTo(4.55, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, cavalryTarget)).toBeCloseTo(5.005, 8);
-    expect(resolveMeleeDamage(definition.meleeAttack, siegeTarget)).toBeCloseTo(9.1, 8);
+    expect(resolveMeleeDamage(definition.attack, hoplite)).toBeCloseTo(4.55, 8);
+    expect(resolveMeleeDamage(definition.attack, cavalryTarget)).toBeCloseTo(5.005, 8);
+    expect(resolveMeleeDamage(definition.attack, siegeTarget)).toBeCloseTo(9.1, 8);
   });
 });
