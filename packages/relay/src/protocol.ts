@@ -3,9 +3,10 @@
 // versioned from message one.
 import type { Command } from "@aom/sim";
 
-// v2 added COMMAND_ADVANCE_AGE; v3 adds COMMAND_CHEAT. Older clients would
-// otherwise silently drop either command and desync from a newer match.
-export const PROTOCOL_VERSION = 3;
+// v2 added COMMAND_CHEAT, v3 added COMMAND_ADVANCE_AGE, and v4 adds
+// COMMAND_PRAY. Older clients would otherwise silently drop a command and
+// desync from a newer match.
+export const PROTOCOL_VERSION = 4;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

@@ -14,6 +14,7 @@ export function ResourceBar({ game }: { game: GameHandle | null }) {
   const goldRef = useRef<HTMLSpanElement>(null);
   const populationRef = useRef<HTMLSpanElement>(null);
   const favorRef = useRef<HTMLSpanElement>(null);
+  const favorRateRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!game) {
@@ -27,6 +28,10 @@ export function ResourceBar({ game }: { game: GameHandle | null }) {
       setText(goldRef, state.gold);
       setText(populationRef, `${state.pop}/${state.popCap}`);
       setText(favorRef, state.favor);
+      setText(
+        favorRateRef,
+        state.favorPerMinute > 0 ? `+${state.favorPerMinute.toFixed(1)}/m` : "",
+      );
     });
   }, [game]);
 
@@ -52,7 +57,13 @@ export function ResourceBar({ game }: { game: GameHandle | null }) {
           valueRef={populationRef}
           initialValue="0/0"
         />
-        <ResourceRow iconUrl={favorIconUrl} label="Favor" valueRef={favorRef} initialValue="0" />
+        <ResourceRow
+          iconUrl={favorIconUrl}
+          label="Favor"
+          valueRef={favorRef}
+          secondaryRef={favorRateRef}
+          initialValue="0"
+        />
       </ul>
     </ClassicHudPanel>
   );
@@ -62,11 +73,13 @@ function ResourceRow({
   iconUrl,
   label,
   valueRef,
+  secondaryRef,
   initialValue,
 }: {
   iconUrl: string;
   label: string;
   valueRef: RefObject<HTMLSpanElement | null>;
+  secondaryRef?: RefObject<HTMLSpanElement | null>;
   initialValue: string;
 }) {
   return (
@@ -74,9 +87,12 @@ function ResourceRow({
       <div className="flex h-5 w-8 shrink-0 items-center justify-center border border-black/80 bg-[#0c0a08] shadow-[inset_0_0_3px_rgb(0_0_0/90%),0_1px_0_rgb(255_255_255/16%)]">
         <img src={iconUrl} alt="" className="max-h-5 w-full object-contain" />
       </div>
-      <div className="min-w-0 font-serif text-base font-medium text-[#eee9d7] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] tabular-nums sm:text-sm">
+      <div className="flex min-w-0 items-baseline justify-between gap-1 font-serif text-base font-medium text-[#eee9d7] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] tabular-nums sm:text-sm">
         <span className="sr-only">{label}: </span>
         <span ref={valueRef}>{initialValue}</span>
+        {secondaryRef && (
+          <span ref={secondaryRef} className="text-[0.625rem] text-[#b8dea4] sm:text-[0.6rem]" />
+        )}
       </div>
     </li>
   );

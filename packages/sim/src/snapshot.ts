@@ -1,7 +1,8 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
-import { RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
+import { FAVOR, RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
+import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
 import { findAgeAdvanceResearch } from "./ecs/research";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
@@ -40,6 +41,7 @@ export interface RenderSnapshot {
   ageAdvanceRemaining: number;
   ageAdvanceTotal: number;
   ageAdvanceBuilding: number;
+  favorRateMilliPerMinute: number;
   completedBuildings: Uint8Array;
   winner: number;
 }
@@ -78,6 +80,7 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     ageAdvanceRemaining: 0,
     ageAdvanceTotal: 0,
     ageAdvanceBuilding: NO_TARGET,
+    favorRateMilliPerMinute: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     winner: -1,
   };
@@ -98,10 +101,17 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.ageAdvanceRemaining = 0;
   out.ageAdvanceTotal = 0;
   out.ageAdvanceBuilding = NO_TARGET;
+  out.favorRateMilliPerMinute = 0;
 
   if (viewerSlot >= 0) {
     out.age = world.playerAge[viewerId]!;
     out.majorGod = world.playerMajorGod[viewerId]!;
+    const prayingVillagers = world.prayingVillagers[viewerId]!;
+    const favor = world.stockpiles[viewerId * RESOURCE_COUNT + FAVOR]!;
+    out.favorRateMilliPerMinute =
+      favor >= favorCapForMajorGod(out.majorGod)
+        ? 0
+        : greekFavorRateMilliPerMinute(prayingVillagers, out.majorGod);
     const minorGodStart = viewerId * AGE_COUNT;
     out.minorGods.set(world.playerMinorGods.subarray(minorGodStart, minorGodStart + AGE_COUNT));
     const researchBuilding = findAgeAdvanceResearch(world, viewerId);
@@ -139,7 +149,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.facingZ[i] = world.facingZ[i]!;
     out.moving[i] = world.moving[i]!;
     out.mode[i] = world.mode[i]!;
-    const gatherTarget = resolveId(world, world.gatherNode[i]!);
+    const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : 255;
     out.actionCooldown[i] = world.attackCooldown[i]!;
     out.visible[i] = isEntityVisibleTo(world, viewerId, i) ? 1 : 0;

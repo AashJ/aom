@@ -2,9 +2,12 @@
 import {
   clearSelection,
   heightAt,
+  isGreekMajorGod,
   NEUTRAL_OWNER,
   setSelected,
   SIM_MAP_SIZE,
+  TYPE_TEMPLE,
+  TYPE_VILLAGER,
   unitIdAt,
   UNIT_TYPES,
   type RenderSnapshot,
@@ -23,6 +26,88 @@ const MIN_PICK_HALF_WIDTH = 0.5;
 const rayOrigin = vec3.create();
 const rayDir = vec3.create();
 const commandTarget = vec3.create();
+
+interface SelectedCommandUnits {
+  ids: number[];
+  hasVillager: boolean;
+}
+
+type TargetCommand = "attack" | "build" | "gather" | "pray";
+
+function collectSelectedCommandUnits(world: World, selfPlayerId: number): SelectedCommandUnits {
+  const ids: number[] = [];
+  let hasVillager = false;
+
+  // Allocation is fine at click/key rate; commands are serializable plain data.
+  for (let index = 0; index < world.count; index += 1) {
+    // Keep commands lean, while the sim remains the validation authority.
+    if (world.selected[index] !== 1 || world.owner[index] !== selfPlayerId) {
+      continue;
+    }
+
+    ids.push(unitIdAt(world, index));
+    hasVillager ||= world.unitType[index] === TYPE_VILLAGER;
+  }
+
+  return { ids, hasVillager };
+}
+
+function classifyTargetCommand(
+  snapshot: RenderSnapshot,
+  hit: number,
+  selfPlayerId: number,
+  canPray: boolean,
+): TargetCommand | null {
+  if (hit < 0) {
+    return null;
+  }
+
+  const type = snapshot.unitType[hit]!;
+  const stats = UNIT_TYPES[type]!;
+
+  // Resource routing comes before enemy routing: nodes are neutral.
+  if (stats.resource >= 0) {
+    return "gather";
+  }
+
+  if (
+    snapshot.owner[hit] === selfPlayerId &&
+    stats.footprint > 0 &&
+    snapshot.buildProgress[hit]! < stats.buildTicks
+  ) {
+    return "build";
+  }
+
+  if (
+    canPray &&
+    snapshot.owner[hit] === selfPlayerId &&
+    type === TYPE_TEMPLE &&
+    snapshot.buildProgress[hit]! >= stats.buildTicks
+  ) {
+    return "pray";
+  }
+
+  if (snapshot.owner[hit] !== selfPlayerId && snapshot.owner[hit] !== NEUTRAL_OWNER) {
+    return "attack";
+  }
+
+  return null;
+}
+
+function writeHitMarker(
+  prev: RenderSnapshot,
+  curr: RenderSnapshot,
+  hit: number,
+  alpha: number,
+  markerOut: Float32Array,
+): void {
+  const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
+  const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
+  const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
+
+  markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
+  markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
+}
 
 export function pickUnit(
   camera: Camera,
@@ -155,17 +240,7 @@ export function consumeCommandInput(
 ): 0 | 1 | 2 | 3 | 4 {
   if (input.stopPending) {
     input.stopPending = false;
-    const unitIds: number[] = [];
-
-    // Allocation is fine at keypress rate; commands are serializable-by-construction plain data.
-    for (let i = 0; i < world.count; i += 1) {
-      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
-      // stays the authority. Selecting enemies stays allowed for inspection.
-      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
-        // Commands carry packed ids from here on.
-        unitIds.push(unitIdAt(world, i));
-      }
-    }
+    const unitIds = collectSelectedCommandUnits(world, selfPlayerId).ids;
 
     if (unitIds.length > 0) {
       sink.submitStop(unitIds);
@@ -181,83 +256,39 @@ export function consumeCommandInput(
   const ndcX = (input.commandX / canvas.clientWidth) * 2 - 1;
   const ndcY = 1 - (input.commandY / canvas.clientHeight) * 2;
   const hit = pickUnit(camera, ndcX, ndcY, prev, curr, alpha, heights);
+  const selected = collectSelectedCommandUnits(world, selfPlayerId);
+  const targetCommand = classifyTargetCommand(
+    curr,
+    hit,
+    selfPlayerId,
+    selected.hasVillager && isGreekMajorGod(curr.majorGod),
+  );
 
-  // Resource routing comes before enemy routing: nodes are neutral and otherwise non-targets.
-  if (hit >= 0 && UNIT_TYPES[curr.unitType[hit]!]!.resource >= 0) {
-    const unitIds: number[] = [];
+  if (targetCommand && selected.ids.length > 0) {
+    const targetId = curr.ids[hit]!;
+    let issued: 1 | 2 | 3 | 4;
 
-    // Allocation is fine at click rate; commands are serializable-by-construction plain data.
-    for (let i = 0; i < world.count; i += 1) {
-      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
-      // stays the authority. Selecting enemies stays allowed for inspection.
-      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
-        // Commands carry packed ids from here on.
-        unitIds.push(unitIdAt(world, i));
-      }
+    switch (targetCommand) {
+      case "attack":
+        sink.submitAttack(selected.ids, targetId);
+        issued = 2;
+        break;
+      case "build":
+        sink.submitBuild(selected.ids, targetId);
+        issued = 4;
+        break;
+      case "gather":
+        sink.submitGather(selected.ids, targetId);
+        issued = 3;
+        break;
+      case "pray":
+        sink.submitPray(selected.ids, targetId);
+        issued = 1;
+        break;
     }
 
-    if (unitIds.length > 0) {
-      const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
-      const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
-      const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
-
-      sink.submitGather(unitIds, curr.ids[hit]!);
-      markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
-      markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
-      return 3;
-    }
-    // Own-incomplete-building routing must come before enemy routing; own vs enemy owner cannot collide.
-  } else if (
-    hit >= 0 &&
-    curr.owner[hit] === selfPlayerId &&
-    UNIT_TYPES[curr.unitType[hit]!]!.footprint > 0 &&
-    curr.buildProgress[hit]! < UNIT_TYPES[curr.unitType[hit]!]!.buildTicks
-  ) {
-    const unitIds: number[] = [];
-
-    // Allocation is fine at click rate; commands are serializable-by-construction plain data.
-    for (let i = 0; i < world.count; i += 1) {
-      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
-      // stays the authority. Selecting enemies stays allowed for inspection.
-      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
-        // Commands carry packed ids from here on.
-        unitIds.push(unitIdAt(world, i));
-      }
-    }
-
-    if (unitIds.length > 0) {
-      const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
-      const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
-      const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
-
-      sink.submitBuild(unitIds, curr.ids[hit]!);
-      markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
-      markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
-      return 4;
-    }
-  } else if (hit >= 0 && curr.owner[hit] !== selfPlayerId && curr.owner[hit] !== NEUTRAL_OWNER) {
-    const unitIds: number[] = [];
-
-    // Allocation is fine at click rate; commands are serializable-by-construction plain data.
-    for (let i = 0; i < world.count; i += 1) {
-      // Lean commands - don't ship unitIds the sim will reject; the sim's validation
-      // stays the authority. Selecting enemies stays allowed for inspection.
-      if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
-        // Commands carry packed ids from here on.
-        unitIds.push(unitIdAt(world, i));
-      }
-    }
-
-    if (unitIds.length > 0) {
-      const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
-      const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
-      const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
-
-      sink.submitAttack(unitIds, curr.ids[hit]!);
-      markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
-      markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
-      return 2;
-    }
+    writeHitMarker(prev, curr, hit, alpha, markerOut);
+    return issued;
   }
 
   screenRay(camera, ndcX, ndcY, rayOrigin, rayDir);
@@ -273,24 +304,13 @@ export function consumeCommandInput(
   // by design.
   const targetX = Math.min(SIM_MAP_SIZE, Math.max(0, commandTarget[0]!));
   const targetZ = Math.min(SIM_MAP_SIZE, Math.max(0, commandTarget[2]!));
-  const unitIds: number[] = [];
 
-  // Allocation is fine at click rate; commands are serializable-by-construction plain data.
-  for (let i = 0; i < world.count; i += 1) {
-    // Lean commands - don't ship unitIds the sim will reject; the sim's validation
-    // stays the authority. Selecting enemies stays allowed for inspection.
-    if (world.selected[i] === 1 && world.owner[i] === selfPlayerId) {
-      // Commands carry packed ids from here on.
-      unitIds.push(unitIdAt(world, i));
-    }
-  }
-
-  if (unitIds.length === 0) {
+  if (selected.ids.length === 0) {
     return 0;
   }
 
   // The marker is the immediate order acknowledgement that absorbs the input delay.
-  sink.submitMove(unitIds, targetX, targetZ);
+  sink.submitMove(selected.ids, targetX, targetZ);
   markerOut[0] = targetX;
   markerOut[1] = targetZ;
   return 1;

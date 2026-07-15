@@ -32,12 +32,16 @@ import villagerFemaleChopUrl from "../assets/models/villager-g-female-chop.glb?u
 import villagerFemaleHarvestUrl from "../assets/models/villager-g-female-harvest.glb?url";
 import villagerFemaleIdleUrl from "../assets/models/villager-g-female-idle.glb?url";
 import villagerFemaleMineUrl from "../assets/models/villager-g-female-mine.glb?url";
+import villagerFemalePrayAUrl from "../assets/models/villager-g-female-pray-a.glb?url";
+import villagerFemalePrayBUrl from "../assets/models/villager-g-female-pray-b.glb?url";
 import villagerFemaleWalkUrl from "../assets/models/villager-g-female-walk.glb?url";
 import villagerBuildUrl from "../assets/models/villager-g-male-build.glb?url";
 import villagerChopUrl from "../assets/models/villager-g-male-chop.glb?url";
 import villagerHarvestUrl from "../assets/models/villager-g-male-harvest.glb?url";
 import villagerIdleUrl from "../assets/models/villager-g-male-idle.glb?url";
 import villagerMineUrl from "../assets/models/villager-g-male-mine.glb?url";
+import villagerPrayAUrl from "../assets/models/villager-g-male-pray-a.glb?url";
+import villagerPrayBUrl from "../assets/models/villager-g-male-pray-b.glb?url";
 import villagerWalkUrl from "../assets/models/villager-g-male-walk.glb?url";
 
 interface ModelAttachmentDefinition<Model extends string> {
@@ -148,6 +152,8 @@ const MODEL_DEFINITIONS = defineModelRegistry({
   greekTownCenter: { url: greekTownCenterUrl, grounded: true },
   villagerMaleIdle: { url: villagerIdleUrl, grounded: true },
   villagerMaleWalk: { url: villagerWalkUrl, grounded: true },
+  villagerMalePrayA: { url: villagerPrayAUrl, grounded: true },
+  villagerMalePrayB: { url: villagerPrayBUrl, grounded: true },
   villagerMaleMine: {
     url: villagerMineUrl,
     grounded: true,
@@ -192,6 +198,8 @@ const MODEL_DEFINITIONS = defineModelRegistry({
   hammer: { url: hammerUrl, grounded: false },
   villagerFemaleIdle: { url: villagerFemaleIdleUrl, grounded: true },
   villagerFemaleWalk: { url: villagerFemaleWalkUrl, grounded: true },
+  villagerFemalePrayA: { url: villagerFemalePrayAUrl, grounded: true },
+  villagerFemalePrayB: { url: villagerFemalePrayBUrl, grounded: true },
   villagerFemaleMine: {
     url: villagerFemaleMineUrl,
     grounded: true,

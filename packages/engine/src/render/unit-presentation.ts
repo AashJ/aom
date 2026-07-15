@@ -4,6 +4,8 @@ import {
   idIndex,
   MODE_BUILDING,
   MODE_GATHERING,
+  MODE_PRAYING,
+  TICK_HZ,
   TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
@@ -217,6 +219,11 @@ const EGYPTIAN_VILLAGER_PRESENTATIONS = {
   },
 } satisfies Record<VillagerSex, Record<VillagerAction, ResolvedModelPresentation>>;
 
+const GREEK_PRAYER_PRESENTATIONS = {
+  male: [looping("villagerMalePrayA"), looping("villagerMalePrayB")],
+  female: [looping("villagerFemalePrayA"), looping("villagerFemalePrayB")],
+} satisfies Record<VillagerSex, readonly [ResolvedModelPresentation, ResolvedModelPresentation]>;
+
 const MILITIA_PRESENTATIONS = {
   idle: looping("militiaIdle"),
   walk: looping("militiaWalk"),
@@ -260,7 +267,12 @@ export function resolveModelPresentation(
   const isEgyptian = snapshot.playerMajorGods[snapshot.owner[index]!] === GOD_RA;
 
   if (type === TYPE_VILLAGER) {
-    const sex: VillagerSex = (idIndex(snapshot.ids[index]!) & 1) === 0 ? "male" : "female";
+    const entityIndex = idIndex(snapshot.ids[index]!);
+    const sex: VillagerSex = (entityIndex & 1) === 0 ? "male" : "female";
+    if (!isEgyptian && snapshot.moving[index] === 0 && snapshot.mode[index] === MODE_PRAYING) {
+      const prayers = GREEK_PRAYER_PRESENTATIONS[sex];
+      return prayers[(entityIndex >>> 1) % prayers.length]!;
+    }
     const presentations = isEgyptian ? EGYPTIAN_VILLAGER_PRESENTATIONS : VILLAGER_PRESENTATIONS;
     return presentations[sex][villagerAction(snapshot, index, moved)];
   }
@@ -323,8 +335,6 @@ export function resolveStaticSpriteGhostPresentation(
   return resolveModelGhostPresentation(snapshot, unitType) ? null : presentation;
 }
 
-const SIM_TICK_HZ = 20;
-
 export function modelAnimationTime(
   presentation: ResolvedModelPresentation,
   snapshot: RenderSnapshot,
@@ -340,5 +350,5 @@ export function modelAnimationTime(
     return duration * (elapsedTicks / Math.max(1, GATHER_COOLDOWN_TICKS));
   }
 
-  return (snapshot.tick + alpha) / SIM_TICK_HZ + (snapshot.ids[index]! % 17) * 0.037;
+  return (snapshot.tick + alpha) / TICK_HZ + (snapshot.ids[index]! % 17) * 0.037;
 }

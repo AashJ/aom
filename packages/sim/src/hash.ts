@@ -54,6 +54,10 @@ export function hashWorld(world: World): number {
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
+    word = world.playerFavorProgress[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
     const minorGodStart = playerId * AGE_COUNT;
 
     for (let age = 0; age < AGE_COUNT; age += 1) {
@@ -202,7 +206,7 @@ export function hashWorld(world: World): number {
   }
 
   for (let i = 0; i < world.count; i += 1) {
-    word = world.gatherNode[i]!;
+    word = world.taskTarget[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

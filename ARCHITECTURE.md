@@ -641,9 +641,37 @@ Scope: complete the first playable Archaic → Classical progression loop using 
 
 ### Deferred directly to the next progression slices
 
-- Greek Temple prayer and Favor generation.
 - Athena/Hermes god powers, free Classical myth-unit spawn, myth technologies, and trainable Minotaur/Centaur content.
 - Extracted Greek Temple and minor-god portrait art; the current Temple presentation temporarily uses the existing Greek Barracks sprite plate.
+
+---
+
+## Milestone 10 — Greek Temple prayer and Favor
+
+Scope: make Favor a playable Greek economy by tasking Villagers to completed Temples. Active worshipers across all of a player's Temples feed the original pre-Retold diminishing-return curve; Zeus retains his 20% prayer bonus and 200-Favor cap.
+
+### Decisions
+
+| Decision     | Choice                                                                 | Rationale                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Interaction  | **Right-click a completed owned Temple with Greek Villagers selected** | This matches Classic's normal worker-task interaction and keeps prayer out of a separate modal command flow.                    |
+| Scaling      | **One global praying-Villager count per player**                       | Classic diminishing returns apply across all Temples, so additional Temples add safe prayer space rather than resetting income. |
+| Determinism  | **Fixed-point fractional Favor is authoritative and hashed**           | Integer stockpiles still expose whole resources while clients agree on the exact tick the next Favor becomes spendable.         |
+| Presentation | **Selected-task prayer count and snapshot-derived Favor per minute**   | The HUD reports selection status locally and the same capped production rate the sim is applying, without reimplementing it.    |
+
+### Sequential build order
+
+1. **Prayer task (complete).** `COMMAND_PRAY` targets a completed owned Temple; the deterministic sim filters the order to Greek Villagers and counts only worshipers who have reached the building.
+2. **Classic Favor curve (complete).** Pre-Retold diminishing returns are quantized to fixed-point rates, Zeus receives +20%, fractional progress joins the hash, and income stops at the Classic 200/100 caps.
+3. **Task-lifecycle coverage (next).** Pin interruption, Temple destruction, retasking, stale packed ids, and two-client convergence with focused tests.
+4. **Presentation and HUD feedback (complete).** Praying Villagers use the original Greek male/female A/B prayer animations, the selected-Villager status shows prayer, and the resource panel displays the current authoritative Favor-per-minute rate.
+
+**Exit criteria:** Greek Villagers can be assigned, interrupted, and retasked at Temples in single-player and multiplayer; both clients generate identical capped Favor on identical ticks; Temple loss clears affected worshipers; and the HUD never estimates a rate different from the sim.
+
+### Deferred directly to the next progression slices
+
+- Greek prayer acknowledgement audio.
+- Athena/Hermes god powers, free Classical myth-unit spawn, myth technologies, and trainable Minotaur/Centaur content.
 
 ---
 

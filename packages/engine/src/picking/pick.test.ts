@@ -5,6 +5,8 @@ import {
   CLASSICAL_AGE_ADVANCE_TICKS,
   createSnapshot,
   createWorld,
+  GOD_RA,
+  GOD_ZEUS,
   MAP_TILES,
   NO_GOD,
   NO_AGE,
@@ -15,7 +17,10 @@ import {
   spawnBuilding,
   spawnUnit,
   TYPE_HOUSE,
+  TYPE_MILITIA,
+  TYPE_TEMPLE,
   TYPE_TOWN_CENTER,
+  TYPE_VILLAGER,
   UNIT_TYPES,
   VERTS_PER_ROW,
   type RenderSnapshot,
@@ -80,6 +85,10 @@ function recordingSink(): CommandSink & { calls: string[]; targetIds: number[] }
       calls.push("gather");
       targetIds.push(targetId);
     },
+    submitPray: (_ids, targetId) => {
+      calls.push("pray");
+      targetIds.push(targetId);
+    },
     submitBuild: (_ids, targetId) => {
       calls.push("build");
       targetIds.push(targetId);
@@ -121,6 +130,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     ageAdvanceRemaining: 0,
     ageAdvanceTotal: CLASSICAL_AGE_ADVANCE_TICKS,
     ageAdvanceBuilding: NO_TARGET,
+    favorRateMilliPerMinute: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
@@ -279,6 +289,97 @@ describe("pickUnit", () => {
     expect(issued).toBe(4);
     expect(sink.calls).toEqual(["build"]);
     expect(sink.targetIds).toEqual([site]);
+  });
+
+  test("right-click on a completed own Temple routes Villagers to Pray", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+
+    world.walkable.fill(1);
+    const temple = spawnBuilding(
+      world,
+      Math.round(camera.target[0]!) - 2,
+      Math.round(camera.target[2]!) - 2,
+      0,
+      TYPE_TEMPLE,
+      true,
+    );
+    spawnUnit(world, camera.target[0]! - 20, camera.target[2]!, 0, 0, 0);
+    setSelected(world, 1, true);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      world,
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["pray"]);
+    expect(sink.targetIds).toEqual([temple]);
+  });
+
+  test.each([
+    ["an Egyptian Villager", GOD_RA, TYPE_VILLAGER],
+    ["a Greek non-Villager", GOD_ZEUS, TYPE_MILITIA],
+  ])("right-click on a completed own Temple with %s falls through to Move", (_, god, type) => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0, god);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+
+    world.walkable.fill(1);
+    spawnBuilding(
+      world,
+      Math.round(camera.target[0]!) - 2,
+      Math.round(camera.target[2]!) - 2,
+      0,
+      TYPE_TEMPLE,
+      true,
+    );
+    spawnUnit(world, camera.target[0]! - 20, camera.target[2]!, 0, 0, 0, type);
+    setSelected(world, 1, true);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      world,
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["move"]);
+    expect(sink.targetIds).toEqual([]);
   });
 
   test("right-click on an own COMPLETE building falls through to Move", () => {

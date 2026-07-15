@@ -20,6 +20,7 @@ export interface PlayerState {
   wood: number;
   gold: number;
   favor: number;
+  favorPerMinute: number;
   pop: number;
   popCap: number;
   completedBuildings: Uint8Array;
@@ -66,6 +67,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     wood: 0,
     gold: 0,
     favor: 0,
+    favorPerMinute: 0,
     pop: 0,
     popCap: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
@@ -81,6 +83,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     const wood = snapshot.stockpiles[stockpileBase + WOOD] ?? 0;
     const gold = snapshot.stockpiles[stockpileBase + GOLD] ?? 0;
     const favor = snapshot.stockpiles[stockpileBase + FAVOR] ?? 0;
+    const favorPerMinute = snapshot.favorRateMilliPerMinute / 1_000;
     let pop = 0;
     let popCap = 0;
     const ageAdvancement =
@@ -120,6 +123,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       wood === state.wood &&
       gold === state.gold &&
       favor === state.favor &&
+      favorPerMinute === state.favorPerMinute &&
       pop === state.pop &&
       popCap === state.popCap &&
       ageAdvancement?.targetAge === state.ageAdvancement?.targetAge &&
@@ -139,6 +143,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       wood,
       gold,
       favor,
+      favorPerMinute,
       pop,
       popCap,
       completedBuildings: snapshot.completedBuildings.slice(),

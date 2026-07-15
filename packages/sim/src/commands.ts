@@ -12,6 +12,7 @@ export const COMMAND_BUILD = 5;
 export const COMMAND_TRAIN = 6;
 export const COMMAND_ADVANCE_AGE = 7;
 export const COMMAND_CHEAT = 8;
+export const COMMAND_PRAY = 9;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -74,6 +75,14 @@ export interface GatherCommand {
   targetId: number;
 }
 
+export interface PrayCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_PRAY;
+  unitIds: number[];
+  targetId: number;
+}
+
 export interface PlaceCommand {
   tick: number;
   issuer: number;
@@ -123,6 +132,7 @@ export type Command =
   | StopCommand
   | AttackCommand
   | GatherCommand
+  | PrayCommand
   | PlaceCommand
   | BuildCommand
   | TrainCommand

@@ -1,3 +1,4 @@
+import { TICK_HZ } from "../clock";
 import type { HasCompletedBuilding } from "./availability";
 import {
   AGE_ARCHAIC,
@@ -38,8 +39,8 @@ export const CLASSICAL_AGE_ADVANCE_RULE = {
   producerType: TYPE_TOWN_CENTER,
   prerequisiteBuildings: [TYPE_TEMPLE],
   cost: [400, 0, 0, 0],
-  // Extended Edition / The Titans: 60 seconds at the deterministic 20 Hz sim rate.
-  durationTicks: 1_200,
+  // Extended Edition / The Titans: 60 seconds at the deterministic sim rate.
+  durationTicks: 60 * TICK_HZ,
   minorGodsByMajorGod: {
     [GOD_ZEUS]: ZEUS_CLASSICAL_MINOR_GODS,
     [GOD_RA]: RA_CLASSICAL_MINOR_GODS,

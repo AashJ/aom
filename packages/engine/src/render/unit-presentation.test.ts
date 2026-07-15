@@ -4,6 +4,7 @@ import {
   GOD_ZEUS,
   MODE_BUILDING,
   MODE_GATHERING,
+  MODE_PRAYING,
   TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
@@ -90,6 +91,22 @@ describe("unit presentation", () => {
 
     snapshot.mode[0] = MODE_BUILDING;
     expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("villagerFemaleBuild");
+  });
+
+  test("uses both original Greek prayer variations for male and female villagers", () => {
+    const snapshot = createSnapshot(4);
+    snapshot.count = 4;
+    snapshot.unitType.fill(TYPE_VILLAGER);
+    snapshot.mode.fill(MODE_PRAYING);
+    snapshot.ids[0] = packId(0, 1);
+    snapshot.ids[1] = packId(1, 1);
+    snapshot.ids[2] = packId(2, 1);
+    snapshot.ids[3] = packId(3, 1);
+
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("villagerMalePrayA");
+    expect(resolveModelPresentation(snapshot, 1, false)?.model).toBe("villagerFemalePrayA");
+    expect(resolveModelPresentation(snapshot, 2, false)?.model).toBe("villagerMalePrayB");
+    expect(resolveModelPresentation(snapshot, 3, false)?.model).toBe("villagerFemalePrayB");
   });
 
   test("selects Egyptian villagers and architecture from the owner's major god", () => {

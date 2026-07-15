@@ -1,7 +1,14 @@
 // Load-bearing architecture rule: @aom/sim imports nothing from engine or DOM; violations
 // are bugs even when they work. See ARCHITECTURE.md determinism rules before editing sim.
 export * from "./commands";
-export { COMMAND_ADVANCE_AGE, COMMAND_GATHER, COMMAND_PLACE, COMMAND_TRAIN } from "./commands";
+export * from "./clock";
+export {
+  COMMAND_ADVANCE_AGE,
+  COMMAND_GATHER,
+  COMMAND_PLACE,
+  COMMAND_PRAY,
+  COMMAND_TRAIN,
+} from "./commands";
 export {
   CLASSICAL_AGE_ADVANCE_RULE,
   CLASSICAL_AGE_ADVANCE_TICKS,
@@ -21,6 +28,12 @@ export {
   type HasCompletedBuilding,
   type TypeAvailability,
 } from "./ecs/availability";
+export {
+  favorCapForMajorGod,
+  greekFavorRateMicrosPerSecond,
+  greekFavorRateMilliPerMinute,
+  isGreekMajorGod,
+} from "./ecs/favor";
 export { idGeneration, idIndex, packId } from "./ecs/id";
 export { registerPlayer } from "./ecs/players";
 export {
@@ -76,6 +89,7 @@ export {
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_IDLE,
+  MODE_PRAYING,
   MODE_RETURNING,
   NEUTRAL_OWNER,
   NO_TARGET,

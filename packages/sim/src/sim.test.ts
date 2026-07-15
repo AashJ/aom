@@ -164,7 +164,7 @@ describe("sim", () => {
     world.mode[17] = MODE_GATHERING;
     world.moving[17] = 0;
     world.unitType[18] = TYPE_BERRY;
-    world.gatherNode[17] = unitIdAt(world, 18);
+    world.taskTarget[17] = unitIdAt(world, 18);
     world.attackCooldown[17] = 7;
     writeSnapshot(world, snapshot);
 

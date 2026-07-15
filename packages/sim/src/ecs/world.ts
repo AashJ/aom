@@ -14,10 +14,12 @@ import {
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
+  COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
   type Command,
 } from "../commands";
+import { TICK_S } from "../clock";
 import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import {
@@ -36,8 +38,10 @@ import {
 import { idGeneration, idIndex, packId } from "./id";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
+import { favorCapForMajorGod, tickGreekFavor } from "./favor";
 import { registerPlayer } from "./players";
-import { AGE_COUNT, GOD_ZEUS, NO_GOD } from "./progression";
+import { assignFieldGoal, setFacingToward } from "./navigation";
+import { AGE_COUNT, NO_GOD } from "./progression";
 import {
   cancelBuildingResearch,
   isBuildingResearching,
@@ -63,9 +67,30 @@ import {
   UNIT_TYPES,
   WOOD,
 } from "./types";
+import {
+  assignGatherTask,
+  assignWorkerTask,
+  clearWorkerTask,
+  isValidPrayerTarget,
+  MODE_BUILDING,
+  MODE_GATHERING,
+  MODE_IDLE,
+  MODE_PRAYING,
+  MODE_RETURNING,
+  NO_TARGET,
+  tickPrayerTask,
+} from "./worker-tasks";
 
-export const TICK_HZ = 20;
-export const TICK_S = 0.05;
+export { TICK_HZ, TICK_S } from "../clock";
+export { setFacingToward } from "./navigation";
+export {
+  MODE_BUILDING,
+  MODE_GATHERING,
+  MODE_IDLE,
+  MODE_PRAYING,
+  MODE_RETURNING,
+  NO_TARGET,
+} from "./worker-tasks";
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 export const MAX_TRAIN_QUEUE = 15;
@@ -74,17 +99,9 @@ export const MAX_TRAIN_QUEUE = 15;
 export const NEUTRAL_OWNER = 255;
 export const MAX_PLAYERS = 8;
 export const UNIT_SPEED = 3;
-// Packed id 0 is VALID (handle 0, gen 0), so the no-target sentinel must be an
-// impossible handle. 0xffff exceeds MAX_UNITS.
-export const NO_TARGET = 0xffffffff;
-export const MODE_IDLE = 0;
-export const MODE_GATHERING = 1;
-export const MODE_RETURNING = 2;
-export const MODE_BUILDING = 3;
 // world.winner values: -1 = match ongoing, >= 0 = that player id won,
 // MATCH_DRAW = everyone is dead (mutual annihilation).
 export const MATCH_DRAW = -2;
-const FIELD_CACHE_SIZE = 8;
 const FINAL_APPROACH_DIST = 2;
 const GOAL_REMAP_RADIUS = 8;
 const GRID_CELL = 2;
@@ -152,6 +169,11 @@ export interface World {
   playerAge: Uint8Array;
   playerMajorGod: Uint8Array;
   playerMinorGods: Uint8Array;
+  // Fractional Favor is authoritative because it determines the tick on which
+  // the next whole resource becomes spendable.
+  playerFavorProgress: Uint32Array;
+  // Rebuilt from active prayer tasks every tick for Favor generation and HUD rate.
+  prayingVillagers: Uint16Array;
   unitType: Uint8Array;
   hp: Uint16Array;
   buildProgress: Uint16Array;
@@ -170,7 +192,8 @@ export interface World {
   mode: Uint8Array;
   carried: Uint16Array;
   carriedResource: Uint8Array;
-  gatherNode: Uint32Array;
+  // Stable-id target shared by gathering, construction, and prayer tasks.
+  taskTarget: Uint32Array;
   // Last known position of the assigned node; returning villagers go back here to prospect
   // when the node died behind their back.
   gatherPosX: Float64Array;
@@ -253,6 +276,8 @@ export function createWorld(seed: number): World {
     playerAge: new Uint8Array(256),
     playerMajorGod,
     playerMinorGods,
+    playerFavorProgress: new Uint32Array(256),
+    prayingVillagers: new Uint16Array(256),
     unitType: new Uint8Array(MAX_UNITS),
     hp: new Uint16Array(MAX_UNITS),
     buildProgress: new Uint16Array(MAX_UNITS),
@@ -268,7 +293,7 @@ export function createWorld(seed: number): World {
     mode: new Uint8Array(MAX_UNITS),
     carried: new Uint16Array(MAX_UNITS),
     carriedResource: new Uint8Array(MAX_UNITS),
-    gatherNode: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    taskTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     gatherPosX: new Float64Array(MAX_UNITS),
     gatherPosZ: new Float64Array(MAX_UNITS),
     generation: new Uint16Array(MAX_UNITS),
@@ -309,24 +334,6 @@ function isTypeAvailableToPlayer(world: World, playerId: number, unitType: numbe
   return isTypeAvailable(unitType, world.playerAge[playerId]!, (buildingType) =>
     hasCompletedBuilding(world, playerId, buildingType),
   );
-}
-
-export function setFacingToward(
-  world: World,
-  index: number,
-  targetX: number,
-  targetZ: number,
-): void {
-  const dx = targetX - world.posX[index]!;
-  const dz = targetZ - world.posZ[index]!;
-
-  if (dx === 0 && dz === 0) {
-    return;
-  }
-
-  const inverseLength = 1 / Math.sqrt(dx * dx + dz * dz);
-  world.facingX[index] = dx * inverseLength;
-  world.facingZ[index] = dz * inverseLength;
 }
 
 function isWalkableStep(
@@ -442,14 +449,9 @@ export function spawnUnit(
   world.researchChoice[index] = NO_GOD;
   world.researchRemaining[index] = 0;
   world.attackCooldown[index] = 0;
-  world.attackTarget[index] = NO_TARGET;
-  world.attackOrdered[index] = 0;
-  world.mode[index] = MODE_IDLE;
   world.carried[index] = 0;
   world.carriedResource[index] = 0;
-  world.gatherNode[index] = NO_TARGET;
-  world.gatherPosX[index] = 0;
-  world.gatherPosZ[index] = 0;
+  clearWorkerTask(world, index);
   world.selectable[index] = 1;
   world.selected[index] = 0;
   world.count += 1;
@@ -463,80 +465,6 @@ export function flushFlowFields(world: World): void {
   // Units mid-move fall back to direct seek until their next field fetch: graceful, deterministic.
   world.fieldCache.length = 0;
   world.unitField.fill(null);
-}
-
-function assignFieldGoal(
-  world: World,
-  index: number,
-  targetX: number,
-  targetZ: number,
-  footprint = 0,
-): void {
-  // MOVE keeps its walkable-goal remap before calling this. Static buildings keep their blocked
-  // center as the logical/cache goal, but route to every walkable cell around their footprint.
-  const goalCell = cellOf(targetX, targetZ);
-  let fieldForGoal: FlowField | null = null;
-
-  for (let cacheIndex = 0; cacheIndex < world.fieldCache.length; cacheIndex += 1) {
-    const field = world.fieldCache[cacheIndex]!;
-
-    if (field.goalCell === goalCell) {
-      fieldForGoal = field;
-      world.fieldCache.splice(cacheIndex, 1);
-      world.fieldCache.push(field);
-      break;
-    }
-  }
-
-  if (fieldForGoal === null) {
-    if (footprint > 0) {
-      const minTileX = Math.round(targetX - footprint / 2);
-      const minTileZ = Math.round(targetZ - footprint / 2);
-      const maxTileX = minTileX + footprint - 1;
-      const maxTileZ = minTileZ + footprint - 1;
-      const routeGoalCells: number[] = [];
-
-      // Multi-source routing lets each unit approach the nearest reachable side instead of
-      // funneling everyone toward one arbitrary corner that terrain may isolate.
-      for (let z = minTileZ - 1; z <= maxTileZ + 1; z += 1) {
-        for (let x = minTileX - 1; x <= maxTileX + 1; x += 1) {
-          if (
-            x !== minTileX - 1 &&
-            x !== maxTileX + 1 &&
-            z !== minTileZ - 1 &&
-            z !== maxTileZ + 1
-          ) {
-            continue;
-          }
-
-          if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) {
-            continue;
-          }
-
-          const routeGoalCell = z * MAP_TILES + x;
-
-          if (world.walkable[routeGoalCell] === 1) {
-            routeGoalCells.push(routeGoalCell);
-          }
-        }
-      }
-
-      fieldForGoal = buildFlowField(world.walkable, goalCell, routeGoalCells);
-    } else {
-      fieldForGoal = buildFlowField(world.walkable, goalCell);
-    }
-
-    world.fieldCache.push(fieldForGoal);
-
-    if (world.fieldCache.length > FIELD_CACHE_SIZE) {
-      world.fieldCache.shift();
-    }
-  }
-
-  world.unitField[index] = fieldForGoal;
-  world.moveTargetX[index] = targetX;
-  world.moveTargetZ[index] = targetZ;
-  world.moving[index] = 1;
 }
 
 export function canPlaceBuilding(
@@ -1180,6 +1108,8 @@ export function tickWorld(world: World): void {
   const villagerReach = UNIT_TYPES[TYPE_VILLAGER]!.attackRange;
   const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
 
+  world.prayingVillagers.fill(0);
+
   for (let i = 0; i < world.count; i += 1) {
     if (world.mode[i] === MODE_IDLE) {
       continue;
@@ -1238,18 +1168,13 @@ export function tickWorld(world: World): void {
 
           world.mode[i] = MODE_RETURNING;
         } else {
-          world.mode[i] = MODE_IDLE;
-          world.gatherNode[i] = NO_TARGET;
-          world.gatherPosX[i] = 0;
-          world.gatherPosZ[i] = 0;
-          world.moving[i] = 0;
-          world.unitField[i] = null;
+          clearWorkerTask(world, i);
         }
 
         continue;
       }
 
-      let target = resolveId(world, world.gatherNode[i]!);
+      let target = resolveId(world, world.taskTarget[i]!);
 
       if (
         target < 0 ||
@@ -1315,7 +1240,7 @@ export function tickWorld(world: World): void {
         }
 
         if (bestNode >= 0) {
-          world.gatherNode[i] = unitIdAt(world, bestNode);
+          world.taskTarget[i] = unitIdAt(world, bestNode);
           world.gatherPosX[i] = world.posX[bestNode]!;
           world.gatherPosZ[i] = world.posZ[bestNode]!;
           target = bestNode;
@@ -1368,12 +1293,7 @@ export function tickWorld(world: World): void {
 
               world.mode[i] = MODE_RETURNING;
             } else {
-              world.mode[i] = MODE_IDLE;
-              world.gatherNode[i] = NO_TARGET;
-              world.gatherPosX[i] = 0;
-              world.gatherPosZ[i] = 0;
-              world.moving[i] = 0;
-              world.unitField[i] = null;
+              clearWorkerTask(world, i);
             }
           } else {
             const prospectDx = world.gatherPosX[i]! - world.posX[i]!;
@@ -1386,19 +1306,14 @@ export function tickWorld(world: World): void {
             ) {
               const prospectGoalCell = cellOf(world.gatherPosX[i]!, world.gatherPosZ[i]!);
 
-              world.gatherNode[i] = NO_TARGET;
+              world.taskTarget[i] = NO_TARGET;
               // En route to prospect: this scan re-runs each tick as they travel and adopts
               // the first node that comes into radius.
               if (world.unitField[i]?.goalCell !== prospectGoalCell) {
                 assignFieldGoal(world, i, world.gatherPosX[i]!, world.gatherPosZ[i]!);
               }
             } else {
-              world.mode[i] = MODE_IDLE;
-              world.gatherNode[i] = NO_TARGET;
-              world.gatherPosX[i] = 0;
-              world.gatherPosZ[i] = 0;
-              world.moving[i] = 0;
-              world.unitField[i] = null;
+              clearWorkerTask(world, i);
             }
           }
 
@@ -1484,7 +1399,7 @@ export function tickWorld(world: World): void {
           world.stockpiles[owner * RESOURCE_COUNT + resource]! + world.carried[i]!;
         world.carried[i] = 0;
 
-        const target = resolveId(world, world.gatherNode[i]!);
+        const target = resolveId(world, world.taskTarget[i]!);
 
         if (
           target >= 0 &&
@@ -1507,7 +1422,7 @@ export function tickWorld(world: World): void {
           // Deposit-then-return-to-patch: keep prospect memory so the dead-node handling
           // walks back from the dropsite instead of clocking out at the town center.
           world.mode[i] = MODE_GATHERING;
-          world.gatherNode[i] = NO_TARGET;
+          world.taskTarget[i] = NO_TARGET;
           world.moving[i] = 0;
           world.unitField[i] = null;
         }
@@ -1562,36 +1477,21 @@ export function tickWorld(world: World): void {
           }
         } else {
           // A player with no dropsites has bigger problems; the villager stands carrying.
-          world.mode[i] = MODE_IDLE;
-          world.gatherNode[i] = NO_TARGET;
-          world.gatherPosX[i] = 0;
-          world.gatherPosZ[i] = 0;
-          world.moving[i] = 0;
-          world.unitField[i] = null;
+          clearWorkerTask(world, i);
         }
       }
     } else if (world.mode[i] === MODE_BUILDING) {
-      const target = resolveId(world, world.gatherNode[i]!);
+      const target = resolveId(world, world.taskTarget[i]!);
 
       if (target < 0 || world.dying[target] === 1 || world.hp[target] === 0) {
-        world.mode[i] = MODE_IDLE;
-        world.gatherNode[i] = NO_TARGET;
-        world.gatherPosX[i] = 0;
-        world.gatherPosZ[i] = 0;
-        world.moving[i] = 0;
-        world.unitField[i] = null;
+        clearWorkerTask(world, i);
         continue;
       }
 
       const siteStats = UNIT_TYPES[world.unitType[target]!]!;
 
       if (world.buildProgress[target]! >= siteStats.buildTicks) {
-        world.mode[i] = MODE_IDLE;
-        world.gatherNode[i] = NO_TARGET;
-        world.gatherPosX[i] = 0;
-        world.gatherPosZ[i] = 0;
-        world.moving[i] = 0;
-        world.unitField[i] = null;
+        clearWorkerTask(world, i);
         continue;
       }
 
@@ -1623,8 +1523,13 @@ export function tickWorld(world: World): void {
           assignFieldGoal(world, i, targetX, targetZ, siteStats.footprint);
         }
       }
+    } else if (world.mode[i] === MODE_PRAYING) {
+      const target = resolveId(world, world.taskTarget[i]!);
+      tickPrayerTask(world, i, target, villagerReach);
     }
   }
+
+  tickGreekFavor(world);
 
   // 6. Production countdown - research occupies its building; queued units resume
   // on the completion tick. Completed spawns append after producedThrough.
@@ -1949,7 +1854,7 @@ function applyDeaths(world: World): void {
       world.mode[i] = world.mode[last]!;
       world.carried[i] = world.carried[last]!;
       world.carriedResource[i] = world.carriedResource[last]!;
-      world.gatherNode[i] = world.gatherNode[last]!;
+      world.taskTarget[i] = world.taskTarget[last]!;
       world.gatherPosX[i] = world.gatherPosX[last]!;
       world.gatherPosZ[i] = world.gatherPosZ[last]!;
       world.selectable[i] = world.selectable[last]!;
@@ -2041,12 +1946,7 @@ function applyPendingCommands(world: World): void {
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
           // Carried resources persist across interrupts: a hauler keeps the load.
-          world.mode[index] = MODE_IDLE;
-          world.gatherNode[index] = NO_TARGET;
-          world.gatherPosX[index] = 0;
-          world.gatherPosZ[index] = 0;
-          world.attackTarget[index] = NO_TARGET;
-          world.attackOrdered[index] = 0;
+          clearWorkerTask(world, index);
           assignFieldGoal(world, index, targetX, targetZ);
         }
       }
@@ -2060,14 +1960,7 @@ function applyPendingCommands(world: World): void {
         // dumb; forged or mis-addressed commands die here identically everywhere.
         if (world.owner[index] !== command.issuer) continue;
         // Carried resources persist across interrupts: a hauler keeps the load.
-        world.mode[index] = MODE_IDLE;
-        world.gatherNode[index] = NO_TARGET;
-        world.gatherPosX[index] = 0;
-        world.gatherPosZ[index] = 0;
-        world.attackTarget[index] = NO_TARGET;
-        world.attackOrdered[index] = 0;
-        world.moving[index] = 0;
-        world.unitField[index] = null;
+        clearWorkerTask(world, index);
       }
     } else if (command.type === COMMAND_ATTACK) {
       const target = resolveId(world, command.targetId);
@@ -2087,16 +1980,11 @@ function applyPendingCommands(world: World): void {
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
           // Carried resources persist across interrupts: a hauler keeps the load.
-          world.mode[index] = MODE_IDLE;
-          world.gatherNode[index] = NO_TARGET;
-          world.gatherPosX[index] = 0;
-          world.gatherPosZ[index] = 0;
+          clearWorkerTask(world, index);
           world.attackTarget[index] = command.targetId;
           world.attackOrdered[index] = 1;
           world.moveTargetX[index] = world.posX[target]!;
           world.moveTargetZ[index] = world.posZ[target]!;
-          world.moving[index] = 0;
-          world.unitField[index] = null;
         }
       }
     } else if (command.type === COMMAND_GATHER) {
@@ -2118,14 +2006,13 @@ function applyPendingCommands(world: World): void {
           if (world.owner[index] !== command.issuer) continue;
           // Militia in a mixed selection are silently skipped, not treated as an error.
           if (world.unitType[index] !== TYPE_VILLAGER) continue;
-          world.mode[index] = MODE_GATHERING;
-          world.gatherNode[index] = command.targetId;
-          world.gatherPosX[index] = world.posX[target]!;
-          world.gatherPosZ[index] = world.posZ[target]!;
-          world.attackTarget[index] = NO_TARGET;
-          world.attackOrdered[index] = 0;
-          world.moving[index] = 0;
-          world.unitField[index] = null;
+          assignGatherTask(
+            world,
+            index,
+            command.targetId,
+            world.posX[target]!,
+            world.posZ[target]!,
+          );
         }
       }
     } else if (command.type === COMMAND_BUILD) {
@@ -2149,14 +2036,21 @@ function applyPendingCommands(world: World): void {
           if (world.owner[index] !== command.issuer) continue;
           // Militia in a mixed selection are silently skipped, not treated as an error.
           if (world.unitType[index] !== TYPE_VILLAGER) continue;
-          world.mode[index] = MODE_BUILDING;
-          world.gatherNode[index] = command.targetId;
-          world.gatherPosX[index] = world.posX[target]!;
-          world.gatherPosZ[index] = world.posZ[target]!;
-          world.attackTarget[index] = NO_TARGET;
-          world.attackOrdered[index] = 0;
-          world.moving[index] = 0;
-          world.unitField[index] = null;
+          assignWorkerTask(world, index, MODE_BUILDING, command.targetId);
+        }
+      }
+    } else if (command.type === COMMAND_PRAY) {
+      const target = resolveId(world, command.targetId);
+
+      if (isValidPrayerTarget(world, target, command.issuer)) {
+        for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+          const id = command.unitIds[unitIndex]!;
+          const index = resolveId(world, id);
+
+          if (index < 0) continue;
+          if (world.owner[index] !== command.issuer) continue;
+          if (world.unitType[index] !== TYPE_VILLAGER) continue;
+          assignWorkerTask(world, index, MODE_PRAYING, command.targetId);
         }
       }
     } else if (command.type === COMMAND_TRAIN) {
@@ -2243,8 +2137,9 @@ function applyPendingCommands(world: World): void {
         } else if (command.cheat === CHEAT_ADD_GOLD) {
           addCheatResource(world, playerId, GOLD);
         } else if (command.cheat === CHEAT_FULL_FAVOR) {
-          world.stockpiles[playerId * RESOURCE_COUNT + FAVOR] =
-            world.playerMajorGod[playerId] === GOD_ZEUS ? 200 : 100;
+          world.stockpiles[playerId * RESOURCE_COUNT + FAVOR] = favorCapForMajorGod(
+            world.playerMajorGod[playerId]!,
+          );
         } else if (command.cheat === CHEAT_REVEAL_MAP) {
           const start = playerSlot * VISIBILITY_TILES;
           world.visibility.fill(VIS_EXPLORED, start, start + VISIBILITY_TILES);

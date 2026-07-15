@@ -4,6 +4,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_CHEAT,
   COMMAND_MOVE,
+  COMMAND_PRAY,
   COMMAND_STOP,
   GOD_HERMES,
 } from "@aom/sim";
@@ -53,6 +54,21 @@ describe("relay sink", () => {
       kind: "commands",
       commands: [{ type: COMMAND_ADVANCE_AGE, buildingId: 17, minorGod: GOD_HERMES }],
     });
+  });
+
+  test("submitPray sends the tickless Villagers and Temple", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitPray([3, 5], 17);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_PRAY, unitIds: [3, 5], targetId: 17 }],
+      },
+    ]);
   });
 
   test("submitCheat sends the tickless numeric cheat id", () => {

@@ -14,6 +14,7 @@ import {
   COMMAND_GATHER,
   COMMAND_MOVE,
   COMMAND_PLACE,
+  COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
   type CheatId,
@@ -83,6 +84,14 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_GATHER, unitIds, targetId }],
+      });
+    },
+
+    submitPray(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_PRAY, unitIds, targetId }],
       });
     },
 

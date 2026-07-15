@@ -33,6 +33,7 @@ function populatedSnapshot() {
   snapshot.buildProgress[1] = UNIT_TYPES[TYPE_TOWN_CENTER]!.buildTicks;
   snapshot.trainQueueLength[1] = 2;
   snapshot.completedBuildings[TYPE_TOWN_CENTER] = 1;
+  snapshot.favorRateMilliPerMinute = 29_793;
   return snapshot;
 }
 
@@ -51,6 +52,7 @@ describe("player state store", () => {
     expect(received!.age).toBe(AGE_CLASSICAL);
     expect(received!.majorGod).toBe(GOD_ZEUS);
     expect(received!.food).toBe(275);
+    expect(received!.favorPerMinute).toBe(29.793);
     expect(received!.pop).toBe(3);
     expect(received!.popCap).toBe(UNIT_TYPES[TYPE_TOWN_CENTER]!.popBonus);
     expect(received!.completedBuildings[TYPE_TOWN_CENTER]).toBe(1);

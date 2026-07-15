@@ -210,6 +210,15 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
             Under construction…
           </div>
         )}
+        {selection && selection.prayingVillagers > 0 && !(producer && !producer.complete) && (
+          <div className="absolute inset-x-3 bottom-3 font-serif text-base text-[#eee9d7] italic [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)] sm:text-sm">
+            {selection.prayingVillagers} Villager
+            {selection.prayingVillagers === 1 ? "" : "s"} praying
+            {playerState && playerState.favorPerMinute > 0
+              ? ` · +${playerState.favorPerMinute.toFixed(1)} Favor/min`
+              : ""}
+          </div>
+        )}
       </ClassicHudPanel>
 
       {trainedStats && (

@@ -15,6 +15,7 @@ import {
   hashWorld,
   MAP_TILES,
   MAX_UNITS,
+  MODE_PRAYING,
   RESOURCE_COUNT,
   registerPlayer,
   resolveId,
@@ -84,6 +85,7 @@ function cheatFromChat(code: string): CheatId | null {
 export interface SelectionSummary {
   // Selected OWN villagers - the build menu gate.
   villagers: number;
+  prayingVillagers: number;
   // FIRST selected own production building, null when none.
   producer: {
     id: number;
@@ -217,7 +219,7 @@ export async function createGame(
   let placementType = -1;
   const placementTile = new Int32Array(2);
   let placementValid = false;
-  let lastSelection: SelectionSummary = { villagers: 0, producer: null };
+  let lastSelection: SelectionSummary = { villagers: 0, prayingVillagers: 0, producer: null };
   writeSnapshot(world, prevSnap, selfPlayerId);
   writeSnapshot(world, currSnap, selfPlayerId);
   const playerState = createPlayerStateStore(selfPlayerId);
@@ -522,6 +524,7 @@ export async function createGame(
       }
     }
     let villagers = 0;
+    let prayingVillagers = 0;
     let producer: SelectionSummary["producer"] = null;
 
     for (let i = 0; i < world.count; i += 1) {
@@ -534,6 +537,10 @@ export async function createGame(
 
       if (unitType === TYPE_VILLAGER) {
         villagers += 1;
+
+        if (world.mode[i] === MODE_PRAYING && world.moving[i] === 0) {
+          prayingVillagers += 1;
+        }
       }
 
       if (producer === null && unitStats.trains >= 0) {
@@ -552,13 +559,14 @@ export async function createGame(
     const lastProducer = lastSelection.producer;
     if (
       villagers !== lastSelection.villagers ||
+      prayingVillagers !== lastSelection.prayingVillagers ||
       producer?.id !== lastProducer?.id ||
       producer?.type !== lastProducer?.type ||
       producer?.complete !== lastProducer?.complete ||
       producer?.queueLength !== lastProducer?.queueLength ||
       producer?.progress !== lastProducer?.progress
     ) {
-      lastSelection = { villagers, producer };
+      lastSelection = { villagers, prayingVillagers, producer };
 
       for (const cb of selectionCbs) {
         cb(lastSelection);

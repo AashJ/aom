@@ -1,4 +1,6 @@
-export const TICK_MS = 50;
+import { TICK_HZ } from "@aom/sim";
+
+export const TICK_MS = 1_000 / TICK_HZ;
 
 const MAX_TICKS_PER_FRAME = 5;
 
