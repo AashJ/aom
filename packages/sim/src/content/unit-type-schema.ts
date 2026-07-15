@@ -65,6 +65,15 @@ export interface ProjectileAttack extends AttackBase {
   readonly kind: "projectile";
   // Ticks from attack-cycle start to the animation's release event.
   readonly launchDelayTicks: number;
+  // Classic proto accuracy fields. Keep the source names visible so generated
+  // unit definitions can be checked directly against hashed reference data.
+  readonly accuracy: number;
+  readonly accuracyReductionFactor: number;
+  readonly aimBonus: number;
+  readonly spreadFactor: number;
+  readonly maxSpread: number;
+  readonly trackRating: number;
+  readonly unintentionalDamageMultiplier: number;
   readonly projectile: ProjectileFlight;
 }
 

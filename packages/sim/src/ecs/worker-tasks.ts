@@ -4,10 +4,10 @@ import { isGreekMajorGod } from "./favor";
 import { assignFieldGoal, setFacingToward } from "./navigation";
 import { CULTURE_GREEK, UNIT_CLASS_TEMPLE, UNIT_TYPES } from "./types";
 import { cellOf } from "../flow";
+import { clearAttackOrder } from "./attack-state";
+import { NO_TARGET } from "./id";
 
-// Packed id 0 is valid (handle 0, generation 0), so task targets use an
-// impossible handle as their empty sentinel.
-export const NO_TARGET = 0xffffffff;
+export { NO_TARGET } from "./id";
 
 export const MODE_IDLE = 0;
 export const MODE_GATHERING = 1;
@@ -25,10 +25,7 @@ export function clearWorkerTask(world: World, index: number): void {
   world.taskTarget[index] = NO_TARGET;
   world.gatherPosX[index] = 0;
   world.gatherPosZ[index] = 0;
-  world.attackTarget[index] = NO_TARGET;
-  world.attackOrdered[index] = 0;
-  world.moving[index] = 0;
-  world.unitField[index] = null;
+  clearAttackOrder(world, index);
 }
 
 export function assignWorkerTask(

@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { GRID_CELLS, GRID_DIM, rebuildUnitSpatialGrid } from "./spatial-grid";
+import {
+  GRID_CELLS,
+  GRID_DIM,
+  gridCoordinateForPosition,
+  rebuildUnitSpatialGrid,
+  visitUnitSpatialGridAabb,
+} from "./spatial-grid";
 
 describe("deterministic unit spatial grid", () => {
+  test("owns world-position clamping for every grid consumer", () => {
+    expect(gridCoordinateForPosition(-1)).toBe(0);
+    expect(gridCoordinateForPosition(0)).toBe(0);
+    expect(gridCoordinateForPosition(2)).toBe(1);
+    expect(gridCoordinateForPosition(999)).toBe(GRID_DIM - 1);
+  });
+
   test("buckets units in dense order and clamps map-edge positions", () => {
     const state = {
       count: 5,
@@ -23,5 +36,11 @@ describe("deterministic unit spatial grid", () => {
     ).toEqual([0, 2]);
     expect(state.cellUnits[4]).toBe(4);
     expect(state.cellStart[GRID_CELLS]).toBe(state.count);
+
+    const candidates: number[] = [];
+    visitUnitSpatialGridAabb(state, 3, 3, 0, 0, candidates, (_state, output, unitIndex) =>
+      output.push(unitIndex),
+    );
+    expect(candidates).toEqual([1, 3, 0, 2]);
   });
 });

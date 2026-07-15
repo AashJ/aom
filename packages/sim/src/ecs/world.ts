@@ -41,13 +41,15 @@ import {
   VIS_EXPLORED,
   VISIBILITY_TILES,
 } from "../visibility";
-import { idGeneration, idIndex, packId } from "./id";
+import { idGeneration, idIndex, stableIdAt } from "./id";
 import { resolveMeleeDamage } from "./combat";
+import { clearAttackOrder } from "./attack-state";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickGreekFavor } from "./favor";
 import { registerPlayer } from "./players";
 import { assignFieldGoal, setFacingToward } from "./navigation";
+import { MAX_PROJECTILE_BODY_RADIUS, MAX_TARGET_BODY_RADIUS } from "./unit-catalog-bounds";
 import { AGE_COUNT, NO_GOD } from "./progression";
 import {
   activeTrainType,
@@ -59,12 +61,18 @@ import {
   MAX_TRAIN_QUEUE,
 } from "./production";
 import {
+  beginProjectileAttack,
   createProjectileStore,
-  queueProjectile,
   tickProjectileStore,
   type ProjectileStore,
 } from "./projectiles";
-import { GRID_CELL, GRID_CELLS, GRID_DIM, rebuildUnitSpatialGrid } from "./spatial-grid";
+import {
+  GRID_CELL,
+  GRID_CELLS,
+  GRID_DIM,
+  gridCoordinateForPosition,
+  rebuildUnitSpatialGrid,
+} from "./spatial-grid";
 import {
   cancelBuildingResearch,
   isBuildingResearching,
@@ -149,19 +157,6 @@ const CURRENT_MAP_GOLD_PLACEMENTS = [
   { perPlayer: 1, minDistance: 50, maxDistance: 75, goldMineSpacing: 10 },
   { perPlayer: 1, minDistance: 90, maxDistance: 115, goldMineSpacing: 12 },
 ] as const;
-const MAX_TARGET_BODY_RADIUS = (() => {
-  let maxRadius = 0;
-
-  for (let type = 0; type < UNIT_TYPES.length; type += 1) {
-    const stats = UNIT_TYPES[type];
-    if (stats !== undefined) {
-      maxRadius = Math.max(maxRadius, stats.bodyRadius);
-    }
-  }
-
-  return maxRadius;
-})();
-
 export interface World {
   tick: number;
   count: number;
@@ -213,6 +208,8 @@ export interface World {
   attackCooldown: Uint16Array;
   attackTarget: Uint32Array;
   attackOrdered: Uint8Array;
+  attackAimTarget: Uint32Array;
+  attackAimShots: Uint16Array;
   projectiles: ProjectileStore;
   mode: Uint8Array;
   carried: Uint16Array;
@@ -325,6 +322,8 @@ export function createWorld(seed: number): World {
     attackCooldown: new Uint16Array(MAX_UNITS),
     attackTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackOrdered: new Uint8Array(MAX_UNITS),
+    attackAimTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    attackAimShots: new Uint16Array(MAX_UNITS),
     projectiles: createProjectileStore(),
     mode: new Uint8Array(MAX_UNITS),
     carried: new Uint16Array(MAX_UNITS),
@@ -517,7 +516,7 @@ export function spawnUnit(
   world.count += 1;
   // Numerically identical while generations are 0; callers holding "indices" from spawnUnit
   // are already holding valid packed ids.
-  return packId(handle, world.generation[handle]!);
+  return stableIdAt(world, index);
 }
 
 export function flushFlowFields(world: World): void {
@@ -592,9 +591,7 @@ export function resolveId(world: World, id: number): number {
 
 export function unitIdAt(world: World, index: number): number {
   // How the engine converts a live index — e.g. from selection — into the id a command must carry.
-  const handle = world.handleOf[index]!;
-
-  return packId(handle, world.generation[handle]!);
+  return stableIdAt(world, index);
 }
 
 export function killUnit(world: World, index: number): void {
@@ -974,7 +971,7 @@ export function tickWorld(world: World): void {
   // 4. Existing projectile entities launch, fly, and impact before units decide
   // whether to begin a new attack cycle. A newly queued projectile cannot advance
   // until the next tick, preserving its animation-timed release boundary.
-  tickProjectileStore(world, world.projectiles, UNIT_TYPES, dealDamage);
+  tickProjectileStore(world, world.projectiles, UNIT_TYPES, MAX_PROJECTILE_BODY_RADIUS, dealDamage);
 
   // 5. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
   // that the movement compute then consumes.
@@ -1007,10 +1004,7 @@ export function tickWorld(world: World): void {
           // the memory; no separate pursuit component is needed.
           world.moving[i] = 1;
         } else {
-          world.attackTarget[i] = NO_TARGET;
-          world.attackOrdered[i] = 0;
-          world.moving[i] = 0;
-          world.unitField[i] = null;
+          clearAttackOrder(world, i);
         }
       } else {
         const targetX = world.posX[target]!;
@@ -1036,20 +1030,10 @@ export function tickWorld(world: World): void {
           if (world.attackCooldown[i] === 0) {
             if (attack.kind === "melee") {
               dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
+              world.attackCooldown[i] = attack.cooldownTicks;
             } else {
-              queueProjectile(
-                world.projectiles,
-                {
-                  sourceId: unitIdAt(world, i),
-                  sourceType: world.unitType[i]!,
-                  owner: world.owner[i]!,
-                  targetId: unitIdAt(world, target),
-                  attackTick: world.tick,
-                },
-                UNIT_TYPES,
-              );
+              beginProjectileAttack(world, i, target, UNIT_TYPES);
             }
-            world.attackCooldown[i] = attack.cooldownTicks;
           }
         } else {
           const leashRange = attack.aggroRange * LEASH_FACTOR;
@@ -1074,10 +1058,7 @@ export function tickWorld(world: World): void {
               world.unitField[i] = null;
             }
           } else {
-            world.attackTarget[i] = NO_TARGET;
-            world.attackOrdered[i] = 0;
-            world.moving[i] = 0;
-            world.unitField[i] = null;
+            clearAttackOrder(world, i);
           }
         }
       }
@@ -1099,10 +1080,8 @@ export function tickWorld(world: World): void {
       const z = world.posZ[i]!;
       const aggroSearchRange = attack.aggroRange + MAX_TARGET_BODY_RADIUS;
       const searchRadius = Math.ceil(aggroSearchRange / GRID_CELL);
-      const rawCellX = Math.floor(x / GRID_CELL);
-      const rawCellZ = Math.floor(z / GRID_CELL);
-      const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
-      const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+      const cellX = gridCoordinateForPosition(x);
+      const cellZ = gridCoordinateForPosition(z);
       const minCellX = cellX > searchRadius ? cellX - searchRadius : 0;
       const maxCellX = cellX < GRID_DIM - 1 - searchRadius ? cellX + searchRadius : GRID_DIM - 1;
       const minCellZ = cellZ > searchRadius ? cellZ - searchRadius : 0;
@@ -1248,10 +1227,8 @@ export function tickWorld(world: World): void {
         const searchZ = world.posZ[i]!;
         const requiredResource = world.carried[i]! > 0 ? world.carriedResource[i]! : -1;
         const searchRadius = Math.ceil(NODE_RETARGET_RADIUS / GRID_CELL);
-        const rawCellX = Math.floor(searchX / GRID_CELL);
-        const rawCellZ = Math.floor(searchZ / GRID_CELL);
-        const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
-        const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+        const cellX = gridCoordinateForPosition(searchX);
+        const cellZ = gridCoordinateForPosition(searchZ);
         const minCellX = cellX > searchRadius ? cellX - searchRadius : 0;
         const maxCellX = cellX < GRID_DIM - 1 - searchRadius ? cellX + searchRadius : GRID_DIM - 1;
         const minCellZ = cellZ > searchRadius ? cellZ - searchRadius : 0;
@@ -1707,10 +1684,8 @@ export function tickWorld(world: World): void {
     // Idle units are separated too, so arriving crowds spread out instead of stacking.
     let separationX = 0;
     let separationZ = 0;
-    const rawCellX = Math.floor(x / GRID_CELL);
-    const rawCellZ = Math.floor(z / GRID_CELL);
-    const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
-    const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
+    const cellX = gridCoordinateForPosition(x);
+    const cellZ = gridCoordinateForPosition(z);
     const minCellX = cellX > 0 ? cellX - 1 : 0;
     const maxCellX = cellX < GRID_DIM - 1 ? cellX + 1 : GRID_DIM - 1;
     const minCellZ = cellZ > 0 ? cellZ - 1 : 0;
@@ -1925,6 +1900,8 @@ function applyDeaths(world: World): void {
       world.attackCooldown[i] = world.attackCooldown[last]!;
       world.attackTarget[i] = world.attackTarget[last]!;
       world.attackOrdered[i] = world.attackOrdered[last]!;
+      world.attackAimTarget[i] = world.attackAimTarget[last]!;
+      world.attackAimShots[i] = world.attackAimShots[last]!;
       world.mode[i] = world.mode[last]!;
       world.carried[i] = world.carried[last]!;
       world.carriedResource[i] = world.carriedResource[last]!;

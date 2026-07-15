@@ -23,6 +23,20 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
+  // Runtime projectile accuracy consumes the shared PCG stream. Both halves of
+  // its state and sequence must desync at the draw that diverged, not later.
+  const rngWords = [
+    Number(world.rng.state & 0xffff_ffffn),
+    Number((world.rng.state >> 32n) & 0xffff_ffffn),
+    Number(world.rng.inc & 0xffff_ffffn),
+    Number((world.rng.inc >> 32n) & 0xffff_ffffn),
+  ];
+  for (const rngWord of rngWords) {
+    word = rngWord >>> 0;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // Shared combat state: winner is the in-sim annihilation result, not UI-derived.
   word = world.winner >>> 0;
   h ^= word;
@@ -182,6 +196,16 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.attackAimTarget[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.attackAimShots[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // Queued releases and in-flight projectiles determine future damage. Hash the
   // complete lifecycle, including stable identities used by snapshots.
   word = world.projectiles.count >>> 0;
@@ -197,6 +221,7 @@ export function hashWorld(world: World): number {
     world.projectiles.sourceTypes,
     world.projectiles.sourceIds,
     world.projectiles.targetIds,
+    world.projectiles.priorShots,
     world.projectiles.launchTicks,
     world.projectiles.impactTicks,
     world.projectiles.expiresBeforeImpact,

@@ -508,6 +508,9 @@ describe("ownership", () => {
     tickWorld(world);
     tickWorld(world);
 
+    world.attackAimTarget[0] = theirs;
+    world.attackAimShots[0] = 3;
+
     // Player 0 tries to halt player 1's unit: no-op; their own halt works.
     enqueueCommand(world, {
       tick: world.tick + 1,
@@ -520,6 +523,8 @@ describe("ownership", () => {
 
     expect(world.moving[0]).toBe(0);
     expect(world.moving[1]).toBe(1);
+    expect(world.attackAimTarget[0]).toBe(NO_TARGET);
+    expect(world.attackAimShots[0]).toBe(0);
   });
 
   test("corner spawns split armies deterministically by owner list", () => {
@@ -573,6 +578,8 @@ describe("ownership", () => {
     spawnUnit(world, 30, 30, 0, 0, 2);
     world.facingX[2] = 0.6;
     world.facingZ[2] = 0.8;
+    world.attackAimTarget[2] = unitIdAt(world, 1);
+    world.attackAimShots[2] = 3;
 
     killUnit(world, 0);
     tickWorld(world);
@@ -582,6 +589,8 @@ describe("ownership", () => {
     expect(world.owner[0]).toBe(2);
     expect(world.facingX[0]).toBe(0.6);
     expect(world.facingZ[0]).toBe(0.8);
+    expect(world.attackAimTarget[0]).toBe(unitIdAt(world, 1));
+    expect(world.attackAimShots[0]).toBe(3);
 
     const snapshot = createSnapshot(8);
     writeSnapshot(world, snapshot);

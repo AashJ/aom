@@ -32,19 +32,10 @@ export {
 } from "./ecs/availability";
 export { resolveAttackDamage, resolveMeleeDamage } from "./ecs/combat";
 export {
-  createProjectileStore,
-  MAX_PROJECTILES,
-  NO_PROJECTILE_TICK,
   PROJECTILE_ARROW,
   PROJECTILE_SLING_STONE,
   PROJECTILE_SPEAR,
   PROJECTILE_TYPE_COUNT,
-  projectileProgressAt,
-  queueProjectile,
-  tickProjectileStore,
-  type ProjectileStore,
-  type ProjectileWorldState,
-  type QueueProjectile,
 } from "./ecs/projectiles";
 export {
   favorCapForMajorGod,

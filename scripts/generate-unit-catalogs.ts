@@ -169,6 +169,21 @@ for (const entry of entries) {
         !Number.isInteger(attack.launchDelayTicks) ||
         attack.launchDelayTicks < 0 ||
         attack.launchDelayTicks >= attack.cooldownTicks ||
+        !Number.isFinite(attack.accuracy) ||
+        attack.accuracy < 0 ||
+        attack.accuracy > 1 ||
+        !Number.isFinite(attack.accuracyReductionFactor) ||
+        attack.accuracyReductionFactor < 0 ||
+        !Number.isFinite(attack.aimBonus) ||
+        attack.aimBonus < 0 ||
+        !Number.isFinite(attack.spreadFactor) ||
+        attack.spreadFactor < 0 ||
+        !Number.isFinite(attack.maxSpread) ||
+        attack.maxSpread < 0 ||
+        !Number.isFinite(attack.trackRating) ||
+        attack.trackRating < 0 ||
+        !Number.isFinite(attack.unintentionalDamageMultiplier) ||
+        attack.unintentionalDamageMultiplier < 0 ||
         !Number.isInteger(flight.type) ||
         flight.type < 0 ||
         flight.type >= PROJECTILE_TYPE_COUNT ||

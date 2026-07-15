@@ -1,7 +1,17 @@
 import { TICK_HZ } from "../clock";
 import type { ProjectileAttack, UnitTypeStats } from "../content/unit-type-schema";
-import { idGeneration, idIndex } from "./id";
+import { nextFloat, type Pcg32 } from "../math/prng";
+import { advanceProjectileAim, type AttackSequenceState } from "./attack-state";
+import { idGeneration, idIndex, stableIdAt, type StableIdState } from "./id";
 import { resolveAttackDamage } from "./combat";
+import {
+  classicProjectileHits,
+  classicProjectileHitScore,
+  classicProjectileLeadSeconds,
+  classicProjectileSpread,
+} from "./projectile-accuracy";
+import { projectileCircleEntryFraction, projectileHitComesFirst } from "./projectile-collision";
+import { visitUnitSpatialGridAabb, type UnitSpatialGridState } from "./spatial-grid";
 
 export const MAX_PROJECTILES = 40_000;
 export const NO_PROJECTILE_TICK = 0xffff_ffff;
@@ -14,6 +24,22 @@ export const PROJECTILE_SPEAR = 1;
 export const PROJECTILE_SLING_STONE = 2;
 export const PROJECTILE_TYPE_COUNT = 3;
 
+const EMPTY_UNIT_TYPES: readonly (UnitTypeStats | undefined)[] = Object.freeze([]);
+
+interface ProjectileCollisionScratch {
+  unitTypes: readonly (UnitTypeStats | undefined)[];
+  sourceId: number;
+  owner: number;
+  collisionRadius: number;
+  startX: number;
+  startZ: number;
+  endX: number;
+  endZ: number;
+  hitIndex: number;
+  hitTargetId: number;
+  hitFraction: number;
+}
+
 export interface ProjectileStore {
   count: number;
   nextId: number;
@@ -22,6 +48,7 @@ export interface ProjectileStore {
   sourceTypes: Uint16Array;
   sourceIds: Uint32Array;
   targetIds: Uint32Array;
+  priorShots: Uint16Array;
   launchTicks: Uint32Array;
   impactTicks: Uint32Array;
   launchX: Float64Array;
@@ -29,35 +56,26 @@ export interface ProjectileStore {
   impactX: Float64Array;
   impactZ: Float64Array;
   expiresBeforeImpact: Uint8Array;
+  // Reused query context; derived and deliberately excluded from snapshots/hash.
+  collisionScratch: ProjectileCollisionScratch;
 }
 
-export interface ProjectileWorldState {
+export interface ProjectileWorldState extends UnitSpatialGridState, StableIdState {
   tick: number;
-  count: number;
   nextHandle: number;
-  generation: Uint16Array;
+  rng: Pcg32;
   slotOf: Int32Array;
-  posX: Float64Array;
-  posZ: Float64Array;
+  velX: Float64Array;
+  velZ: Float64Array;
+  owner: Uint8Array;
   hp: Float64Array;
   dying: Uint8Array;
   unitType: Uint16Array;
 }
 
-export interface QueueProjectile {
-  sourceId: number;
-  sourceType: number;
-  owner: number;
-  targetId: number;
-  attackTick: number;
-}
-
-export interface ProjectileHit {
-  readonly targetIndex: number;
-  // Stable identity is retained for deterministic equal-fraction ordering once
-  // path candidates join the intended target in the next B2 cut.
-  readonly targetId: number;
-  readonly entryFraction: number;
+interface ProjectileAttackIssuerState extends ProjectileWorldState, AttackSequenceState {
+  readonly attackCooldown: Uint16Array;
+  readonly projectiles: ProjectileStore;
 }
 
 export type ApplyProjectileDamage<TWorld extends ProjectileWorldState> = (
@@ -80,6 +98,7 @@ export function createProjectileStore(capacity = MAX_PROJECTILES): ProjectileSto
     sourceTypes: new Uint16Array(capacity),
     sourceIds: new Uint32Array(capacity),
     targetIds: new Uint32Array(capacity),
+    priorShots: new Uint16Array(capacity),
     launchTicks: new Uint32Array(capacity),
     impactTicks: new Uint32Array(capacity).fill(NO_PROJECTILE_TICK),
     launchX: new Float64Array(capacity),
@@ -87,39 +106,73 @@ export function createProjectileStore(capacity = MAX_PROJECTILES): ProjectileSto
     impactX: new Float64Array(capacity),
     impactZ: new Float64Array(capacity),
     expiresBeforeImpact: new Uint8Array(capacity),
+    collisionScratch: {
+      unitTypes: EMPTY_UNIT_TYPES,
+      sourceId: 0,
+      owner: 0,
+      collisionRadius: 0,
+      startX: 0,
+      startZ: 0,
+      endX: 0,
+      endZ: 0,
+      hitIndex: -1,
+      hitTargetId: 0,
+      hitFraction: -1,
+    },
   };
 }
 
-export function queueProjectile(
-  store: ProjectileStore,
-  request: QueueProjectile,
+export function beginProjectileAttack(
+  world: ProjectileAttackIssuerState,
+  sourceIndex: number,
+  targetIndex: number,
   unitTypes: readonly (UnitTypeStats | undefined)[],
 ): number {
+  if (
+    sourceIndex < 0 ||
+    sourceIndex >= world.count ||
+    targetIndex < 0 ||
+    targetIndex >= world.count ||
+    world.dying[sourceIndex] === 1 ||
+    world.hp[sourceIndex]! <= 0 ||
+    world.dying[targetIndex] === 1 ||
+    world.hp[targetIndex]! <= 0
+  ) {
+    throw new RangeError("Projectile attack indices must identify live dense units.");
+  }
+
+  const store = world.projectiles;
   if (store.count >= store.ids.length) {
     throw new RangeError("World projectile capacity exceeded.");
   }
   if (store.nextId === NO_PROJECTILE_TICK) {
     throw new RangeError("Projectile identity space exhausted.");
   }
-  const attack = unitTypes[request.sourceType]?.attack;
+  const sourceType = world.unitType[sourceIndex]!;
+  const attack = unitTypes[sourceType]?.attack;
   if (!attack || attack.kind !== "projectile") {
     throw new TypeError("Projectile source type has no canonical projectile attack.");
   }
 
+  const sourceId = stableIdAt(world, sourceIndex);
+  const targetId = stableIdAt(world, targetIndex);
+  const priorShots = advanceProjectileAim(world, sourceIndex, targetId);
   const index = store.count;
   const id = store.nextId;
   store.nextId += 1;
   store.ids[index] = id;
-  store.owners[index] = request.owner;
-  store.sourceTypes[index] = request.sourceType;
-  store.sourceIds[index] = request.sourceId;
-  store.targetIds[index] = request.targetId;
+  store.owners[index] = world.owner[sourceIndex]!;
+  store.sourceTypes[index] = sourceType;
+  store.sourceIds[index] = sourceId;
+  store.targetIds[index] = targetId;
+  store.priorShots[index] = priorShots;
   // Projectile processing already ran for attackTick, so even a zero-delay
   // release becomes observable on the next deterministic simulation tick.
-  store.launchTicks[index] = request.attackTick + Math.max(1, attack.launchDelayTicks);
+  store.launchTicks[index] = world.tick + Math.max(1, attack.launchDelayTicks);
   store.impactTicks[index] = NO_PROJECTILE_TICK;
   store.expiresBeforeImpact[index] = 0;
   store.count += 1;
+  world.attackCooldown[sourceIndex] = attack.cooldownTicks;
   return id;
 }
 
@@ -144,11 +197,34 @@ function launchProjectile(
 
   const launchX = world.posX[source]!;
   const launchZ = world.posZ[source]!;
-  // B1 captures a fixed target point so moving targets can dodge. Classic's
-  // Accuracy/AimBonus/SpreadFactor/TrackRating formula and unintended path hits
-  // remain a blocked B2 fidelity contract rather than a guessed approximation.
-  const impactX = world.posX[target]!;
-  const impactZ = world.posZ[target]!;
+  const targetX = world.posX[target]!;
+  const targetZ = world.posZ[target]!;
+  const targetDx = targetX - launchX;
+  const targetDz = targetZ - launchZ;
+  const targetDistance = Math.sqrt(targetDx * targetDx + targetDz * targetDz);
+  const priorShots = store.priorShots[index]!;
+  const leadSeconds = classicProjectileLeadSeconds(
+    launchX,
+    launchZ,
+    targetX,
+    targetZ,
+    world.velX[target]!,
+    world.velZ[target]!,
+    attack.projectile.speed,
+    attack.trackRating,
+  );
+  let impactX = targetX + world.velX[target]! * leadSeconds;
+  let impactZ = targetZ + world.velZ[target]! * leadSeconds;
+  const hitScore = classicProjectileHitScore(attack, targetDistance, priorShots);
+  // The Trial executable draws an integer in [0, 100] only for a score in
+  // (0, 100]. Keeping the skipped-draw cases exact matters to lockstep RNG.
+  const roll = hitScore > 0 && hitScore <= 100 ? Math.floor(nextFloat(world.rng) * 101) : 0;
+
+  if (!classicProjectileHits(hitScore, roll)) {
+    const spread = classicProjectileSpread(attack, targetDistance, priorShots);
+    impactX += (nextFloat(world.rng) * 2 - 1) * spread;
+    impactZ += (nextFloat(world.rng) * 2 - 1) * spread;
+  }
 
   const dx = impactX - launchX;
   const dz = impactZ - launchZ;
@@ -182,6 +258,7 @@ function removeProjectile(store: ProjectileStore, index: number): void {
     store.sourceTypes[index] = store.sourceTypes[last]!;
     store.sourceIds[index] = store.sourceIds[last]!;
     store.targetIds[index] = store.targetIds[last]!;
+    store.priorShots[index] = store.priorShots[last]!;
     store.launchTicks[index] = store.launchTicks[last]!;
     store.impactTicks[index] = store.impactTicks[last]!;
     store.launchX[index] = store.launchX[last]!;
@@ -200,33 +277,6 @@ export function projectileProgressAt(store: ProjectileStore, index: number, tick
   return Math.min(1, Math.max(0, (tick - launchTick) / Math.max(1, impactTick - launchTick)));
 }
 
-function sweptCircleEntryFraction(
-  startX: number,
-  startZ: number,
-  endX: number,
-  endZ: number,
-  centerX: number,
-  centerZ: number,
-  radius: number,
-): number {
-  const segmentX = endX - startX;
-  const segmentZ = endZ - startZ;
-  const relativeX = startX - centerX;
-  const relativeZ = startZ - centerZ;
-  const c = relativeX * relativeX + relativeZ * relativeZ - radius * radius;
-  if (c <= 0) return 0;
-
-  const a = segmentX * segmentX + segmentZ * segmentZ;
-  if (a <= 0) return -1;
-
-  const b = 2 * (relativeX * segmentX + relativeZ * segmentZ);
-  const discriminant = b * b - 4 * a * c;
-  if (discriminant < 0) return -1;
-
-  const entry = (-b - Math.sqrt(discriminant)) / (2 * a);
-  return entry >= 0 && entry <= 1 ? entry : -1;
-}
-
 function projectileCoordinateAt(
   store: ProjectileStore,
   index: number,
@@ -240,44 +290,89 @@ function projectileCoordinateAt(
   );
 }
 
-function projectileHitAgainstTarget(
+function considerProjectileCollisionCandidate(
+  world: ProjectileWorldState,
+  scratch: ProjectileCollisionScratch,
+  candidate: number,
+): void {
+  if (
+    world.dying[candidate] === 1 ||
+    world.hp[candidate]! <= 0 ||
+    world.owner[candidate] === scratch.owner
+  ) {
+    return;
+  }
+
+  const candidateId = stableIdAt(world, candidate);
+  if (candidateId === scratch.sourceId) return;
+
+  const candidateStats = scratch.unitTypes[world.unitType[candidate]!];
+  if (!candidateStats?.collidesWithProjectiles) return;
+
+  const entryFraction = projectileCircleEntryFraction(
+    scratch.startX,
+    scratch.startZ,
+    scratch.endX,
+    scratch.endZ,
+    world.posX[candidate]!,
+    world.posZ[candidate]!,
+    scratch.collisionRadius + candidateStats.bodyRadius,
+  );
+  if (
+    projectileHitComesFirst(scratch.hitFraction, scratch.hitTargetId, entryFraction, candidateId)
+  ) {
+    scratch.hitIndex = candidate;
+    scratch.hitTargetId = candidateId;
+    scratch.hitFraction = entryFraction;
+  }
+}
+
+function projectileHitAlongSegment(
   world: ProjectileWorldState,
   store: ProjectileStore,
   index: number,
   attack: ProjectileAttack,
   unitTypes: readonly (UnitTypeStats | undefined)[],
-  targetId: number,
+  maxBodyRadius: number,
   startTick: number,
   endTick: number,
-): ProjectileHit | null {
-  const targetIndex = resolveUnit(world, targetId);
-  if (targetIndex < 0) return null;
-
-  const targetStats = unitTypes[world.unitType[targetIndex]!]!;
-  if (!targetStats.collidesWithProjectiles) return null;
-
+): number {
   const startX = projectileCoordinateAt(store, index, startTick, store.launchX, store.impactX);
   const startZ = projectileCoordinateAt(store, index, startTick, store.launchZ, store.impactZ);
   const endX = projectileCoordinateAt(store, index, endTick, store.launchX, store.impactX);
   const endZ = projectileCoordinateAt(store, index, endTick, store.launchZ, store.impactZ);
-  const collisionRadius = attack.projectile.collisionRadius + targetStats.bodyRadius;
+  const queryPadding = attack.projectile.collisionRadius + maxBodyRadius;
+  const scratch = store.collisionScratch;
+  scratch.unitTypes = unitTypes;
+  scratch.sourceId = store.sourceIds[index]!;
+  scratch.owner = store.owners[index]!;
+  scratch.collisionRadius = attack.projectile.collisionRadius;
+  scratch.startX = startX;
+  scratch.startZ = startZ;
+  scratch.endX = endX;
+  scratch.endZ = endZ;
+  scratch.hitIndex = -1;
+  scratch.hitTargetId = 0;
+  scratch.hitFraction = -1;
 
-  const entryFraction = sweptCircleEntryFraction(
-    startX,
-    startZ,
-    endX,
-    endZ,
-    world.posX[targetIndex]!,
-    world.posZ[targetIndex]!,
-    collisionRadius,
+  visitUnitSpatialGridAabb(
+    world,
+    Math.min(startX, endX) - queryPadding,
+    Math.min(startZ, endZ) - queryPadding,
+    Math.max(startX, endX) + queryPadding,
+    Math.max(startZ, endZ) + queryPadding,
+    scratch,
+    considerProjectileCollisionCandidate,
   );
-  return entryFraction >= 0 ? { targetIndex, targetId, entryFraction } : null;
+
+  return scratch.hitIndex;
 }
 
 export function tickProjectileStore<TWorld extends ProjectileWorldState>(
   world: TWorld,
   store: ProjectileStore,
   unitTypes: readonly (UnitTypeStats | undefined)[],
+  maxBodyRadius: number,
   applyDamage: ApplyProjectileDamage<TWorld>,
 ): void {
   for (let index = 0; index < store.count; ) {
@@ -307,19 +402,22 @@ export function tickProjectileStore<TWorld extends ProjectileWorldState>(
     // so collision progress is derived instead of duplicated in authoritative state.
     const pathStartTick = Math.max(store.launchTicks[index]!, pathEndTick - 1);
     if (pathEndTick > pathStartTick) {
-      const hit = projectileHitAgainstTarget(
+      const hitIndex = projectileHitAlongSegment(
         world,
         store,
         index,
         attack,
         unitTypes,
-        store.targetIds[index]!,
+        maxBodyRadius,
         pathStartTick,
         pathEndTick,
       );
-      if (hit !== null) {
-        const targetStats = unitTypes[world.unitType[hit.targetIndex]!]!;
-        applyDamage(world, hit.targetIndex, resolveAttackDamage(attack, targetStats));
+      if (hitIndex >= 0) {
+        const targetStats = unitTypes[world.unitType[hitIndex]!]!;
+        const hitId = stableIdAt(world, hitIndex);
+        const damageMultiplier =
+          hitId === store.targetIds[index]! ? 1 : attack.unintentionalDamageMultiplier;
+        applyDamage(world, hitIndex, resolveAttackDamage(attack, targetStats) * damageMultiplier);
         removeProjectile(store, index);
         continue;
       }
