@@ -114,6 +114,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
+    playerMajorGods: new Uint8Array(256).fill(NO_GOD),
     minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
     ageAdvanceTarget: NO_AGE,
     ageAdvanceGod: NO_GOD,

@@ -1,4 +1,6 @@
 import {
+  GOD_RA,
+  GOD_ZEUS,
   NEUTRAL_OWNER,
   TYPE_BARRACKS,
   TYPE_BERRY,
@@ -11,7 +13,13 @@ import {
   UNIT_TYPES,
   type RenderSnapshot,
 } from "@aom/sim";
-import { AUDIO_CUES, MUSIC_TRACKS, type AudioCue } from "./assets";
+import {
+  AUDIO_CUES,
+  CULTURE_MUSIC_TRACKS,
+  EGYPTIAN_VILLAGER_CUES,
+  MUSIC_TRACKS,
+  type AudioCue,
+} from "./assets";
 
 const BATTLE_HOLD_MS = 20_000;
 const AMBIENT_MIN_MS = 9_000;
@@ -51,7 +59,7 @@ export interface GameAudio {
   uiClick(): void;
 }
 
-export function createGameAudio(): GameAudio {
+export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
   const context = new AudioContext();
   const masterGain = context.createGain();
   const effectsGain = context.createGain();
@@ -77,6 +85,10 @@ export function createGameAudio(): GameAudio {
   let musicPhase: MusicPhase = "culture";
   let peacefulTrack = 0;
   let battleTrack = 0;
+  const villagerCues =
+    majorGod === GOD_RA ? { ...AUDIO_CUES, ...EGYPTIAN_VILLAGER_CUES } : AUDIO_CUES;
+  const cultureMusic =
+    majorGod === GOD_RA ? CULTURE_MUSIC_TRACKS.egyptian : CULTURE_MUSIC_TRACKS.greek;
 
   masterGain.gain.value = 0.8;
   effectsGain.gain.value = 0.78;
@@ -189,7 +201,7 @@ export function createGameAudio(): GameAudio {
 
   function musicUrlForPhase(): string {
     if (musicPhase === "culture") {
-      return MUSIC_TRACKS.culture;
+      return cultureMusic;
     }
 
     if (musicPhase === "battle") {
@@ -259,7 +271,7 @@ export function createGameAudio(): GameAudio {
   }
 
   function preloadEffects(): void {
-    for (const cue of Object.values(AUDIO_CUES)) {
+    for (const cue of Object.values(villagerCues)) {
       for (const url of cue.files) {
         void bufferFor(url).catch(() => undefined);
       }
@@ -349,8 +361,12 @@ export function createGameAudio(): GameAudio {
   }
 
   function playSelectionCue(type: number, x: number, z: number): void {
-    if (type === TYPE_VILLAGER || type === TYPE_MILITIA) {
-      // Classic Militia intentionally reuses the Greek villager voice set.
+    if (type === TYPE_VILLAGER) {
+      playCue(villagerCues.villagerSelect, voicesGain, x, z);
+      return;
+    }
+
+    if (type === TYPE_MILITIA) {
       playCue(AUDIO_CUES.villagerSelect, voicesGain, x, z);
       return;
     }
@@ -501,18 +517,18 @@ export function createGameAudio(): GameAudio {
     selectedZ: number,
     resourceType?: number,
   ): void {
-    let cue = AUDIO_CUES.villagerAcknowledge;
+    let cue = villagerCues.villagerAcknowledge;
 
     if (kind === 2) {
-      cue = AUDIO_CUES.villagerAttack;
+      cue = villagerCues.villagerAttack;
     } else if (kind === 3 && resourceType === TYPE_TREE) {
-      cue = AUDIO_CUES.villagerLumber;
+      cue = villagerCues.villagerLumber;
     } else if (kind === 3 && resourceType === TYPE_GOLD_MINE) {
-      cue = AUDIO_CUES.villagerMine;
+      cue = villagerCues.villagerMine;
     } else if (kind === 3 && resourceType === TYPE_BERRY) {
-      cue = AUDIO_CUES.villagerForage;
+      cue = villagerCues.villagerForage;
     } else if (kind === 4) {
-      cue = AUDIO_CUES.villagerRepair;
+      cue = villagerCues.villagerRepair;
     }
 
     playCue(cue, voicesGain, selectedX, selectedZ);

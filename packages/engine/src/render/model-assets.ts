@@ -1,5 +1,19 @@
 import axeHatchetUrl from "../assets/models/attachments-a-axe-hatchet.glb?url";
 import basketUrl from "../assets/models/attachments-a-basket.glb?url";
+import egyptianHouseUrl from "../assets/models/egyptian-house-age1.glb?url";
+import egyptianTownCenterUrl from "../assets/models/egyptian-town-center-age1.glb?url";
+import egyptianVillagerFemaleBuildUrl from "../assets/models/egyptian-villager-female-build.glb?url";
+import egyptianVillagerFemaleChopUrl from "../assets/models/egyptian-villager-female-chop.glb?url";
+import egyptianVillagerFemaleHarvestUrl from "../assets/models/egyptian-villager-female-harvest.glb?url";
+import egyptianVillagerFemaleIdleUrl from "../assets/models/egyptian-villager-female-idle.glb?url";
+import egyptianVillagerFemaleMineUrl from "../assets/models/egyptian-villager-female-mine.glb?url";
+import egyptianVillagerFemaleWalkUrl from "../assets/models/egyptian-villager-female-walk.glb?url";
+import egyptianVillagerMaleBuildUrl from "../assets/models/egyptian-villager-male-build.glb?url";
+import egyptianVillagerMaleChopUrl from "../assets/models/egyptian-villager-male-chop.glb?url";
+import egyptianVillagerMaleHarvestUrl from "../assets/models/egyptian-villager-male-harvest.glb?url";
+import egyptianVillagerMaleIdleUrl from "../assets/models/egyptian-villager-male-idle.glb?url";
+import egyptianVillagerMaleMineUrl from "../assets/models/egyptian-villager-male-mine.glb?url";
+import egyptianVillagerMaleWalkUrl from "../assets/models/egyptian-villager-male-walk.glb?url";
 import greekBarracksUrl from "../assets/models/greek-barracks-age1.glb?url";
 import greekHouseAUrl from "../assets/models/greek-house-a-age0.glb?url";
 import greekHouseBUrl from "../assets/models/greek-house-b-age0.glb?url";
@@ -45,6 +59,84 @@ function defineModelRegistry<
 }
 
 const MODEL_DEFINITIONS = defineModelRegistry({
+  egyptianHouse: { url: egyptianHouseUrl, grounded: true },
+  egyptianTownCenter: { url: egyptianTownCenterUrl, grounded: true },
+  egyptianVillagerMaleIdle: { url: egyptianVillagerMaleIdleUrl, grounded: true },
+  egyptianVillagerMaleWalk: { url: egyptianVillagerMaleWalkUrl, grounded: true },
+  egyptianVillagerMaleMine: {
+    url: egyptianVillagerMaleMineUrl,
+    grounded: true,
+    attachment: {
+      model: "pickaxe",
+      targetNode: "Dummy_righthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerMaleHarvest: {
+    url: egyptianVillagerMaleHarvestUrl,
+    grounded: true,
+    attachment: {
+      model: "basket",
+      targetNode: "Dummy_lefthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerMaleChop: {
+    url: egyptianVillagerMaleChopUrl,
+    grounded: true,
+    attachment: {
+      model: "axeHatchet",
+      targetNode: "Dummy_righthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerMaleBuild: {
+    url: egyptianVillagerMaleBuildUrl,
+    grounded: true,
+    attachment: {
+      model: "hammer",
+      targetNode: "Dummy_righthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerFemaleIdle: { url: egyptianVillagerFemaleIdleUrl, grounded: true },
+  egyptianVillagerFemaleWalk: { url: egyptianVillagerFemaleWalkUrl, grounded: true },
+  egyptianVillagerFemaleMine: {
+    url: egyptianVillagerFemaleMineUrl,
+    grounded: true,
+    attachment: {
+      model: "pickaxe",
+      targetNode: "Dummy_righthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerFemaleHarvest: {
+    url: egyptianVillagerFemaleHarvestUrl,
+    grounded: true,
+    attachment: {
+      model: "basket",
+      targetNode: "Dummy_lefthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerFemaleChop: {
+    url: egyptianVillagerFemaleChopUrl,
+    grounded: true,
+    attachment: {
+      model: "axeHatchet",
+      targetNode: "Dummy_righthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
+  egyptianVillagerFemaleBuild: {
+    url: egyptianVillagerFemaleBuildUrl,
+    grounded: true,
+    attachment: {
+      model: "hammer",
+      targetNode: "Dummy_righthand",
+      hotspotNode: "Dummy_hotspot",
+    },
+  },
   greekBarracks: { url: greekBarracksUrl, grounded: true },
   greekHouseA: { url: greekHouseAUrl, grounded: true },
   greekHouseB: { url: greekHouseBUrl, grounded: true },

@@ -7,6 +7,7 @@ import {
   AGE_COUNT,
   GOD_ATHENA,
   GOD_POSEIDON,
+  GOD_RA,
   GOD_ZEUS,
   NO_GOD,
 } from "./ecs/progression";
@@ -100,11 +101,14 @@ describe("player registration and progression", () => {
 
     spawnUnits(world, 10, [3, 8]);
     world.playerAge[8] = AGE_CLASSICAL;
+    world.playerMajorGod[8] = GOD_RA;
     world.playerMinorGods[8 * AGE_COUNT + AGE_CLASSICAL] = GOD_ATHENA;
 
     writeSnapshot(world, snapshot, 8);
     expect(snapshot.age).toBe(AGE_CLASSICAL);
-    expect(snapshot.majorGod).toBe(GOD_ZEUS);
+    expect(snapshot.majorGod).toBe(GOD_RA);
+    expect(snapshot.playerMajorGods[8]).toBe(GOD_RA);
+    expect(snapshot.playerMajorGods[3]).toBe(GOD_ZEUS);
     expect(snapshot.minorGods[AGE_CLASSICAL]).toBe(GOD_ATHENA);
 
     writeSnapshot(world, snapshot, 3);

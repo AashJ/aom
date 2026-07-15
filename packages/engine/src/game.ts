@@ -10,6 +10,8 @@ import {
   FAVOR,
   FOOD,
   GOLD,
+  GOD_RA,
+  GOD_ZEUS,
   hashWorld,
   MAP_TILES,
   MAX_UNITS,
@@ -109,7 +111,10 @@ export interface GameHandle {
 
 export interface GameOptions {
   session?: NetSession;
+  culture?: GameCulture;
 }
+
+export type GameCulture = "egyptian" | "greek";
 
 export async function createGame(
   canvas: HTMLCanvasElement,
@@ -119,6 +124,7 @@ export async function createGame(
   let running = false;
   let loop: ReturnType<typeof createFrameLoop>;
   const session = options.session ?? null;
+  const soloMajorGod = options.culture === "egyptian" ? GOD_RA : GOD_ZEUS;
   const matchEndCbs = new Set<(winner: number) => void>();
   const selectionCbs = new Set<(sel: SelectionSummary) => void>();
   let matchEnded = false;
@@ -187,7 +193,7 @@ export async function createGame(
   const heights = world.heights;
 
   for (let ownerIndex = 0; ownerIndex < ownerIds.length; ownerIndex += 1) {
-    registerPlayer(world, ownerIds[ownerIndex]!);
+    registerPlayer(world, ownerIds[ownerIndex]!, session ? GOD_ZEUS : soloMajorGod);
   }
 
   spawnUnits(world, 3 * ownerIds.length, ownerIds);
@@ -231,7 +237,7 @@ export async function createGame(
   let fog = createFogRenderer(gpu.device);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
-  const audio = createGameAudio();
+  const audio = createGameAudio(world.playerMajorGod[selfPlayerId]!);
 
   const colorAttachment: GPURenderPassColorAttachment = {
     clearValue: { r: 0.05, g: 0.07, b: 0.1, a: 1 },

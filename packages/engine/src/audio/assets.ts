@@ -9,6 +9,7 @@ import peacefulBeholdUrl from "../assets/audio/music/BEHOLD_1.mp3";
 import peacefulPotatoesUrl from "../assets/audio/music/EATYOU_1.mp3";
 import peacefulFlavorCatsUrl from "../assets/audio/music/FLAVOR_1.mp3";
 import greekCultureUrl from "../assets/audio/music/GREEKT_1.mp3";
+import egyptianCultureUrl from "../assets/audio/music/NDNILE_1.mp3";
 import peacefulSlacksUrl from "../assets/audio/music/NEVERM_1.mp3";
 import peacefulBalladUrl from "../assets/audio/music/THEBAL_1.mp3";
 import peacefulSlaysenfliteUrl from "../assets/audio/music/_FINEL_1.mp3";
@@ -31,6 +32,19 @@ import villagerSelect1Url from "../assets/audio/units/gvms1.wav";
 import villagerSelect2Url from "../assets/audio/units/gvms2.wav";
 import villagerSelect3Url from "../assets/audio/units/gvms3.wav";
 import villagerSelect4Url from "../assets/audio/units/gvms4.wav";
+import egyptianVillagerAttackUrl from "../assets/audio/units/evma.wav";
+import egyptianVillagerForageUrl from "../assets/audio/units/evmfo.wav";
+import egyptianVillagerLumberUrl from "../assets/audio/units/evml.wav";
+import egyptianVillagerMineUrl from "../assets/audio/units/evmm.wav";
+import egyptianVillagerAcknowledge1Url from "../assets/audio/units/evmm1.wav";
+import egyptianVillagerAcknowledge2Url from "../assets/audio/units/evmm2.wav";
+import egyptianVillagerAcknowledge3Url from "../assets/audio/units/evmm3.wav";
+import egyptianVillagerAcknowledge4Url from "../assets/audio/units/evmm4.wav";
+import egyptianVillagerRepairUrl from "../assets/audio/units/evmr.wav";
+import egyptianVillagerSelect1Url from "../assets/audio/units/evms1.wav";
+import egyptianVillagerSelect2Url from "../assets/audio/units/evms2.wav";
+import egyptianVillagerSelect3Url from "../assets/audio/units/evms3.wav";
+import egyptianVillagerSelect4Url from "../assets/audio/units/evms4.wav";
 import maleDeath1Url from "../assets/audio/units/maledie1.wav";
 import maleDeath2Url from "../assets/audio/units/maledie2.wav";
 import maleDeath3Url from "../assets/audio/units/maledie3.wav";
@@ -126,9 +140,41 @@ export const AUDIO_CUES = {
   woodHit: cue([woodHit1Url, woodHit2Url, woodHit3Url, woodHit4Url, woodHit5Url], 0.75, 3),
 } as const;
 
+export const EGYPTIAN_VILLAGER_CUES = {
+  villagerAcknowledge: cue(
+    [
+      egyptianVillagerAcknowledge1Url,
+      egyptianVillagerAcknowledge2Url,
+      egyptianVillagerAcknowledge3Url,
+      egyptianVillagerAcknowledge4Url,
+    ],
+    1,
+    1,
+  ),
+  villagerAttack: cue([egyptianVillagerAttackUrl], 0.85, 1),
+  villagerForage: cue([egyptianVillagerForageUrl], 1, 1),
+  villagerLumber: cue([egyptianVillagerLumberUrl], 1, 1),
+  villagerMine: cue([egyptianVillagerMineUrl], 1, 1),
+  villagerRepair: cue([egyptianVillagerRepairUrl], 1, 1),
+  villagerSelect: cue(
+    [
+      egyptianVillagerSelect1Url,
+      egyptianVillagerSelect2Url,
+      egyptianVillagerSelect3Url,
+      egyptianVillagerSelect4Url,
+    ],
+    1,
+    1,
+  ),
+} as const;
+
+export const CULTURE_MUSIC_TRACKS = {
+  egyptian: egyptianCultureUrl,
+  greek: greekCultureUrl,
+} as const;
+
 export const MUSIC_TRACKS = {
   battle: [battleFireBrigadeUrl, battleOiThatPopsUrl, battleRotLoafUrl, battleIWishUrl],
-  culture: greekCultureUrl,
   peaceful: [
     peacefulPotatoesUrl,
     peacefulSlacksUrl,

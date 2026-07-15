@@ -13,8 +13,11 @@ import {
   AGE_ARCHAIC,
   AGE_CLASSICAL,
   GOD_ATHENA,
+  GOD_BAST,
   GOD_HADES,
   GOD_HERMES,
+  GOD_PTAH,
+  GOD_RA,
   GOD_ZEUS,
   NO_AGE,
   NO_GOD,
@@ -72,6 +75,20 @@ describe("Classical Age advance", () => {
       available: true,
       rule: CLASSICAL_AGE_ADVANCE_RULE,
       minorGods: [GOD_ATHENA, GOD_HERMES],
+    });
+
+    expect(
+      getAgeAdvanceAvailability({
+        age: AGE_ARCHAIC,
+        majorGod: GOD_RA,
+        activeTargetAge: NO_AGE,
+        resources: [CLASSICAL_AGE_COST_FOOD, 0, 0, 0],
+        hasCompletedBuilding: () => true,
+      }),
+    ).toEqual({
+      available: true,
+      rule: CLASSICAL_AGE_ADVANCE_RULE,
+      minorGods: [GOD_BAST, GOD_PTAH],
     });
   });
 

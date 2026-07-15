@@ -33,6 +33,7 @@ export interface RenderSnapshot {
   stockpiles: Uint32Array;
   age: number;
   majorGod: number;
+  playerMajorGods: Uint8Array;
   minorGods: Uint8Array;
   ageAdvanceTarget: number;
   ageAdvanceGod: number;
@@ -70,6 +71,7 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
+    playerMajorGods: new Uint8Array(256).fill(NO_GOD),
     minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
     ageAdvanceTarget: NO_AGE,
     ageAdvanceGod: NO_GOD,
@@ -88,6 +90,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.winner = world.winner;
   // Full copy each write: 4 KB at 20 Hz is negligible.
   out.stockpiles.set(world.stockpiles);
+  out.playerMajorGods.set(world.playerMajorGod);
   out.completedBuildings.fill(0);
   const viewerSlot = world.playerSlotById[viewerId]!;
   out.ageAdvanceTarget = NO_AGE;

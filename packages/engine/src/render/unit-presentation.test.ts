@@ -1,5 +1,7 @@
 import {
   GATHER_COOLDOWN_TICKS,
+  GOD_RA,
+  GOD_ZEUS,
   MODE_BUILDING,
   MODE_GATHERING,
   TYPE_BARRACKS,
@@ -90,22 +92,29 @@ describe("unit presentation", () => {
     expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("villagerFemaleBuild");
   });
 
-  test("uses the Classic house construction stages before the completed variation", () => {
-    const house = UNIT_PRESENTATIONS[TYPE_HOUSE];
-    if (house?.kind !== "sprite") throw new Error("house must use a static sprite");
+  test("selects Egyptian villagers and architecture from the owner's major god", () => {
+    const snapshot = createSnapshot(3);
+    snapshot.count = 3;
+    snapshot.playerMajorGods[0] = GOD_RA;
+    snapshot.majorGod = GOD_RA;
+    snapshot.owner.fill(0);
+    snapshot.unitType[0] = TYPE_VILLAGER;
+    snapshot.unitType[1] = TYPE_HOUSE;
+    snapshot.unitType[2] = TYPE_TOWN_CENTER;
 
-    expect(resolveStaticSpritePresentation(house, 4, 1, 0)).toEqual({ frame: 3, buildFrac: 1 });
-    expect(resolveStaticSpritePresentation(house, 4, 1, 0.329).frame).toBe(3);
-    expect(resolveStaticSpritePresentation(house, 4, 1, 0.33).frame).toBe(4);
-    expect(resolveStaticSpritePresentation(house, 4, 1, 0.659).frame).toBe(4);
-    expect(resolveStaticSpritePresentation(house, 4, 1, 0.66).frame).toBe(5);
-    expect(resolveStaticSpritePresentation(house, 4, 1, 0.999).frame).toBe(5);
-    expect(resolveStaticSpritePresentation(house, 4, 1, 1)).toEqual({ frame: 1, buildFrac: 1 });
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("egyptianVillagerMaleIdle");
+    expect(resolveModelPresentation(snapshot, 1, false)?.model).toBe("egyptianHouse");
+    expect(resolveModelPresentation(snapshot, 2, false)?.model).toBe("egyptianTownCenter");
+    expect(resolveStaticSpriteUnitPresentation(snapshot, 1)).toBeNull();
+    expect(resolveModelGhostPresentation(snapshot, TYPE_HOUSE)?.model).toBe("egyptianHouse");
+    expect(resolveStaticSpriteGhostPresentation(snapshot, TYPE_HOUSE)).toBeNull();
   });
 
   test("selects original Greek building models and stable house variations", () => {
     const snapshot = createSnapshot(6);
     snapshot.count = 6;
+    snapshot.playerMajorGods[0] = GOD_ZEUS;
+    snapshot.majorGod = GOD_ZEUS;
     snapshot.owner.fill(0);
     snapshot.unitType[0] = TYPE_TOWN_CENTER;
     snapshot.unitType[1] = TYPE_HOUSE;
@@ -135,12 +144,12 @@ describe("unit presentation", () => {
     expect(resolveModelGhostPresentation(snapshot, TYPE_HOUSE)?.model).toBe("greekHouseA");
     expect(resolveModelGhostPresentation(snapshot, TYPE_BARRACKS)?.model).toBe("greekBarracks");
     expect(resolveModelGhostPresentation(snapshot, TYPE_TEMPLE)?.model).toBe("greekTemple");
-    expect(resolveStaticSpriteGhostPresentation(snapshot, TYPE_HOUSE)).toBeNull();
   });
 
   test("uses original-scale Greek construction models across house build progress", () => {
     const snapshot = createSnapshot(1);
     snapshot.count = 1;
+    snapshot.playerMajorGods[0] = GOD_ZEUS;
     snapshot.owner[0] = 0;
     snapshot.unitType[0] = TYPE_HOUSE;
     snapshot.ids[0] = packId(0, 1);
@@ -154,6 +163,19 @@ describe("unit presentation", () => {
     expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekHouseConstructionC");
     snapshot.buildProgress[0] = buildTicks;
     expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekHouseA");
+  });
+
+  test("uses the Classic house construction stages before the completed variation", () => {
+    const house = UNIT_PRESENTATIONS[TYPE_HOUSE];
+    if (house?.kind !== "sprite") throw new Error("house must use a static sprite");
+
+    expect(resolveStaticSpritePresentation(house, 4, 1, 0)).toEqual({ frame: 3, buildFrac: 1 });
+    expect(resolveStaticSpritePresentation(house, 4, 1, 0.329).frame).toBe(3);
+    expect(resolveStaticSpritePresentation(house, 4, 1, 0.33).frame).toBe(4);
+    expect(resolveStaticSpritePresentation(house, 4, 1, 0.659).frame).toBe(4);
+    expect(resolveStaticSpritePresentation(house, 4, 1, 0.66).frame).toBe(5);
+    expect(resolveStaticSpritePresentation(house, 4, 1, 0.999).frame).toBe(5);
+    expect(resolveStaticSpritePresentation(house, 4, 1, 1)).toEqual({ frame: 1, buildFrac: 1 });
   });
 
   test("drives gather animations from the action cooldown", () => {

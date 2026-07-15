@@ -15,6 +15,7 @@ export { initGPU, type DeviceLostCallback, type GpuContext } from "./gpu/device"
 export { observeCanvasSize, type CanvasResizeCallback } from "./gpu/surface";
 export {
   createGame,
+  type GameCulture,
   type GameHandle,
   type GameOptions,
   type SelectionSummary,
@@ -37,7 +38,10 @@ export {
   getTypeAvailability,
   GOLD,
   GOD_ATHENA,
+  GOD_BAST,
   GOD_HERMES,
+  GOD_PTAH,
+  GOD_RA,
   GOD_ZEUS,
   MATCH_DRAW,
   NO_AGE,

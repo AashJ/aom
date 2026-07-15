@@ -1,5 +1,6 @@
 import {
   GATHER_COOLDOWN_TICKS,
+  GOD_RA,
   idIndex,
   MODE_BUILDING,
   MODE_GATHERING,
@@ -197,11 +198,32 @@ const VILLAGER_PRESENTATIONS = {
   },
 } satisfies Record<VillagerSex, Record<VillagerAction, ResolvedModelPresentation>>;
 
+const EGYPTIAN_VILLAGER_PRESENTATIONS = {
+  male: {
+    idle: looping("egyptianVillagerMaleIdle"),
+    walk: looping("egyptianVillagerMaleWalk"),
+    mine: actionCycle("egyptianVillagerMaleMine"),
+    harvest: actionCycle("egyptianVillagerMaleHarvest"),
+    chop: actionCycle("egyptianVillagerMaleChop"),
+    build: actionCycle("egyptianVillagerMaleBuild"),
+  },
+  female: {
+    idle: looping("egyptianVillagerFemaleIdle"),
+    walk: looping("egyptianVillagerFemaleWalk"),
+    mine: actionCycle("egyptianVillagerFemaleMine"),
+    harvest: actionCycle("egyptianVillagerFemaleHarvest"),
+    chop: actionCycle("egyptianVillagerFemaleChop"),
+    build: actionCycle("egyptianVillagerFemaleBuild"),
+  },
+} satisfies Record<VillagerSex, Record<VillagerAction, ResolvedModelPresentation>>;
+
 const MILITIA_PRESENTATIONS = {
   idle: looping("militiaIdle"),
   walk: looping("militiaWalk"),
 };
 
+const EGYPTIAN_HOUSE_PRESENTATION = looping("egyptianHouse");
+const EGYPTIAN_TOWN_CENTER_PRESENTATION = looping("egyptianTownCenter");
 const GREEK_BARRACKS_PRESENTATION = looping("greekBarracks");
 const GREEK_HOUSE_PRESENTATIONS = [
   looping("greekHouseA"),
@@ -235,13 +257,19 @@ export function resolveModelPresentation(
   moved: boolean,
 ): ResolvedModelPresentation | null {
   const type = snapshot.unitType[index]!;
+  const isEgyptian = snapshot.playerMajorGods[snapshot.owner[index]!] === GOD_RA;
+
   if (type === TYPE_VILLAGER) {
     const sex: VillagerSex = (idIndex(snapshot.ids[index]!) & 1) === 0 ? "male" : "female";
-    return VILLAGER_PRESENTATIONS[sex][villagerAction(snapshot, index, moved)];
+    const presentations = isEgyptian ? EGYPTIAN_VILLAGER_PRESENTATIONS : VILLAGER_PRESENTATIONS;
+    return presentations[sex][villagerAction(snapshot, index, moved)];
   }
 
-  if (type === TYPE_TOWN_CENTER) return GREEK_TOWN_CENTER_PRESENTATION;
+  if (type === TYPE_TOWN_CENTER) {
+    return isEgyptian ? EGYPTIAN_TOWN_CENTER_PRESENTATION : GREEK_TOWN_CENTER_PRESENTATION;
+  }
   if (type === TYPE_HOUSE) {
+    if (isEgyptian) return EGYPTIAN_HOUSE_PRESENTATION;
     const buildTicks = UNIT_TYPES[TYPE_HOUSE]!.buildTicks;
     const buildProgress = snapshot.buildProgress[index]!;
     if (buildProgress < buildTicks) {
@@ -253,21 +281,25 @@ export function resolveModelPresentation(
       idIndex(snapshot.ids[index]!) % GREEK_HOUSE_PRESENTATIONS.length
     ]!;
   }
-  if (type === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
-  if (type === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
-
+  if (!isEgyptian && type === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
+  if (!isEgyptian && type === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
   if (type === TYPE_MILITIA) return moved ? MILITIA_PRESENTATIONS.walk : MILITIA_PRESENTATIONS.idle;
   return null;
 }
 
 export function resolveModelGhostPresentation(
-  _snapshot: RenderSnapshot,
+  snapshot: RenderSnapshot,
   unitType: number,
 ): ResolvedModelPresentation | null {
-  if (unitType === TYPE_TOWN_CENTER) return GREEK_TOWN_CENTER_PRESENTATION;
-  if (unitType === TYPE_HOUSE) return GREEK_HOUSE_PRESENTATIONS[0];
-  if (unitType === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
-  if (unitType === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
+  const isEgyptian = snapshot.majorGod === GOD_RA;
+  if (unitType === TYPE_TOWN_CENTER) {
+    return isEgyptian ? EGYPTIAN_TOWN_CENTER_PRESENTATION : GREEK_TOWN_CENTER_PRESENTATION;
+  }
+  if (unitType === TYPE_HOUSE) {
+    return isEgyptian ? EGYPTIAN_HOUSE_PRESENTATION : GREEK_HOUSE_PRESENTATIONS[0];
+  }
+  if (!isEgyptian && unitType === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
+  if (!isEgyptian && unitType === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
   return null;
 }
 
@@ -275,18 +307,20 @@ export function resolveStaticSpriteUnitPresentation(
   snapshot: RenderSnapshot,
   index: number,
 ): StaticSpritePresentation | null {
-  if (resolveModelPresentation(snapshot, index, false) !== null) return null;
   const presentation = UNIT_PRESENTATIONS[snapshot.unitType[index]!];
-  return presentation?.kind === "sprite" ? presentation : null;
+
+  if (!presentation || presentation.kind !== "sprite") return null;
+  return resolveModelPresentation(snapshot, index, false) ? null : presentation;
 }
 
 export function resolveStaticSpriteGhostPresentation(
   snapshot: RenderSnapshot,
   unitType: number,
 ): StaticSpritePresentation | null {
-  if (resolveModelGhostPresentation(snapshot, unitType) !== null) return null;
   const presentation = UNIT_PRESENTATIONS[unitType];
-  return presentation?.kind === "sprite" ? presentation : null;
+
+  if (!presentation || presentation.kind !== "sprite") return null;
+  return resolveModelGhostPresentation(snapshot, unitType) ? null : presentation;
 }
 
 const SIM_TICK_HZ = 20;

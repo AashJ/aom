@@ -7,7 +7,9 @@ import {
   getTypeAvailability,
   GOLD,
   GOD_ATHENA,
+  GOD_BAST,
   GOD_HERMES,
+  GOD_PTAH,
   NO_AGE,
   TYPE_BARRACKS,
   TYPE_HOUSE,
@@ -358,6 +360,10 @@ function minorGodPresentation(minorGod: number): { name: string; detail: string 
       return { name: "Athena", detail: "Restoration · Minotaur" };
     case GOD_HERMES:
       return { name: "Hermes", detail: "Ceasefire · Centaur" };
+    case GOD_BAST:
+      return { name: "Bast", detail: "Eclipse · Sphinx" };
+    case GOD_PTAH:
+      return { name: "Ptah", detail: "Shifting Sands · Wadjet" };
     default:
       return { name: `God ${minorGod}`, detail: "Minor god" };
   }

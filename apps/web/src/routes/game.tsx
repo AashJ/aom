@@ -9,6 +9,7 @@ import {
   createGame,
   isWebGPUSupported,
   WebGPUUnsupportedError,
+  type GameCulture,
   type GameHandle,
   type NetSession,
   type PlayerInfo,
@@ -32,6 +33,7 @@ interface NetState {
 }
 
 interface GameSearch {
+  culture?: GameCulture;
   room?: string;
   name?: string;
 }
@@ -48,6 +50,8 @@ const initialNetState: NetState = {
 
 export const Route = createFileRoute("/game")({
   validateSearch: (search): GameSearch => ({
+    culture:
+      search.culture === "greek" || search.culture === "egyptian" ? search.culture : undefined,
     room: typeof search.room === "string" ? search.room : undefined,
     name: typeof search.name === "string" ? search.name : undefined,
   }),
@@ -55,7 +59,7 @@ export const Route = createFileRoute("/game")({
 });
 
 function GameComponent() {
-  const { room, name } = Route.useSearch();
+  const { culture, room, name } = Route.useSearch();
   const playerName = normalizePlayerName(name);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<NetSession | null>(null);
@@ -85,7 +89,7 @@ function GameComponent() {
     let unsubEnd: (() => void) | null = null;
     let cancelled = false;
 
-    void createGame(canvas)
+    void createGame(canvas, { culture: culture ?? "greek" })
       .then((game) => {
         if (cancelled) {
           game.dispose();
@@ -109,7 +113,7 @@ function GameComponent() {
       unsubEnd?.();
       handle?.dispose();
     };
-  }, [room]);
+  }, [culture, room]);
 
   useEffect(() => {
     if (room === undefined || playerName === null) {

@@ -3,7 +3,10 @@ import {
   AGE_ARCHAIC,
   AGE_CLASSICAL,
   GOD_ATHENA,
+  GOD_BAST,
   GOD_HERMES,
+  GOD_PTAH,
+  GOD_RA,
   GOD_ZEUS,
   NO_AGE,
 } from "./progression";
@@ -26,6 +29,8 @@ export interface AgeAdvanceRule {
 }
 
 const ZEUS_CLASSICAL_MINOR_GODS = [GOD_ATHENA, GOD_HERMES] as const;
+const RA_CLASSICAL_MINOR_GODS = [GOD_BAST, GOD_PTAH] as const;
+
 export const CLASSICAL_AGE_ADVANCE_RULE = {
   researchId: RESEARCH_CLASSICAL_AGE,
   fromAge: AGE_ARCHAIC,
@@ -37,6 +42,7 @@ export const CLASSICAL_AGE_ADVANCE_RULE = {
   durationTicks: 1_200,
   minorGodsByMajorGod: {
     [GOD_ZEUS]: ZEUS_CLASSICAL_MINOR_GODS,
+    [GOD_RA]: RA_CLASSICAL_MINOR_GODS,
   },
 } as const satisfies AgeAdvanceRule;
 
