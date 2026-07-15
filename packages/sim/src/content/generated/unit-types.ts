@@ -17,7 +17,15 @@ import { definition as egyptianTemple } from "../unit-types/egyptian/temple";
 import { definition as egyptianMigdolStronghold } from "../unit-types/egyptian/migdol-stronghold";
 import { definition as greekTemple } from "../unit-types/greek/temple";
 import { definition as greekHoplite } from "../unit-types/greek/hoplite";
+import { definition as greekHypaspist } from "../unit-types/greek/hypaspist";
+import { definition as greekHippikon } from "../unit-types/greek/hippikon";
+import { definition as greekProdromos } from "../unit-types/greek/prodromos";
+import { definition as greekMyrmidon } from "../unit-types/greek/myrmidon";
 import { definition as egyptianSpearman } from "../unit-types/egyptian/spearman";
+import { definition as egyptianAxeman } from "../unit-types/egyptian/axeman";
+import { definition as egyptianCamelry } from "../unit-types/egyptian/camelry";
+import { definition as egyptianWarElephant } from "../unit-types/egyptian/war-elephant";
+import { definition as greekHetairoi } from "../unit-types/greek/hetairoi";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
 
 export const UNIT_TYPE_DEFINITIONS = [
@@ -39,7 +47,15 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianMigdolStronghold,
   greekTemple,
   greekHoplite,
+  greekHypaspist,
+  greekHippikon,
+  greekProdromos,
+  greekMyrmidon,
   egyptianSpearman,
+  egyptianAxeman,
+  egyptianCamelry,
+  egyptianWarElephant,
+  greekHetairoi,
 ] as const satisfies readonly UnitTypeStats[];
 
 const unitTypes: UnitTypeStats[] = [];

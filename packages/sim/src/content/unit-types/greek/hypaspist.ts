@@ -1,0 +1,53 @@
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GREEK_MILITARY_ACADEMY, TYPE_HYPASPIST } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  CULTURE_NORSE,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_HERO,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_INFANTRY,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_HYPASPIST,
+  key: "greek-hypaspist",
+  label: "Hypaspist",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_HUMAN | UNIT_CLASS_INFANTRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+  maxHp: 95,
+  lineOfSight: 16,
+  movementSpeed: 4.3,
+  armor: [0.35, 0.1, 0.99],
+  meleeAttack: {
+    damage: [5, 0, 0],
+    range: 0.3,
+    aggroRange: 16,
+    cooldownTicks: 30,
+    bonuses: [
+      { requiredClasses: UNIT_CLASS_INFANTRY, multiplier: 4.25 },
+      { requiredClasses: UNIT_CLASS_HERO, requiredCulture: CULTURE_NORSE, multiplier: 4.25 },
+    ],
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.49,
+  footprint: 0,
+  costFood: 60,
+  costWood: 0,
+  costGold: 25,
+  costFavor: 0,
+  buildTicks: 9 * 20,
+  populationCost: 2,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: [TYPE_GREEK_MILITARY_ACADEMY],
+  trainedAt: [{ type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 1 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

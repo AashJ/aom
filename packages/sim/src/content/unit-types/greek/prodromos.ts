@@ -1,0 +1,48 @@
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GREEK_STABLE, TYPE_PRODROMOS } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_CAVALRY,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_PRODROMOS,
+  key: "greek-prodromos",
+  label: "Prodromos",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_HUMAN | UNIT_CLASS_CAVALRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+  maxHp: 120,
+  lineOfSight: 16,
+  movementSpeed: 6,
+  armor: [0.2, 0.1, 0.99],
+  meleeAttack: {
+    damage: [6, 0, 0],
+    range: 0.3,
+    aggroRange: 16,
+    cooldownTicks: 30,
+    bonuses: [{ requiredClasses: UNIT_CLASS_CAVALRY, multiplier: 3 }],
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.7,
+  footprint: 0,
+  costFood: 70,
+  costWood: 0,
+  costGold: 40,
+  costFavor: 0,
+  buildTicks: 10 * 20,
+  populationCost: 3,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: [TYPE_GREEK_STABLE],
+  trainedAt: [{ type: TYPE_GREEK_STABLE, commandSlot: 1 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

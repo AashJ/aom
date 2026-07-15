@@ -1,52 +1,46 @@
 import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
-import { TYPE_EGYPTIAN_BARRACKS, TYPE_SPEARMAN } from "../../unit-type-ids";
+import { TYPE_AXEMAN, TYPE_EGYPTIAN_BARRACKS } from "../../unit-type-ids";
 import {
   CULTURE_EGYPTIAN,
+  CULTURE_NORSE,
   NO_TYPE_RELATIONSHIPS,
-  UNIT_CLASS_CAVALRY,
+  UNIT_CLASS_HERO,
   UNIT_CLASS_HUMAN,
   UNIT_CLASS_INFANTRY,
   UNIT_CLASS_MELEE,
   UNIT_CLASS_MILITARY,
-  UNIT_CLASS_NON_GREEK_UNIT,
-  UNIT_CLASS_SIEGE,
   type UnitTypeStats,
 } from "../../unit-type-schema";
 
 export const definition = {
-  id: TYPE_SPEARMAN,
-  key: "egyptian-spearman",
-  label: "Spearman",
+  id: TYPE_AXEMAN,
+  key: "egyptian-axeman",
+  label: "Axeman",
   culture: CULTURE_EGYPTIAN,
-  classes:
-    UNIT_CLASS_HUMAN |
-    UNIT_CLASS_INFANTRY |
-    UNIT_CLASS_MILITARY |
-    UNIT_CLASS_MELEE |
-    UNIT_CLASS_NON_GREEK_UNIT,
+  classes: UNIT_CLASS_HUMAN | UNIT_CLASS_INFANTRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
   maxHp: 70,
   lineOfSight: 16,
-  movementSpeed: 5,
-  armor: [0.4, 0.2, 0.99],
+  movementSpeed: 4.3,
+  armor: [0.4, 0.05, 0.99],
   meleeAttack: {
-    damage: [7, 0, 0],
+    damage: [5, 0, 0],
     range: 0.3,
     aggroRange: 16,
     cooldownTicks: 30,
     bonuses: [
-      { requiredClasses: UNIT_CLASS_CAVALRY, multiplier: 1.1 },
-      { requiredClasses: UNIT_CLASS_SIEGE, multiplier: 2 },
+      { requiredClasses: UNIT_CLASS_INFANTRY, multiplier: 4 },
+      { requiredClasses: UNIT_CLASS_HERO, requiredCulture: CULTURE_NORSE, multiplier: 4 },
     ],
   },
   isStatic: false,
   resource: -1,
   bodyRadius: 0.49,
   footprint: 0,
-  costFood: 50,
+  costFood: 40,
   costWood: 0,
-  costGold: 20,
+  costGold: 30,
   costFavor: 0,
-  buildTicks: 9 * 20,
+  buildTicks: 10 * 20,
   populationCost: 2,
   popBonus: 0,
   trainExitOffset: 0,
@@ -54,6 +48,6 @@ export const definition = {
   requiredAge: AGE_CLASSICAL,
   requiredGod: NO_GOD,
   prerequisiteBuildings: [TYPE_EGYPTIAN_BARRACKS],
-  trainedAt: [{ type: TYPE_EGYPTIAN_BARRACKS, commandSlot: 0 }],
+  trainedAt: [{ type: TYPE_EGYPTIAN_BARRACKS, commandSlot: 1 }],
   builtBy: NO_TYPE_RELATIONSHIPS,
 } as const satisfies UnitTypeStats;

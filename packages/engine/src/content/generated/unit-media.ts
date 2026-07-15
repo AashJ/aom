@@ -17,7 +17,15 @@ import { definition as egyptianTemple } from "../unit-media/egyptian/temple";
 import { definition as egyptianMigdolStronghold } from "../unit-media/egyptian/migdol-stronghold";
 import { definition as greekTemple } from "../unit-media/greek/temple";
 import { definition as greekHoplite } from "../unit-media/greek/hoplite";
+import { definition as greekHypaspist } from "../unit-media/greek/hypaspist";
+import { definition as greekHippikon } from "../unit-media/greek/hippikon";
+import { definition as greekProdromos } from "../unit-media/greek/prodromos";
+import { definition as greekMyrmidon } from "../unit-media/greek/myrmidon";
 import { definition as egyptianSpearman } from "../unit-media/egyptian/spearman";
+import { definition as egyptianAxeman } from "../unit-media/egyptian/axeman";
+import { definition as egyptianCamelry } from "../unit-media/egyptian/camelry";
+import { definition as egyptianWarElephant } from "../unit-media/egyptian/war-elephant";
+import { definition as greekHetairoi } from "../unit-media/greek/hetairoi";
 import type {
   IconConfig,
   ModelAssetDefinition,
@@ -49,7 +57,15 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianMigdolStronghold,
   greekTemple,
   greekHoplite,
+  greekHypaspist,
+  greekHippikon,
+  greekProdromos,
+  greekMyrmidon,
   egyptianSpearman,
+  egyptianAxeman,
+  egyptianCamelry,
+  egyptianWarElephant,
+  greekHetairoi,
 ] as const satisfies readonly UnitMediaDefinition[];
 
 const unitMedia: UnitMediaDefinition[] = [];

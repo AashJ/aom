@@ -45,8 +45,8 @@ export interface MeleeAttack {
 }
 
 export interface DamageBonus {
-  // Every bit must be present. Culture gates cover Classic exceptions such as
-  // Myrmidons without inventing a second attack shape.
+  // Every bit must be present. Target classes and optional culture gates cover
+  // Classic logical target sets without inventing a second attack shape.
   readonly requiredClasses: number;
   readonly requiredCulture?: number;
   readonly excludedCulture?: number;
@@ -61,6 +61,7 @@ export interface TypeCommandRelationship {
 export const CULTURE_SHARED = 0;
 export const CULTURE_GREEK = 1;
 export const CULTURE_EGYPTIAN = 2;
+export const CULTURE_NORSE = 3;
 
 export const UNIT_CLASS_WORKER = 1 << 0;
 export const UNIT_CLASS_HUMAN = 1 << 1;
@@ -72,6 +73,11 @@ export const UNIT_CLASS_BUILDING = 1 << 6;
 export const UNIT_CLASS_RESOURCE = 1 << 7;
 export const UNIT_CLASS_TEMPLE = 1 << 8;
 export const UNIT_CLASS_SIEGE = 1 << 9;
+export const UNIT_CLASS_ARCHER = 1 << 10;
+export const UNIT_CLASS_HERO = 1 << 11;
+// Mirrors Classic's curated LogicalTypeNonGreekUnit membership. This is not
+// derivable from culture: counter-infantry and civilian exceptions exist.
+export const UNIT_CLASS_NON_GREEK_UNIT = 1 << 12;
 
 export const DAMAGE_HACK = 0;
 export const DAMAGE_PIERCE = 1;

@@ -10,7 +10,6 @@ import {
 } from "../../unit-type-ids";
 import {
   CULTURE_GREEK,
-  NO_PREREQUISITE_BUILDINGS,
   NO_TYPE_RELATIONSHIPS,
   UNIT_CLASS_BUILDING,
   UNIT_CLASS_CAVALRY,
@@ -54,7 +53,7 @@ describe("Greek Hetairoi unit pack", () => {
       isDropsite: false,
       requiredAge: AGE_MYTHIC,
       requiredGod: GOD_POSEIDON,
-      prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+      prerequisiteBuildings: [TYPE_GREEK_FORTRESS],
       trainedAt: [
         { type: TYPE_GREEK_STABLE, commandSlot: 2 },
         { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
