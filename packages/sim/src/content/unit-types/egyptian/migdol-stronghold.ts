@@ -1,0 +1,40 @@
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_MIGDOL_STRONGHOLD } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_MIGDOL_STRONGHOLD,
+  key: "egyptian-migdol-stronghold",
+  label: "Migdol Stronghold",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 2600,
+  lineOfSight: 30,
+  movementSpeed: 0,
+  armor: [0.3, 0.96, 0.05],
+  meleeAttack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 2.9,
+  footprint: 4,
+  costFood: 0,
+  costWood: 0,
+  costGold: 400,
+  costFavor: 10,
+  buildTicks: 130 * 20,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 6.5,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_EGYPTIAN_LABORER, commandSlot: 4 }],
+} as const satisfies UnitTypeStats;

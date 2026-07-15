@@ -11,7 +11,10 @@ import { definition as greekHouse } from "../unit-media/greek/house";
 import { definition as egyptianHouse } from "../unit-media/egyptian/house";
 import { definition as greekMilitaryAcademy } from "../unit-media/greek/military-academy";
 import { definition as egyptianBarracks } from "../unit-media/egyptian/barracks";
+import { definition as greekStable } from "../unit-media/greek/stable";
+import { definition as greekFortress } from "../unit-media/greek/fortress";
 import { definition as egyptianTemple } from "../unit-media/egyptian/temple";
+import { definition as egyptianMigdolStronghold } from "../unit-media/egyptian/migdol-stronghold";
 import { definition as greekTemple } from "../unit-media/greek/temple";
 import { definition as greekHoplite } from "../unit-media/greek/hoplite";
 import { definition as egyptianSpearman } from "../unit-media/egyptian/spearman";
@@ -40,7 +43,10 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianHouse,
   greekMilitaryAcademy,
   egyptianBarracks,
+  greekStable,
+  greekFortress,
   egyptianTemple,
+  egyptianMigdolStronghold,
   greekTemple,
   greekHoplite,
   egyptianSpearman,

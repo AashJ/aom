@@ -1,0 +1,40 @@
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GREEK_FORTRESS, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_GREEK_FORTRESS,
+  key: "greek-fortress",
+  label: "Fortress",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 2100,
+  lineOfSight: 30,
+  movementSpeed: 0,
+  armor: [0.3, 0.96, 0.05],
+  meleeAttack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 2.9,
+  footprint: 4,
+  costFood: 0,
+  costWood: 300,
+  costGold: 300,
+  costFavor: 10,
+  buildTicks: 100 * 20,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 6.5,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_GREEK_VILLAGER, commandSlot: 5 }],
+} as const satisfies UnitTypeStats;

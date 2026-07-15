@@ -11,7 +11,10 @@ import { definition as greekHouse } from "../unit-types/greek/house";
 import { definition as egyptianHouse } from "../unit-types/egyptian/house";
 import { definition as greekMilitaryAcademy } from "../unit-types/greek/military-academy";
 import { definition as egyptianBarracks } from "../unit-types/egyptian/barracks";
+import { definition as greekStable } from "../unit-types/greek/stable";
+import { definition as greekFortress } from "../unit-types/greek/fortress";
 import { definition as egyptianTemple } from "../unit-types/egyptian/temple";
+import { definition as egyptianMigdolStronghold } from "../unit-types/egyptian/migdol-stronghold";
 import { definition as greekTemple } from "../unit-types/greek/temple";
 import { definition as greekHoplite } from "../unit-types/greek/hoplite";
 import { definition as egyptianSpearman } from "../unit-types/egyptian/spearman";
@@ -30,7 +33,10 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianHouse,
   greekMilitaryAcademy,
   egyptianBarracks,
+  greekStable,
+  greekFortress,
   egyptianTemple,
+  egyptianMigdolStronghold,
   greekTemple,
   greekHoplite,
   egyptianSpearman,

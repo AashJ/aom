@@ -14,10 +14,12 @@ import peacefulSlacksUrl from "../assets/audio/music/NEVERM_1.mp3";
 import peacefulBalladUrl from "../assets/audio/music/THEBAL_1.mp3";
 import peacefulSlaysenfliteUrl from "../assets/audio/music/_FINEL_1.mp3";
 import barracksUrl from "../assets/audio/ui/barracks.wav";
+import fortressUrl from "../assets/audio/ui/fortress.wav";
 import houseUrl from "../assets/audio/ui/house.wav";
 import interfaceClickUrl from "../assets/audio/ui/interface_click.wav";
 import loseUrl from "../assets/audio/ui/lose.wav";
 import settlementUrl from "../assets/audio/ui/settlement.wav";
+import stableUrl from "../assets/audio/ui/stable.wav";
 import winUrl from "../assets/audio/ui/win.wav";
 import villagerAttackUrl from "../assets/audio/units/gvma.wav";
 import villagerForageUrl from "../assets/audio/units/gvmfo.wav";
@@ -103,6 +105,7 @@ export const AUDIO_CUES = {
   defeat: cue([loseUrl], 1, 1),
   fleshHit: cue([fleshHit1Url, fleshHit2Url, fleshHit3Url, fleshHit4Url], 0.4, 1),
   forage: cue([forage1Url, forage2Url], 0.15),
+  fortress: cue([fortressUrl], 1, 1),
   house: cue([houseUrl], 1, 1),
   interfaceClick: cue([interfaceClickUrl], 1, 2),
   maleDeath: cue(
@@ -113,6 +116,7 @@ export const AUDIO_CUES = {
   militaryCreate: cue([militaryCreateUrl], 0.65, 1),
   mine: cue([mine1Url, mine2Url, mine3Url], 0.5),
   settlement: cue([settlementUrl], 1, 1),
+  stable: cue([stableUrl], 1, 1),
   swordSwing: cue([swing1Url, swing2Url, swing3Url], 0.7),
   treeFall: cue([treeFall1Url, treeFall2Url, treeFall3Url], 0.65, 1),
   victory: cue([winUrl], 1, 1),
