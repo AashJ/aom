@@ -24,6 +24,7 @@ export const definition = {
   isStatic: true,
   resource: -1,
   bodyRadius: 3.2,
+  collidesWithProjectiles: true,
   footprint: 5,
   costFood: 0,
   costWood: 150,

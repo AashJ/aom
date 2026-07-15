@@ -141,6 +141,10 @@ for (const entry of entries) {
   const definition = entry.definition;
   const attack = definition.attack;
 
+  if (typeof definition.collidesWithProjectiles !== "boolean") {
+    throw new Error(`${definition.key} has no authored projectile-collision policy.`);
+  }
+
   if (attack !== null) {
     if (
       !Number.isFinite(attack.range) ||

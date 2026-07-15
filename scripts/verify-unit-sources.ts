@@ -82,6 +82,10 @@ function numberValue(node: XmbNode, childName: string): number {
   return parsed;
 }
 
+function hasFlag(node: XmbNode, flag: string): boolean {
+  return childValues(node, "flag").some((candidate) => candidate.value === flag);
+}
+
 function trialClasses(unit: XmbNode): number {
   const types = new Set(childValues(unit, "unittype").map((node) => node.value));
   let classes = 0;
@@ -193,6 +197,7 @@ function trialComparableValues(
     "meleeAttack.range": attack.range,
     "meleeAttack.bonuses": attack.bonuses,
     bodyRadius: numberValue(unit, "obstructionradiusx"),
+    collidesWithProjectiles: hasFlag(unit, "CollidesWithProjectiles"),
     cost: [
       costByResource.get("Food") ?? 0,
       costByResource.get("Wood") ?? 0,

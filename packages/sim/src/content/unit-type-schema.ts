@@ -16,6 +16,9 @@ export interface UnitTypeStats {
   readonly resource: number;
   // Melee reach measures to the target's surface, not center.
   readonly bodyRadius: number;
+  // Mirrors the authored CollidesWithProjectiles flag. Body radius alone does
+  // not make resources or other explicitly excluded entities projectile-solid.
+  readonly collidesWithProjectiles: boolean;
   // Tiles per side, square; 0 = no footprint.
   readonly footprint: number;
   readonly costFood: number;

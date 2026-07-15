@@ -36,6 +36,7 @@ describe("Greek Prodromos unit pack", () => {
       isStatic: false,
       resource: -1,
       bodyRadius: 0.7,
+      collidesWithProjectiles: true,
       footprint: 0,
       costFood: 70,
       costWood: 0,

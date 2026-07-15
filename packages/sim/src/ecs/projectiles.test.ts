@@ -41,18 +41,18 @@ function projectileWorld(attack = projectileAttack) {
   return { world, unitTypes, sourceId, targetId };
 }
 
-function queueTestShot(
-  state: ReturnType<typeof projectileWorld>,
-  attack: ProjectileAttack = projectileAttack,
-): void {
-  queueProjectile(state.world.projectiles, {
-    sourceId: state.sourceId,
-    sourceType: TYPE_HOPLITE,
-    owner: 0,
-    targetId: state.targetId,
-    attackTick: state.world.tick,
-    attack,
-  });
+function queueTestShot(state: ReturnType<typeof projectileWorld>): void {
+  queueProjectile(
+    state.world.projectiles,
+    {
+      sourceId: state.sourceId,
+      sourceType: TYPE_HOPLITE,
+      owner: 0,
+      targetId: state.targetId,
+      attackTick: state.world.tick,
+    },
+    state.unitTypes,
+  );
 }
 
 function applyDamage(
@@ -63,29 +63,46 @@ function applyDamage(
   world.hp[targetIndex] = Math.max(0, world.hp[targetIndex]! - damage);
 }
 
+function advanceProjectilesTo(state: ReturnType<typeof projectileWorld>, targetTick: number): void {
+  if (targetTick < state.world.tick) {
+    throw new RangeError("Projectile tests cannot move simulation time backward.");
+  }
+  while (state.world.tick < targetTick) {
+    state.world.tick += 1;
+    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+  }
+}
+
 describe("deterministic projectile lifecycle", () => {
-  test("queues an animation-timed release and applies damage only at impact", () => {
+  test("queues only the canonical projectile attack owned by the source type", () => {
+    const state = projectileWorld();
+    state.unitTypes[TYPE_HOPLITE] = UNIT_TYPES[TYPE_HOPLITE];
+
+    expect(() => queueTestShot(state)).toThrow(
+      "Projectile source type has no canonical projectile attack.",
+    );
+    expect(state.world.projectiles.count).toBe(0);
+    expect(state.world.projectiles.nextId).toBe(1);
+  });
+
+  test("queues an animation-timed release and damages only when flight reaches the body", () => {
     const state = projectileWorld();
     const initialHp = state.world.hp[1]!;
     queueTestShot(state);
 
-    state.world.tick = 1;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 1);
     expect(state.world.projectiles.impactTicks[0]).toBe(0xffff_ffff);
 
-    state.world.tick = 2;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 2);
     expect(state.world.projectiles.launchX[0]).toBe(100);
     expect(state.world.projectiles.impactX[0]).toBe(105);
     expect(state.world.projectiles.impactTicks[0]).toBe(12);
     expect(state.world.hp[1]).toBe(initialHp);
 
-    state.world.tick = 11;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 10);
     expect(state.world.hp[1]).toBe(initialHp);
 
-    state.world.tick = 12;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 11);
     expect(state.world.hp[1]).toBeLessThan(initialHp);
     expect(state.world.projectiles.count).toBe(0);
   });
@@ -94,8 +111,7 @@ describe("deterministic projectile lifecycle", () => {
     const state = projectileWorld();
     queueTestShot(state);
     state.world.hp[1] = 0;
-    state.world.tick = 2;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 2);
 
     expect(state.world.projectiles.count).toBe(0);
   });
@@ -103,14 +119,47 @@ describe("deterministic projectile lifecycle", () => {
   test("a target can dodge the fixed impact point during flight", () => {
     const state = projectileWorld();
     queueTestShot(state);
-    state.world.tick = 2;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 2);
     const impactTick = state.world.projectiles.impactTicks[0]!;
     const initialHp = state.world.hp[1]!;
 
     state.world.posZ[1] = 104;
-    state.world.tick = impactTick;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, impactTick);
+    expect(state.world.hp[1]).toBe(initialHp);
+    expect(state.world.projectiles.count).toBe(0);
+  });
+
+  test("sweeps the intended body between ticks instead of tunneling past it", () => {
+    const attack = {
+      ...projectileAttack,
+      projectile: { ...projectileAttack.projectile, speed: 100 },
+    };
+    const state = projectileWorld(attack);
+    queueTestShot(state);
+    advanceProjectilesTo(state, 2);
+    const initialHp = state.world.hp[1]!;
+
+    // The shot was aimed at x=105. Moving back onto its swept segment must be
+    // a physical hit even though the target no longer overlaps that aim point.
+    state.world.posX[1] = 102;
+    advanceProjectilesTo(state, 3);
+
+    expect(state.world.hp[1]).toBeLessThan(initialHp);
+    expect(state.world.projectiles.count).toBe(0);
+  });
+
+  test("honors the authored projectile-collision flag on the intended body", () => {
+    const state = projectileWorld();
+    state.unitTypes[TYPE_SPEARMAN] = {
+      ...state.unitTypes[TYPE_SPEARMAN]!,
+      collidesWithProjectiles: false,
+    };
+    queueTestShot(state);
+    advanceProjectilesTo(state, 2);
+    const initialHp = state.world.hp[1]!;
+
+    advanceProjectilesTo(state, state.world.projectiles.impactTicks[0]!);
+
     expect(state.world.hp[1]).toBe(initialHp);
     expect(state.world.projectiles.count).toBe(0);
   });
@@ -122,8 +171,7 @@ describe("deterministic projectile lifecycle", () => {
     writeProjectileSnapshot(state.world, snapshot, 0, state.unitTypes);
     expect(snapshot.projectileCount).toBe(0);
 
-    state.world.tick = 2;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 2);
     writeProjectileSnapshot(state.world, snapshot, 0, state.unitTypes);
     expect(snapshot.projectileCount).toBe(1);
     expect(snapshot.projectileIds[0]).toBe(1);
@@ -135,7 +183,7 @@ describe("deterministic projectile lifecycle", () => {
     writeProjectileSnapshot(state.world, snapshot, 1, state.unitTypes);
     expect(snapshot.projectileVisible[0]).toBe(0);
 
-    state.world.tick = 7;
+    advanceProjectilesTo(state, 7);
     writeProjectileSnapshot(state.world, snapshot, 0, state.unitTypes);
     expect(snapshot.projectilePosX[0]).toBe(102.5);
     expect(snapshot.projectileProgress[0]).toBe(0.5);
@@ -147,15 +195,13 @@ describe("deterministic projectile lifecycle", () => {
       projectile: { ...projectileAttack.projectile, speed: 1, lifespanTicks: 5 },
     };
     const state = projectileWorld(attack);
-    queueTestShot(state, attack);
-    state.world.tick = 2;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    queueTestShot(state);
+    advanceProjectilesTo(state, 2);
     expect(state.world.projectiles.expiresBeforeImpact[0]).toBe(1);
     expect(state.world.projectiles.impactTicks[0]).toBe(7);
 
     const initialHp = state.world.hp[1]!;
-    state.world.tick = 7;
-    tickProjectileStore(state.world, state.world.projectiles, state.unitTypes, applyDamage);
+    advanceProjectilesTo(state, 7);
     expect(state.world.hp[1]).toBe(initialHp);
     expect(state.world.projectiles.count).toBe(0);
   });
@@ -170,9 +216,9 @@ describe("deterministic projectile lifecycle", () => {
     b.world.projectiles.launchTicks[0] = b.world.projectiles.launchTicks[0]! + 1;
     expect(hashWorld(a.world)).not.toBe(hashWorld(b.world));
     b.world.projectiles.launchTicks[0] = b.world.projectiles.launchTicks[0]! - 1;
+    expect(hashWorld(a.world)).toBe(hashWorld(b.world));
 
-    a.world.tick = 2;
-    tickProjectileStore(a.world, a.world.projectiles, a.unitTypes, applyDamage);
+    advanceProjectilesTo(a, 2);
     expect(hashWorld(a.world)).not.toBe(hashWorld(b.world));
   });
 });

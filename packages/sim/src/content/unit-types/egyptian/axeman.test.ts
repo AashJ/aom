@@ -42,6 +42,7 @@ describe("Egyptian Axeman unit pack", () => {
       isStatic: false,
       resource: -1,
       bodyRadius: 0.49,
+      collidesWithProjectiles: true,
       footprint: 0,
       costFood: 40,
       costWood: 0,

@@ -48,6 +48,7 @@ describe("Egyptian War Elephant unit pack", () => {
       isStatic: false,
       resource: -1,
       bodyRadius: 0.99,
+      collidesWithProjectiles: true,
       footprint: 0,
       costFood: 180,
       costWood: 0,

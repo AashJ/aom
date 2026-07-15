@@ -34,6 +34,7 @@ export const definition = {
   isStatic: false,
   resource: -1,
   bodyRadius: 0.3,
+  collidesWithProjectiles: true,
   footprint: 0,
   costFood: 0,
   costWood: 0,

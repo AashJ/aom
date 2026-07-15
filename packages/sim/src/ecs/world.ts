@@ -64,6 +64,7 @@ import {
   tickProjectileStore,
   type ProjectileStore,
 } from "./projectiles";
+import { GRID_CELL, GRID_CELLS, GRID_DIM, rebuildUnitSpatialGrid } from "./spatial-grid";
 import {
   cancelBuildingResearch,
   isBuildingResearching,
@@ -127,9 +128,6 @@ export const MAX_PLAYERS = 8;
 export const MATCH_DRAW = -2;
 const FINAL_APPROACH_DIST = 2;
 const GOAL_REMAP_RADIUS = 8;
-const GRID_CELL = 2;
-const GRID_DIM = SIM_MAP_SIZE / GRID_CELL;
-const GRID_CELLS = GRID_DIM * GRID_DIM;
 export const SEPARATION_RADIUS = 0.8;
 // Slightly under the 0.15 move step so movers still make net progress through a crowd.
 const SEPARATION_MAX_STEP = 0.12;
@@ -971,37 +969,7 @@ export function tickWorld(world: World): void {
   applyPendingCommands(world);
 
   // 3. Build a spatial grid from start-of-tick positions.
-  world.cellCount.fill(0, 0, GRID_CELLS);
-
-  for (let i = 0; i < world.count; i += 1) {
-    const rawCellX = Math.floor(world.posX[i]! / GRID_CELL);
-    const rawCellZ = Math.floor(world.posZ[i]! / GRID_CELL);
-    const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
-    const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
-    const cell = cellX + GRID_DIM * cellZ;
-
-    world.cellCount[cell] = world.cellCount[cell]! + 1;
-  }
-
-  world.cellStart[0] = 0;
-  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
-    world.cellStart[cell + 1] = world.cellStart[cell]! + world.cellCount[cell]!;
-  }
-
-  world.cellCount.fill(0, 0, GRID_CELLS);
-
-  for (let i = 0; i < world.count; i += 1) {
-    const rawCellX = Math.floor(world.posX[i]! / GRID_CELL);
-    const rawCellZ = Math.floor(world.posZ[i]! / GRID_CELL);
-    const cellX = rawCellX < 0 ? 0 : rawCellX >= GRID_DIM ? GRID_DIM - 1 : rawCellX;
-    const cellZ = rawCellZ < 0 ? 0 : rawCellZ >= GRID_DIM ? GRID_DIM - 1 : rawCellZ;
-    const cell = cellX + GRID_DIM * cellZ;
-    const offset = world.cellStart[cell]! + world.cellCount[cell]!;
-
-    // Scatter runs in unit order, so each bucket's fixed neighbor order keeps float sums deterministic.
-    world.cellUnits[offset] = i;
-    world.cellCount[cell] = world.cellCount[cell]! + 1;
-  }
+  rebuildUnitSpatialGrid(world);
 
   // 4. Existing projectile entities launch, fly, and impact before units decide
   // whether to begin a new attack cycle. A newly queued projectile cannot advance
@@ -1069,14 +1037,17 @@ export function tickWorld(world: World): void {
             if (attack.kind === "melee") {
               dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
             } else {
-              queueProjectile(world.projectiles, {
-                sourceId: unitIdAt(world, i),
-                sourceType: world.unitType[i]!,
-                owner: world.owner[i]!,
-                targetId: unitIdAt(world, target),
-                attackTick: world.tick,
-                attack,
-              });
+              queueProjectile(
+                world.projectiles,
+                {
+                  sourceId: unitIdAt(world, i),
+                  sourceType: world.unitType[i]!,
+                  owner: world.owner[i]!,
+                  targetId: unitIdAt(world, target),
+                  attackTick: world.tick,
+                },
+                UNIT_TYPES,
+              );
             }
             world.attackCooldown[i] = attack.cooldownTicks;
           }

@@ -22,12 +22,18 @@ export type TrialComparableField =
   | "meleeAttack.range"
   | "meleeAttack.bonuses"
   | "bodyRadius"
+  | "collidesWithProjectiles"
   | "cost"
   | "buildTicks"
   | "populationCost"
   | "requiredAge";
 
-export type TrialComparableValue = string | number | readonly number[] | readonly DamageBonus[];
+export type TrialComparableValue =
+  | string
+  | number
+  | boolean
+  | readonly number[]
+  | readonly DamageBonus[];
 
 export interface TrialFidelityDelta {
   readonly field: TrialComparableField;
@@ -69,6 +75,7 @@ export interface MeleeUnitReferenceExpected {
   readonly isStatic: boolean;
   readonly resource: number;
   readonly bodyRadius: number;
+  readonly collidesWithProjectiles: boolean;
   readonly footprint: number;
   readonly cost: readonly [food: number, wood: number, gold: number, favor: number];
   readonly buildTicks: number;
@@ -88,6 +95,7 @@ type MeleeExpectedInput = Omit<
   | "workRange"
   | "isStatic"
   | "resource"
+  | "collidesWithProjectiles"
   | "footprint"
   | "popBonus"
   | "trainExitOffset"
@@ -101,6 +109,7 @@ export function meleeUnitExpected(expected: MeleeExpectedInput): MeleeUnitRefere
     workRange: null,
     isStatic: false,
     resource: -1,
+    collidesWithProjectiles: true,
     footprint: 0,
     popBonus: 0,
     trainExitOffset: 0,
@@ -159,6 +168,7 @@ export function trialComparableExpected(
     "meleeAttack.range": expected.meleeAttack.range,
     "meleeAttack.bonuses": expected.meleeAttack.bonuses,
     bodyRadius: expected.bodyRadius,
+    collidesWithProjectiles: expected.collidesWithProjectiles,
     cost: expected.cost,
     buildTicks: expected.buildTicks,
     populationCost: expected.populationCost,
@@ -248,6 +258,7 @@ function meleeDefinitionSnapshot(definition: UnitTypeStats): MeleeUnitReferenceE
     isStatic: definition.isStatic,
     resource: definition.resource,
     bodyRadius: definition.bodyRadius,
+    collidesWithProjectiles: definition.collidesWithProjectiles,
     footprint: definition.footprint,
     cost: [definition.costFood, definition.costWood, definition.costGold, definition.costFavor],
     buildTicks: definition.buildTicks,
