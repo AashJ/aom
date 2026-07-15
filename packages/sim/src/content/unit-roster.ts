@@ -300,7 +300,7 @@ const gateAEntries = [
   }),
 ];
 
-function readyProjectile(
+function implementedProjectile(
   id: number,
   key: string,
   label: string,
@@ -316,7 +316,7 @@ function readyProjectile(
     family: "ordinary-projectile",
     gate: "B",
     foundationLane: PROJECTILE_FOUNDATION,
-    status: "ready",
+    status: "implemented",
     blocker: null,
     requiredGod,
     trainedAt,
@@ -337,10 +337,10 @@ const projectileEntries = [
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_ARCHERY_RANGE, commandSlot: 0 }],
   }),
-  readyProjectile(TYPE_PELTAST, "greek-peltast", "Peltast", CULTURE_GREEK, NO_GOD, [
+  implementedProjectile(TYPE_PELTAST, "greek-peltast", "Peltast", CULTURE_GREEK, NO_GOD, [
     { type: TYPE_GREEK_ARCHERY_RANGE, commandSlot: 1 },
   ]),
-  readyProjectile(
+  implementedProjectile(
     TYPE_GASTRAPHETES,
     "greek-gastraphetes",
     "Gastraphetes",
@@ -348,10 +348,10 @@ const projectileEntries = [
     GOD_HADES,
     [{ type: TYPE_GREEK_FORTRESS, commandSlot: 2 }],
   ),
-  readyProjectile(TYPE_SLINGER, "egyptian-slinger", "Slinger", CULTURE_EGYPTIAN, NO_GOD, [
+  implementedProjectile(TYPE_SLINGER, "egyptian-slinger", "Slinger", CULTURE_EGYPTIAN, NO_GOD, [
     { type: TYPE_EGYPTIAN_BARRACKS, commandSlot: 2 },
   ]),
-  readyProjectile(
+  implementedProjectile(
     TYPE_CHARIOT_ARCHER,
     "egyptian-chariot-archer",
     "Chariot Archer",

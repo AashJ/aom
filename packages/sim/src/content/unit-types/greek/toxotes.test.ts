@@ -62,9 +62,10 @@ describe("Greek Toxotes unit pack", () => {
         projectile: { speed: 30, lifespanTicks: 40, collisionRadius: 0.1 },
       },
     });
-    expect(TRAIN_OPTIONS_BY_PRODUCER[TYPE_GREEK_ARCHERY_RANGE]).toEqual([
-      { type: TYPE_TOXOTES, commandSlot: 0 },
-    ]);
+    expect(TRAIN_OPTIONS_BY_PRODUCER[TYPE_GREEK_ARCHERY_RANGE]).toContainEqual({
+      type: TYPE_TOXOTES,
+      commandSlot: 0,
+    });
   });
 
   test("keeps the Classic exact-unit Raiding Cavalry modifier", () => {

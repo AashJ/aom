@@ -7,25 +7,19 @@ gates, foundation owners, status, and lane names are integration-owned and froze
 contributor starts. Complete expected values and hashed source evidence come from the candidate
 reference printed by `bun run unit:lane brief <lane>`.
 
-## Implemented proof pack
+## Implemented ordinary-projectile packs
 
-| Lane            |  ID | Unit    | Culture | Producer / command slot | Projectile | Status      |
-| --------------- | --: | ------- | ------- | ----------------------- | ---------- | ----------- |
-| `greek-toxotes` |  81 | Toxotes | Greek   | Archery Range / 0       | Arrow      | Implemented |
+| Lane                      |  ID | Unit           | Culture  | Producer / command slot | God   | Projectile  | Cycle / release ticks | Status      |
+| ------------------------- | --: | -------------- | -------- | ----------------------- | ----- | ----------- | --------------------: | ----------- |
+| `greek-toxotes`           |  81 | Toxotes        | Greek    | Archery Range / 0       | Any   | Arrow       |                20 / 8 | Implemented |
+| `greek-peltast`           |  82 | Peltast        | Greek    | Archery Range / 1       | Any   | Javelin     |               30 / 12 | Implemented |
+| `greek-gastraphetes`      |  83 | Gastraphetes   | Greek    | Fortress / 2            | Hades | Arrow       |                42 / 7 | Implemented |
+| `egyptian-slinger`        | 128 | Slinger        | Egyptian | Barracks / 2            | Any   | Sling stone |                20 / 8 | Implemented |
+| `egyptian-chariot-archer` | 129 | Chariot Archer | Egyptian | Migdol Stronghold / 0   | Any   | Arrow       |               30 / 19 | Implemented |
 
-## Ready ordinary-projectile packs
-
-| Lane                      |  ID | Unit           | Culture  | Producer / command slot | God   | Projectile  | Cycle / release ticks | Status |
-| ------------------------- | --: | -------------- | -------- | ----------------------- | ----- | ----------- | --------------------: | ------ |
-| `greek-peltast`           |  82 | Peltast        | Greek    | Archery Range / 1       | Any   | Javelin     |               30 / 12 | Ready  |
-| `greek-gastraphetes`      |  83 | Gastraphetes   | Greek    | Fortress / 2            | Hades | Arrow       |                42 / 7 | Ready  |
-| `egyptian-slinger`        | 128 | Slinger        | Egyptian | Barracks / 2            | Any   | Sling stone |                20 / 8 | Ready  |
-| `egyptian-chariot-archer` | 129 | Chariot Archer | Egyptian | Migdol Stronghold / 0   | Any   | Arrow       |               30 / 19 | Ready  |
-
-“Ready” means the existing ordinary projectile contract can represent the Classic base unit
-faithfully and an integration-owned candidate reference independently fixes its complete expected
-definition. Technology upgrades remain a later progression slice; a pack must not import Retold
-balance or classification changes.
+All five packs are pinned to integration-owned final references. Technology upgrades remain a later
+progression slice; the packs preserve Classic balance and classification rather than importing
+Retold changes.
 
 ## Reference lifecycle
 

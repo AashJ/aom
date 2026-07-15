@@ -56,7 +56,7 @@ describe("Egyptian Chariot Archer unit pack", () => {
     });
 
     const reference = unitReferenceEntry(definition.key);
-    expect(reference?.source.stage).toBe("candidate");
+    expect(reference?.source.stage).toBe("final");
     expect(() => validateDefinitionAgainstReference(definition, reference!)).not.toThrow();
   });
 

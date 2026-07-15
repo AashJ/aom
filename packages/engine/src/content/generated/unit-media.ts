@@ -27,7 +27,11 @@ import { definition as egyptianAxeman } from "../unit-media/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-media/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-media/egyptian/war-elephant";
 import { definition as greekToxotes } from "../unit-media/greek/toxotes";
+import { definition as greekPeltast } from "../unit-media/greek/peltast";
+import { definition as greekGastraphetes } from "../unit-media/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-media/greek/hetairoi";
+import { definition as egyptianSlinger } from "../unit-media/egyptian/slinger";
+import { definition as egyptianChariotArcher } from "../unit-media/egyptian/chariot-archer";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
   IconConfig,
@@ -71,7 +75,11 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianCamelry,
   egyptianWarElephant,
   greekToxotes,
+  greekPeltast,
+  greekGastraphetes,
   greekHetairoi,
+  egyptianSlinger,
+  egyptianChariotArcher,
 ] as const satisfies readonly UnitMediaDefinition[];
 
 const unitMedia: UnitMediaDefinition[] = [];

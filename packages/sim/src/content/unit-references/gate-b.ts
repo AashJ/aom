@@ -91,7 +91,7 @@ export const GATE_B_UNIT_REFERENCES = [
     id: 82,
     key: "greek-peltast",
     source: {
-      stage: "candidate",
+      stage: "final",
       culture: "greek",
       ruleset: "Age of Mythology Classic",
       trialProto: {
@@ -111,6 +111,11 @@ export const GATE_B_UNIT_REFERENCES = [
         },
       },
       trialDeltas: [],
+      finalRulesetReview: {
+        commit: "427d43ad198d8c8e67d21ab0530e42a8cd4c2945",
+        scope:
+          "Complete Peltast runtime reference, including exact counter bonuses, javelin identity, producer assignment, attack-cycle timing, and media.",
+      },
     },
     expected: ordinaryUnitExpected({
       label: "Peltast",
@@ -160,7 +165,7 @@ export const GATE_B_UNIT_REFERENCES = [
     id: 83,
     key: "greek-gastraphetes",
     source: {
-      stage: "candidate",
+      stage: "final",
       culture: "greek",
       ruleset: "Age of Mythology Classic",
       trialProto: {
@@ -188,6 +193,11 @@ export const GATE_B_UNIT_REFERENCES = [
             "The Classic proto uses the internal Crossbowman identity; the hashed Greek asset inventory maps the shipped roster name Gastraphetes to crossbowman_anim.txt.",
         },
       ],
+      finalRulesetReview: {
+        commit: "c2be3174aa3bedbc67edca5152dac9f914ceef44",
+        scope:
+          "Complete Gastraphetes runtime reference, including its public identity alias, Hades Fortress assignment, arrow identity, attack-cycle timing, and media.",
+      },
     },
     expected: ordinaryUnitExpected({
       label: "Gastraphetes",
@@ -234,7 +244,7 @@ export const GATE_B_UNIT_REFERENCES = [
     id: 128,
     key: "egyptian-slinger",
     source: {
-      stage: "candidate",
+      stage: "final",
       culture: "egyptian",
       ruleset: "Age of Mythology Classic",
       trialProto: {
@@ -254,6 +264,11 @@ export const GATE_B_UNIT_REFERENCES = [
         },
       },
       trialDeltas: [],
+      finalRulesetReview: {
+        commit: "9379070420145533202cd4e14787a7af28c4c420",
+        scope:
+          "Complete Slinger runtime reference, including exact counter bonuses, sling-stone identity, producer assignment, attack-cycle timing, and media.",
+      },
     },
     expected: ordinaryUnitExpected({
       label: "Slinger",
@@ -305,7 +320,7 @@ export const GATE_B_UNIT_REFERENCES = [
     id: 129,
     key: "egyptian-chariot-archer",
     source: {
-      stage: "candidate",
+      stage: "final",
       culture: "egyptian",
       ruleset: "Age of Mythology Classic",
       trialProto: {
@@ -325,6 +340,11 @@ export const GATE_B_UNIT_REFERENCES = [
         },
       },
       trialDeltas: [],
+      finalRulesetReview: {
+        commit: "e50a87b6835e18ae4ff4593252939b4b6b3c856e",
+        scope:
+          "Complete Chariot Archer runtime reference, including Classic non-cavalry classification, Migdol assignment, arrow identity, attack-cycle timing, and media.",
+      },
     },
     expected: ordinaryUnitExpected({
       label: "Chariot Archer",

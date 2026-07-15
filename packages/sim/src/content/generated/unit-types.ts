@@ -27,7 +27,11 @@ import { definition as egyptianAxeman } from "../unit-types/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-types/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-types/egyptian/war-elephant";
 import { definition as greekToxotes } from "../unit-types/greek/toxotes";
+import { definition as greekPeltast } from "../unit-types/greek/peltast";
+import { definition as greekGastraphetes } from "../unit-types/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-types/greek/hetairoi";
+import { definition as egyptianSlinger } from "../unit-types/egyptian/slinger";
+import { definition as egyptianChariotArcher } from "../unit-types/egyptian/chariot-archer";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
 
 export const UNIT_TYPE_DEFINITIONS = [
@@ -59,7 +63,11 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianCamelry,
   egyptianWarElephant,
   greekToxotes,
+  greekPeltast,
+  greekGastraphetes,
   greekHetairoi,
+  egyptianSlinger,
+  egyptianChariotArcher,
 ] as const satisfies readonly UnitTypeStats[];
 
 const unitTypes: UnitTypeStats[] = [];
