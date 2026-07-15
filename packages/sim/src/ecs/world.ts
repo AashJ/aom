@@ -465,9 +465,15 @@ export function flushFlowFields(world: World): void {
   world.unitField.fill(null);
 }
 
-function assignFieldGoal(world: World, index: number, targetX: number, targetZ: number): void {
-  // MOVE keeps its walkable-goal remap before calling this. Chase targets are live entities whose
-  // positions are definitionally reachable-adjacent, so remapping does not belong here.
+function assignFieldGoal(
+  world: World,
+  index: number,
+  targetX: number,
+  targetZ: number,
+  footprint = 0,
+): void {
+  // MOVE keeps its walkable-goal remap before calling this. Static buildings keep their blocked
+  // center as the logical/cache goal, but route to every walkable cell around their footprint.
   const goalCell = cellOf(targetX, targetZ);
   let fieldForGoal: FlowField | null = null;
 
@@ -483,7 +489,43 @@ function assignFieldGoal(world: World, index: number, targetX: number, targetZ: 
   }
 
   if (fieldForGoal === null) {
-    fieldForGoal = buildFlowField(world.walkable, goalCell);
+    if (footprint > 0) {
+      const minTileX = Math.round(targetX - footprint / 2);
+      const minTileZ = Math.round(targetZ - footprint / 2);
+      const maxTileX = minTileX + footprint - 1;
+      const maxTileZ = minTileZ + footprint - 1;
+      const routeGoalCells: number[] = [];
+
+      // Multi-source routing lets each unit approach the nearest reachable side instead of
+      // funneling everyone toward one arbitrary corner that terrain may isolate.
+      for (let z = minTileZ - 1; z <= maxTileZ + 1; z += 1) {
+        for (let x = minTileX - 1; x <= maxTileX + 1; x += 1) {
+          if (
+            x !== minTileX - 1 &&
+            x !== maxTileX + 1 &&
+            z !== minTileZ - 1 &&
+            z !== maxTileZ + 1
+          ) {
+            continue;
+          }
+
+          if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) {
+            continue;
+          }
+
+          const routeGoalCell = z * MAP_TILES + x;
+
+          if (world.walkable[routeGoalCell] === 1) {
+            routeGoalCells.push(routeGoalCell);
+          }
+        }
+      }
+
+      fieldForGoal = buildFlowField(world.walkable, goalCell, routeGoalCells);
+    } else {
+      fieldForGoal = buildFlowField(world.walkable, goalCell);
+    }
+
     world.fieldCache.push(fieldForGoal);
 
     if (world.fieldCache.length > FIELD_CACHE_SIZE) {
@@ -1040,7 +1082,7 @@ export function tickWorld(world: World): void {
 
               // Avoid re-running the cache lookup every tick for an unchanged static goal.
               if (world.unitField[i]?.goalCell !== targetGoalCell) {
-                assignFieldGoal(world, i, targetX, targetZ);
+                assignFieldGoal(world, i, targetX, targetZ, targetStats.footprint);
               }
             } else {
               world.moveTargetX[i] = targetX;
@@ -1185,7 +1227,13 @@ export function tickWorld(world: World): void {
           const dropsiteGoalCell = cellOf(dropsiteX, dropsiteZ);
 
           if (world.unitField[i]?.goalCell !== dropsiteGoalCell) {
-            assignFieldGoal(world, i, dropsiteX, dropsiteZ);
+            assignFieldGoal(
+              world,
+              i,
+              dropsiteX,
+              dropsiteZ,
+              UNIT_TYPES[world.unitType[bestDropsite]!]!.footprint,
+            );
           }
 
           world.mode[i] = MODE_RETURNING;
@@ -1309,7 +1357,13 @@ export function tickWorld(world: World): void {
               const dropsiteGoalCell = cellOf(dropsiteX, dropsiteZ);
 
               if (world.unitField[i]?.goalCell !== dropsiteGoalCell) {
-                assignFieldGoal(world, i, dropsiteX, dropsiteZ);
+                assignFieldGoal(
+                  world,
+                  i,
+                  dropsiteX,
+                  dropsiteZ,
+                  UNIT_TYPES[world.unitType[bestDropsite]!]!.footprint,
+                );
               }
 
               world.mode[i] = MODE_RETURNING;
@@ -1498,7 +1552,13 @@ export function tickWorld(world: World): void {
           const dropsiteGoalCell = cellOf(dropsiteX, dropsiteZ);
 
           if (world.unitField[i]?.goalCell !== dropsiteGoalCell) {
-            assignFieldGoal(world, i, dropsiteX, dropsiteZ);
+            assignFieldGoal(
+              world,
+              i,
+              dropsiteX,
+              dropsiteZ,
+              UNIT_TYPES[world.unitType[bestDropsite]!]!.footprint,
+            );
           }
         } else {
           // A player with no dropsites has bigger problems; the villager stands carrying.
@@ -1560,7 +1620,7 @@ export function tickWorld(world: World): void {
 
         // Building sites are static targets sharing cached fields.
         if (world.unitField[i]?.goalCell !== targetGoalCell) {
-          assignFieldGoal(world, i, targetX, targetZ);
+          assignFieldGoal(world, i, targetX, targetZ, siteStats.footprint);
         }
       }
     }

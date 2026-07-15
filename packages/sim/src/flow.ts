@@ -86,22 +86,50 @@ export function cellOf(x: number, z: number): number {
   return tileZ * MAP_TILES + tileX;
 }
 
-export function buildFlowField(walkable: Uint8Array, goalCell: number): FlowField {
+export function buildFlowField(
+  walkable: Uint8Array,
+  goalCell: number,
+  routeGoalCells?: readonly number[],
+): FlowField {
   // Command-time allocation, not per-tick.
   const dirX = new Float32Array(CELL_COUNT);
   const dirZ = new Float32Array(CELL_COUNT);
 
-  if (walkable[goalCell] !== 1) {
+  if (routeGoalCells === undefined && walkable[goalCell] !== 1) {
     // Callers remap unwalkable goals to a walkable cell before calling this;
-    // this check is a defensive guard, not a feature.
+    // building interactions instead provide their walkable perimeter cells.
     return { goalCell, dirX, dirZ };
   }
 
   costs.fill(UNVISITED);
-  costs[goalCell] = 0;
   bucketHead.fill(-1);
   entryCount = 0;
-  bucketPush(0, goalCell);
+
+  if (routeGoalCells === undefined) {
+    costs[goalCell] = 0;
+    bucketPush(0, goalCell);
+  } else {
+    let seededGoal = false;
+
+    for (const routeGoalCell of routeGoalCells) {
+      if (
+        routeGoalCell < 0 ||
+        routeGoalCell >= CELL_COUNT ||
+        walkable[routeGoalCell] !== 1 ||
+        costs[routeGoalCell] === 0
+      ) {
+        continue;
+      }
+
+      costs[routeGoalCell] = 0;
+      bucketPush(0, routeGoalCell);
+      seededGoal = true;
+    }
+
+    if (!seededGoal) {
+      return { goalCell, dirX, dirZ };
+    }
+  }
 
   // Relaxed costs are always >= the bucket being scanned (monotone), so a
   // single ascending pass over the buckets visits every live entry.
@@ -264,6 +292,21 @@ export function sampleFlowDirection(
     (field.dirX[i10] === 0 && field.dirZ[i10] === 0) ||
     (field.dirX[i01] === 0 && field.dirZ[i01] === 0) ||
     (field.dirX[i11] === 0 && field.dirZ[i11] === 0)
+  ) {
+    outDirection[0] = field.dirX[i00]!;
+    outDirection[1] = field.dirZ[i00]!;
+    return;
+  }
+
+  // A route split can put opposite valid directions on adjacent cells (for
+  // example, the north and south ways around a mountain). Interpolating across
+  // that seam points into the obstacle or flips every step, so deterministically
+  // keep the current cell's branch until the unit crosses the cell boundary.
+  if (
+    field.dirX[i00]! * field.dirX[i10]! + field.dirZ[i00]! * field.dirZ[i10]! < 0 ||
+    field.dirX[i00]! * field.dirX[i01]! + field.dirZ[i00]! * field.dirZ[i01]! < 0 ||
+    field.dirX[i10]! * field.dirX[i11]! + field.dirZ[i10]! * field.dirZ[i11]! < 0 ||
+    field.dirX[i01]! * field.dirX[i11]! + field.dirZ[i01]! * field.dirZ[i11]! < 0
   ) {
     outDirection[0] = field.dirX[i00]!;
     outDirection[1] = field.dirZ[i00]!;

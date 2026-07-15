@@ -3,8 +3,8 @@
 // versioned from message one.
 import type { Command } from "@aom/sim";
 
-// v3 adds COMMAND_ADVANCE_AGE. Older clients would otherwise silently drop the
-// command and desync from a newer match.
+// v2 added COMMAND_ADVANCE_AGE; v3 adds COMMAND_CHEAT. Older clients would
+// otherwise silently drop either command and desync from a newer match.
 export const PROTOCOL_VERSION = 3;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.

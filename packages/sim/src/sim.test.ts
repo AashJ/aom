@@ -1113,6 +1113,39 @@ describe("gathering", () => {
     expect(world.mode[1]).not.toBe(0);
   });
 
+  test("a loaded villager routes around mountains to reach a dropsite", () => {
+    const world = flatWorld(42);
+    spawnBuilding(world, 106, 98, 0, TYPE_TOWN_CENTER);
+    const villager = spawnUnit(world, 98.5, 100.5, 0, 0, 0);
+    const villagerIndex = resolveId(world, villager);
+    const woodBefore = world.stockpiles[WOOD]!;
+
+    // A solid mountain wall blocks the direct line to the Town Center, but
+    // leaves open ground around both ends.
+    for (let z = 96; z <= 104; z += 1) {
+      for (let x = 101; x <= 104; x += 1) {
+        world.walkable[z * MAP_TILES + x] = 0;
+      }
+    }
+
+    // Start at the exact economy transition that failed in play: the worker
+    // has a full load and chooses a dropsite on the next tick.
+    world.carried[villagerIndex] = CARRY_CAPACITY;
+    world.carriedResource[villagerIndex] = WOOD;
+    world.mode[villagerIndex] = MODE_GATHERING;
+
+    for (let t = 0; t < 600; t += 1) {
+      tickWorld(world);
+
+      const tileX = Math.floor(world.posX[villagerIndex]!);
+      const tileZ = Math.floor(world.posZ[villagerIndex]!);
+      expect(world.walkable[tileZ * MAP_TILES + tileX]).toBe(1);
+    }
+
+    expect(world.stockpiles[WOOD]).toBe(woodBefore + CARRY_CAPACITY);
+    expect(world.carried[villagerIndex]).toBe(0);
+  });
+
   test("gold mines use the existing gather, haul, and deposit loop", () => {
     const world = flatWorld(42);
     spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
