@@ -2,6 +2,18 @@
 
 Each parallel task owns one lane from [GATE_A_MELEE_MANIFEST.md](GATE_A_MELEE_MANIFEST.md). The
 machine manifest has already chosen identity, producer relationships, command slots, and god gates.
+The family-neutral task state and filesystem ownership contract live in
+`packages/sim/src/content/unit-roster.ts`.
+
+Create and inspect an open lane through the workcell command:
+
+```sh
+bun run unit:lane brief <lane>
+bun run unit:lane create <lane> --base <integration-base>
+```
+
+The second command refuses blocked and already implemented lanes. It creates an isolated
+`.worktrees/<lane>` checkout on `unit/<lane>`; contributors do not work in the integration checkout.
 
 ## Files owned by the lane
 
@@ -23,10 +35,11 @@ inside the same media pack. The generator compiles those authored keys to numeri
 
 ## Files the lane does not own
 
-Do not edit the stable-ID catalog, Gate A manifest, schema, generator, generated catalogs, production
+Do not edit the stable-ID catalog, canonical unit roster, schema, generator, generated catalogs, production
 or combat runtime, snapshots, renderer/audio/UI systems, architecture documents, or shared catalog
-tests. Do not add compatibility aliases, unit-ID switches, behavior callbacks, or a hand-maintained
-producer menu.
+tests. Integration-owned reference specs are also read-only: a lane never changes the expected facts
+that validate its implementation. Do not add compatibility aliases, unit-ID switches, behavior
+callbacks, or a hand-maintained producer menu.
 
 If faithful implementation needs one of those changes, report the exact missing mechanic and stop the
 lane. The integration owner handles that capability as a serial foundation change.
@@ -40,6 +53,7 @@ bun run validate:unit-packs
 bun test packages/sim/src/content/unit-types/<culture>/<unit>.test.ts
 bun test packages/sim/src/content/unit-catalog.test.ts
 bun test packages/engine/src/content/unit-media-catalog.test.ts
+bun run unit:lane validate <lane> --base <integration-base>
 ```
 
 `validate:unit-packs` discovers and validates the combined authored pack in memory and leaves the
@@ -49,3 +63,6 @@ missing media/actions/audio, cross-pack model references, and unsupported Gate A
 Do not commit generated catalog changes from a parallel lane. After merging all authored packs, the
 integration owner runs `bun run generate:unit-catalogs`, reviews the single generated diff, runs
 `bun run check:unit-catalogs`, package typechecks, and the full sim/engine/web suites.
+
+The lane validator inspects committed, staged, unstaged, deleted, and untracked paths. A shared file,
+another unit pack, or a generated catalog causes the handoff to fail even when the code itself passes.

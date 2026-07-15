@@ -62,6 +62,7 @@ lerna-debug.log*
 *.tgz
 tmp/
 temp/
+.worktrees/
 
 # Locally extracted proprietary game assets
 private-assets/

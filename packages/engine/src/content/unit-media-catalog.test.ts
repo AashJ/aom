@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GATE_A_MANIFEST, UNIT_CLASS_RESOURCE, UNIT_TYPE_DEFINITIONS } from "@aom/sim";
+import { UNIT_CLASS_RESOURCE, UNIT_ROSTER, UNIT_TYPE_DEFINITIONS } from "@aom/sim";
 import { TYPE_ICONS } from "../assets/icons";
 import { MODEL_CONFIGS, UNIT_MEDIA, UNIT_MEDIA_DEFINITIONS } from "./generated/unit-media";
 
@@ -21,9 +21,12 @@ describe("generated unit media catalog", () => {
     }
   });
 
-  test("requires complete Gate A media for every implemented manifest entry", () => {
-    const implemented = GATE_A_MANIFEST.filter(
-      (entry) => entry.status !== "blocked" && UNIT_MEDIA[entry.id] !== undefined,
+  test("requires complete ordinary-melee media for every implemented roster entry", () => {
+    const implemented = UNIT_ROSTER.filter(
+      (entry) =>
+        entry.family === "ordinary-melee" &&
+        entry.status === "implemented" &&
+        UNIT_MEDIA[entry.id] !== undefined,
     );
 
     for (const entry of implemented) {

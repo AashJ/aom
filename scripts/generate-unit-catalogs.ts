@@ -12,7 +12,9 @@ import {
   type UnitTypeStats,
   type TypeCommandRelationship,
 } from "../packages/sim/src/content/unit-type-schema";
-import { GATE_A_MANIFEST } from "../packages/sim/src/content/gate-a-manifest";
+import { UNIT_ROSTER, unitRosterEntry } from "../packages/sim/src/content/unit-roster";
+import { validateDefinitionAgainstReference } from "../packages/sim/src/content/unit-reference-schema";
+import { unitReferenceEntry } from "../packages/sim/src/content/unit-references";
 import { NO_GOD } from "../packages/sim/src/ecs/progression";
 import type {
   ModelAssetDefinition,
@@ -26,6 +28,18 @@ const mediaSourceRoot = resolve(root, "packages/engine/src/content/unit-media");
 const mediaOutputPath = resolve(root, "packages/engine/src/content/generated/unit-media.ts");
 const check = process.argv.includes("--check");
 const validateOnly = process.argv.includes("--validate-only");
+
+function option(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return undefined;
+  const value = process.argv[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error(`${name} requires a value.`);
+  }
+  return value;
+}
+
+const requiredLaneName = option("--require-lane");
 const glob = new Bun.Glob("**/*.ts");
 const files = [...glob.scanSync({ cwd: simSourceRoot, onlyFiles: true })]
   .filter((file) => !file.endsWith(".test.ts"))
@@ -106,6 +120,20 @@ function relationshipSource(
   return source;
 }
 
+function relationshipsMatch(
+  left: readonly TypeCommandRelationship[],
+  right: readonly TypeCommandRelationship[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (relationship, index) =>
+        relationship.type === right[index]?.type &&
+        relationship.commandSlot === right[index]?.commandSlot,
+    )
+  );
+}
+
 const relationshipSlots = new Map<string, UnitTypeStats[]>();
 for (const entry of entries) {
   const definition = entry.definition;
@@ -168,59 +196,34 @@ for (const entry of entries) {
   }
 }
 
-const manifestIds = new Set<number>();
-const manifestKeys = new Set<string>();
-for (const assignment of GATE_A_MANIFEST) {
-  if (manifestIds.has(assignment.id))
-    throw new Error(`Duplicate Gate A manifest id ${assignment.id}.`);
-  if (manifestKeys.has(assignment.key)) {
-    throw new Error(`Duplicate Gate A manifest key ${assignment.key}.`);
-  }
-  manifestIds.add(assignment.id);
-  manifestKeys.add(assignment.key);
-
-  if (
-    (assignment.status === "proof" || assignment.status === "ready") &&
-    assignment.blocker !== null
-  ) {
-    throw new Error(`${assignment.key} is eligible but declares a blocker.`);
-  }
-  if (assignment.status === "blocked" && assignment.blocker === null) {
-    throw new Error(`${assignment.key} is blocked without an exact blocker.`);
+for (const lane of UNIT_ROSTER) {
+  const definition = definitionsById.get(lane.id);
+  if (lane.status === "implemented" && definition === undefined) {
+    throw new Error(`Implemented unit lane ${lane.lane} has no sim definition.`);
   }
 
-  const definition = definitionsById.get(assignment.id);
-  if (definition === undefined) {
-    if (assignment.status === "proof") {
-      throw new Error(`Proof assignment ${assignment.key} has no sim definition.`);
+  if (definition !== undefined) {
+    if (
+      definition.key !== lane.key ||
+      definition.label !== lane.label ||
+      definition.culture !== lane.culture ||
+      definition.requiredGod !== lane.requiredGod ||
+      (lane.trainedAt !== null && !relationshipsMatch(definition.trainedAt, lane.trainedAt))
+    ) {
+      throw new Error(`${lane.key} does not match its canonical roster assignment.`);
     }
-    continue;
-  }
-  if (
-    definition.key !== assignment.key ||
-    definition.label !== assignment.label ||
-    definition.culture !== assignment.culture ||
-    definition.requiredGod !== assignment.requiredGod
-  ) {
-    throw new Error(`${assignment.key} does not match its frozen Gate A identity assignment.`);
-  }
-  if (
-    definition.trainedAt.length !== assignment.trainedAt.length ||
-    definition.trainedAt.some(
-      (relationship, index) =>
-        relationship.type !== assignment.trainedAt[index]?.type ||
-        relationship.commandSlot !== assignment.trainedAt[index]?.commandSlot,
-    )
-  ) {
-    throw new Error(`${assignment.key} does not match its frozen producer/slot assignment.`);
-  }
-  if (
-    assignment.status !== "blocked" &&
-    ((definition.classes & (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE)) !==
-      (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE) ||
-      definition.meleeAttack === null)
-  ) {
-    throw new Error(`${assignment.key} must satisfy the Gate A direct-hit melee contract.`);
+    if (
+      lane.status !== "blocked" &&
+      lane.family === "ordinary-melee" &&
+      ((definition.classes & (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE)) !==
+        (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE) ||
+        definition.meleeAttack === null)
+    ) {
+      throw new Error(`${lane.key} must satisfy the ordinary-melee family contract.`);
+    }
+
+    const reference = unitReferenceEntry(lane.key);
+    if (reference !== undefined) validateDefinitionAgainstReference(definition, reference);
   }
 }
 
@@ -350,6 +353,20 @@ for (const entry of mediaEntries) {
   }
 }
 
+if (requiredLaneName !== undefined) {
+  const lane = unitRosterEntry(requiredLaneName);
+  if (lane === undefined) throw new Error(`Unknown required unit lane ${requiredLaneName}.`);
+  if (lane.status !== "ready") {
+    throw new Error(`Required unit lane ${lane.lane} is ${lane.status}; expected ready.`);
+  }
+  if (definitionsById.get(lane.id) === undefined) {
+    throw new Error(`Ready unit lane ${lane.lane} has no sim definition.`);
+  }
+  if (!mediaEntries.some((entry) => entry.definition.type === lane.id)) {
+    throw new Error(`Ready unit lane ${lane.lane} has no media definition.`);
+  }
+}
+
 for (const entry of entries) {
   const sim = entry.definition;
   const media = mediaEntries.find((candidate) => candidate.definition.type === sim.id)?.definition;
@@ -383,9 +400,10 @@ for (const entry of mediaEntries) {
     }
   }
 
-  const gateAssignment = GATE_A_MANIFEST.find((assignment) => assignment.id === sim.id);
-  const isGateAMelee = gateAssignment?.status === "proof" || gateAssignment?.status === "ready";
-  if (isGateAMelee) {
+  const rosterLane = UNIT_ROSTER.find((lane) => lane.id === sim.id);
+  const requiresCompleteMeleeMedia =
+    rosterLane?.status !== "blocked" && rosterLane?.family === "ordinary-melee";
+  if (requiresCompleteMeleeMedia) {
     if (media.presentation.kind !== "model") {
       throw new Error(`${media.key} requires model presentation for Gate A.`);
     }

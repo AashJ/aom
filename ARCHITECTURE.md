@@ -769,7 +769,7 @@ A unit is eligible for the first parallel melee wave only when all of the follow
 
 Infantry, cavalry, or elephants may enter Gate A when they pass every condition; the visual body or movement speed does not decide eligibility. Workers are part of the serial foundation because gather/build/repair/pray behavior is already shared infrastructure, not a parallel combat-unit pack. A melee-range unit that fails even one condition is assigned to the gate for its missing mechanic rather than receiving a simplified Gate A implementation.
 
-Before fan-out, the integration owner audits the non-hero, non-myth Greek and Egyptian melee candidates and publishes a fixed machine-readable assignment manifest containing each unit's stable ID, culture, producer, command slot, owner lane, and either `proof`, `ready`, or the exact blocking mechanic/gate. Hero and myth families are categorically Gate C and do not receive individual Gate A lanes. The source of truth is `packages/sim/src/content/gate-a-manifest.ts`; [the task-facing manifest](docs/GATE_A_MELEE_MANIFEST.md) and [unit-pack template](docs/UNIT_PACK_TEMPLATE.md) are derived instructions. Parallel work begins only from that manifest.
+Before fan-out, the integration owner audits the non-hero, non-myth Greek and Egyptian melee candidates and publishes fixed machine-readable roster entries containing each unit's stable ID, culture, producer, command slot, owner lane, status, and exact blocker when closed. Hero and myth families are categorically Gate C and do not receive individual Gate A lanes. The sole source of truth is `packages/sim/src/content/unit-roster.ts`; [the task-facing Gate A view](docs/GATE_A_MELEE_MANIFEST.md) and [unit-pack template](docs/UNIT_PACK_TEMPLATE.md) are derived instructions. Parallel work begins only from that roster.
 
 ### Family gates
 
@@ -823,9 +823,56 @@ Projectile simulation; hero limits/revival; myth-unit favor/lifecycle rules; spe
 
 ---
 
+## Milestone 12 — Agentic roster workcells and fidelity foundation
+
+**Scope:** turn the M11 unit-pack seam into a repeatable agent workcell. This milestone does not unlock a new gameplay family. It makes unit eligibility, ownership, provenance, isolation, and handoff machine-checkable so later family foundations can open parallel waves without relying on prompt discipline or a shared Git worktree.
+
+### Decisions
+
+| Question               | Decision                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task source            | `UNIT_ROSTER` is the sole family-neutral task queue. Every lane has a stable identity, family/gate, status, exact blocker, foundation owner, frozen assignment when open, and derived owned paths. References join by the same stable key; no second manifest or status model exists. A blocked lane cannot be launched.                    |
+| Implementation state   | `blocked`, `ready`, and `implemented` are distinct. Shared substrate and assignment audits move a lane to `ready`; only integration moves it to `implemented`. A checked-in definition does not silently redefine roster state.                                                                                                             |
+| Filesystem isolation   | One ready lane runs in one Git worktree on one `unit/<lane>` branch. Agents never share the integration checkout, index, or `HEAD`. Worktrees live under the ignored `.worktrees/` root by default.                                                                                                                                         |
+| Ownership enforcement  | Validation computes committed, staged, unstaged, deleted, type-changed, and untracked paths with NUL-safe Git output relative to the integration base. Every changed path must match the lane's exact file or directory ownership declaration, and ownership declarations cannot overlap across lanes.                                      |
+| Fidelity authority     | Reference specs are integration-owned inputs, outside every unit lane. A discriminated family contract pins every runtime-significant field. References join to roster identity and assignment by stable key, and unit contributors cannot edit the expected facts that judge them.                                                         |
+| Raw proprietary inputs | Extracted game archives remain ignored under `private-assets/`. Tracked references contain normalized facts, hashes, structured Trial-to-final deltas, and a final-ruleset review commit—not proprietary archives. Local verification derives every Trial-comparable gameplay field and rejects missing, unnecessary, or inaccurate deltas. |
+| Family validation      | Catalog integrity remains generic. Each gameplay family adds its own eligibility/reference validator only after a serial vertical slice establishes the real contract. There is no universal behavior callback or agent-authored plugin seam.                                                                                               |
+| Integration ownership  | Agents hand back one lane commit. Integration cherry-picks accepted commits, updates roster state, regenerates catalogs once, and runs the broad suite. Automated integration is deferred until the isolated handoff is proven.                                                                                                             |
+
+### Tracked workcell artifacts
+
+- `packages/sim/src/content/unit-roster.ts` — family-neutral task state and owned-path declarations.
+- `packages/sim/src/content/unit-references/` — integration-owned normalized fidelity specs.
+- `scripts/unit-lane.ts` — lane listing, self-contained briefs, worktree creation, and ownership/focused validation.
+- `scripts/lib/xmb.ts` plus `scripts/verify-unit-sources.ts` — local verification of hashed Trial proto and asset-inventory provenance.
+
+The first infrastructure slice registers every existing Gate A assignment plus the ordinary Greek/Egyptian projectile candidates. Implemented melee packs receive frozen references immediately; projectile candidates remain blocked on Gate B and unfrozen producer assignments. Expanding `UNIT_ROSTER` across every reserved hero, myth, siege, trade, naval, and exceptional-lifecycle identity is integration work before those family foundations open.
+
+### Workcell lifecycle
+
+1. Integration lands the family substrate, completes the roster audit, freezes producer/slot/god assignments, and creates the reference spec.
+2. Integration changes a lane from `blocked` to `ready`.
+3. `bun run unit:lane create <lane> --base <integration-base>` creates `.worktrees/<lane>` on `unit/<lane>` and emits the lane brief.
+4. The contributor edits only the declared pack files/assets. A missing shared capability stops the lane.
+5. `bun run unit:lane validate <lane> --base <integration-base>` requires the expected isolated branch, a nonempty complete authored pack, a sim definition, media definition, focused test, asset changes, and a matching reference; it then rejects ownership violations and runs the focused sim/catalog/media tests.
+6. The contributor returns one commit. Integration reviews and cherry-picks it, changes the lane to `implemented`, regenerates catalogs, and runs the full suite.
+
+### Exit criteria
+
+- Every registered lane has unique identity and ownership; every blocked lane names its exact shared blocker.
+- No ready lane lacks a frozen producer assignment or integration-owned reference spec.
+- Worktree creation refuses blocked or already implemented lanes.
+- Ownership validation catches shared schemas, manifests, generated catalogs, other unit packs, deletions, and untracked files outside the lane.
+- Every implemented Gate A pack matches a separately owned final-ruleset reference.
+- Local provenance verification resolves the pinned Trial proto unit and root animation against the expected source hashes.
+- Unit-pack validation, catalogs, focused workcell tests, type checks, lint, formatting, and the complete deterministic/presentation suites remain green.
+
+---
+
 ## Later milestones (direction, not commitments)
 
-Parallel Gate A melee-unit packs → deterministic projectiles and the ranged roster → first hero/myth behavior slice → god powers → naval/air/transport → gates/walls → AI → deterministic physics kernel.
+Agentic roster workcells → deterministic projectiles and the ranged roster → first hero/myth behavior slice → god powers → naval/air/transport → gates/walls → AI → deterministic physics kernel.
 
 ## Open questions (parked, on purpose)
 

@@ -85,7 +85,7 @@ export {
 } from "./ecs/progression";
 export * from "./ecs/types";
 export * from "./content/culture-types";
-export * from "./content/gate-a-manifest";
+export * from "./content/unit-roster";
 export * from "./ecs/world";
 export {
   canPlaceBuilding,
