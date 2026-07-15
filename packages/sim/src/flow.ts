@@ -174,6 +174,9 @@ export function buildFlowField(walkable: Uint8Array, goalCell: number): FlowFiel
     const tileZ = cell >>> 8;
     let x = 0;
     let z = 0;
+    let fallbackCost = UNVISITED;
+    let fallbackX = 0;
+    let fallbackZ = 0;
 
     for (let i = 0; i < NEIGHBOR_DX.length; i += 1) {
       const dx = NEIGHBOR_DX[i]!;
@@ -202,6 +205,16 @@ export function buildFlowField(walkable: Uint8Array, goalCell: number): FlowFiel
       }
 
       const drop = centerCost - neighborCost;
+
+      // Symmetric routes around an obstacle can cancel to an exact zero vector.
+      // Keep the lowest-cost legal neighbor as a deterministic escape direction;
+      // NEIGHBOR_DX/DZ order breaks equal-cost ties.
+      if (neighborCost < fallbackCost) {
+        fallbackCost = neighborCost;
+        fallbackX = NEIGHBOR_UNIT_X[i]!;
+        fallbackZ = NEIGHBOR_UNIT_Z[i]!;
+      }
+
       x += NEIGHBOR_UNIT_X[i]! * drop;
       z += NEIGHBOR_UNIT_Z[i]! * drop;
     }
@@ -212,6 +225,9 @@ export function buildFlowField(walkable: Uint8Array, goalCell: number): FlowFiel
       const inverseLength = 1 / Math.sqrt(lengthSq);
       dirX[cell] = x * inverseLength;
       dirZ[cell] = z * inverseLength;
+    } else if (fallbackCost !== UNVISITED) {
+      dirX[cell] = fallbackX;
+      dirZ[cell] = fallbackZ;
     }
   }
 
@@ -239,6 +255,21 @@ export function sampleFlowDirection(
   const i10 = z0 * MAP_TILES + x1;
   const i01 = z1 * MAP_TILES + x0;
   const i11 = z1 * MAP_TILES + x1;
+
+  // Do not interpolate across a blocked, unreachable, or goal cell: all three
+  // have a zero vector, and blending toward zero can make the valid component
+  // decay asymptotically before the unit crosses the next tile boundary.
+  if (
+    (field.dirX[i00] === 0 && field.dirZ[i00] === 0) ||
+    (field.dirX[i10] === 0 && field.dirZ[i10] === 0) ||
+    (field.dirX[i01] === 0 && field.dirZ[i01] === 0) ||
+    (field.dirX[i11] === 0 && field.dirZ[i11] === 0)
+  ) {
+    outDirection[0] = field.dirX[i00]!;
+    outDirection[1] = field.dirZ[i00]!;
+    return;
+  }
+
   const topX = field.dirX[i00]! + (field.dirX[i10]! - field.dirX[i00]!) * tx;
   const topZ = field.dirZ[i00]! + (field.dirZ[i10]! - field.dirZ[i00]!) * tx;
   const bottomX = field.dirX[i01]! + (field.dirX[i11]! - field.dirX[i01]!) * tx;

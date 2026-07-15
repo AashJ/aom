@@ -341,6 +341,36 @@ function isWalkableStep(
   return world.walkable[xSideTile] === 1 && world.walkable[zSideTile] === 1;
 }
 
+function hasWalkableDirectPath(
+  world: World,
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+  distance: number,
+): boolean {
+  // Final approach is at most two world units. Quarter-tile segments cannot
+  // skip an intervening cell, and isWalkableStep preserves the same diagonal
+  // corner rule used by normal movement.
+  const segmentCount = Math.ceil(distance * 4);
+  let x = fromX;
+  let z = fromZ;
+
+  for (let segment = 1; segment <= segmentCount; segment += 1) {
+    const nextX = fromX + ((toX - fromX) * segment) / segmentCount;
+    const nextZ = fromZ + ((toZ - fromZ) * segment) / segmentCount;
+
+    if (!isWalkableStep(world, x, z, nextX, nextZ)) {
+      return false;
+    }
+
+    x = nextX;
+    z = nextZ;
+  }
+
+  return true;
+}
+
 export function spawnUnit(
   world: World,
   x: number,
@@ -1564,8 +1594,15 @@ export function tickWorld(world: World): void {
       const dz = world.moveTargetZ[i]! - z;
       const dist = Math.sqrt(dx * dx + dz * dz);
 
-      // Fields quantize to tiles; the last stretch needs the exact line so arrival stays bit-exact.
-      if (dist <= FINAL_APPROACH_DIST) {
+      const field = world.unitField[i] ?? null;
+      const canApproachDirectly =
+        dist <= FINAL_APPROACH_DIST &&
+        (field === null ||
+          hasWalkableDirectPath(world, x, z, world.moveTargetX[i]!, world.moveTargetZ[i]!, dist));
+
+      // Fields quantize to tiles; a clear last stretch uses the exact line so arrival stays
+      // bit-exact. If terrain blocks that segment, keep following the field around it.
+      if (canApproachDirectly) {
         if (dist <= step) {
           pushX = dx;
           pushZ = dz;
@@ -1575,8 +1612,6 @@ export function tickWorld(world: World): void {
           pushZ = (dz / dist) * step;
         }
       } else {
-        const field = world.unitField[i] ?? null;
-
         // Most moving units follow their cached goal field.
         if (field !== null) {
           sampleFlowDirection(field, x, z, sampledFlowDirection);

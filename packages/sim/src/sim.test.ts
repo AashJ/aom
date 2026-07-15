@@ -2262,6 +2262,35 @@ describe("commands and separation", () => {
     expect(world.posZ[mover]).toBe(103);
   });
 
+  test("flow steering routes around an obstacle inside the final approach radius", () => {
+    const world = flatWorld(7);
+
+    const mover = spawnUnit(world, 99.5, 100.5, 0, 0);
+    const blockedTile = 100 * MAP_TILES + 101;
+
+    world.walkable[blockedTile] = 0;
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_MOVE,
+      unitIds: [mover],
+      targetX: 102.5,
+      targetZ: 100.5,
+    });
+
+    for (let tick = 0; tick < 120; tick += 1) {
+      tickWorld(world);
+      const occupiedTile =
+        Math.floor(world.posZ[mover]!) * MAP_TILES + Math.floor(world.posX[mover]!);
+
+      expect(occupiedTile).not.toBe(blockedTile);
+    }
+
+    expect(world.posX[mover]).toBe(102.5);
+    expect(world.posZ[mover]).toBe(100.5);
+    expect(world.moving[mover]).toBe(0);
+  });
+
   test("separation cannot push a unit diagonally through a blocked corner", () => {
     const world = flatWorld(7);
     const pushed = spawnUnit(world, 100.98, 100.98, 0, 0);
