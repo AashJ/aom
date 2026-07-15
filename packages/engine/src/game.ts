@@ -1,10 +1,12 @@
 import {
+  BUILD_OPTIONS_BY_WORKER,
   canPlaceBuilding,
   CHEAT_ADD_FOOD,
   CHEAT_ADD_GOLD,
   CHEAT_ADD_WOOD,
   CHEAT_FULL_FAVOR,
   CHEAT_REVEAL_MAP,
+  cultureForMajorGod,
   createSnapshot,
   createWorld,
   FAVOR,
@@ -14,6 +16,7 @@ import {
   GOD_ZEUS,
   hashWorld,
   MAP_TILES,
+  MAX_TRAIN_QUEUE,
   MAX_UNITS,
   MODE_PRAYING,
   RESOURCE_COUNT,
@@ -22,16 +25,19 @@ import {
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
-  TYPE_MILITIA,
-  TYPE_TOWN_CENTER,
-  TYPE_VILLAGER,
+  townCenterTypeForCulture,
+  TRAIN_OPTIONS_BY_PRODUCER,
   unitIdAt,
   UNIT_TYPES,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_WORKER,
   updateVisibility,
   VIS_VISIBLE,
   WOOD,
+  workerTypeForCulture,
   writeSnapshot,
   type CheatId,
+  type TypeCommandRelationship,
 } from "@aom/sim";
 import { createGameAudio } from "./audio/audio";
 import {
@@ -86,12 +92,15 @@ export interface SelectionSummary {
   // Selected OWN villagers - the build menu gate.
   villagers: number;
   prayingVillagers: number;
+  builderType: number;
+  buildOptions: readonly TypeCommandRelationship[];
   // FIRST selected own production building, null when none.
   producer: {
     id: number;
     type: number;
     complete: boolean;
-    queueLength: number;
+    trainOptions: readonly TypeCommandRelationship[];
+    queueTypes: readonly number[];
     progress: number;
   } | null;
 }
@@ -103,6 +112,7 @@ export interface GameHandle {
   startPlacement(buildingType: number): void;
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
+  cancelTraining(buildingId: number, queueIndex: number): void;
   advanceAge(buildingId: number, minorGod: number): void;
   submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
@@ -117,6 +127,34 @@ export interface GameOptions {
 }
 
 export type GameCulture = "egyptian" | "greek";
+
+const NO_OPTIONS: readonly TypeCommandRelationship[] = Object.freeze([]);
+const NO_TYPES: readonly number[] = Object.freeze([]);
+
+function typeListsEqual(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function optionListsEqual(
+  left: readonly TypeCommandRelationship[],
+  right: readonly TypeCommandRelationship[],
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (
+      left[index]!.type !== right[index]!.type ||
+      left[index]!.commandSlot !== right[index]!.commandSlot
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export async function createGame(
   canvas: HTMLCanvasElement,
@@ -199,9 +237,12 @@ export async function createGame(
   }
 
   spawnUnits(world, 3 * ownerIds.length, ownerIds);
+  const selfCulture = cultureForMajorGod(world.playerMajorGod[selfPlayerId]!);
+  const selfTownCenterType = townCenterTypeForCulture(selfCulture);
+  const selfWorkerType = workerTypeForCulture(selfCulture);
 
   for (let i = 0; i < world.count; i += 1) {
-    if (world.owner[i] !== selfPlayerId || world.unitType[i] !== TYPE_TOWN_CENTER) continue;
+    if (world.owner[i] !== selfPlayerId || world.unitType[i] !== selfTownCenterType) continue;
 
     vec3.set(camera.goalTarget, world.posX[i]!, camera.goalTarget[1]!, world.posZ[i]!);
     vec3.copy(camera.target, camera.goalTarget);
@@ -219,15 +260,21 @@ export async function createGame(
   let placementType = -1;
   const placementTile = new Int32Array(2);
   let placementValid = false;
-  let lastSelection: SelectionSummary = { villagers: 0, prayingVillagers: 0, producer: null };
+  let lastSelection: SelectionSummary = {
+    villagers: 0,
+    prayingVillagers: 0,
+    builderType: -1,
+    buildOptions: NO_OPTIONS,
+    producer: null,
+  };
   writeSnapshot(world, prevSnap, selfPlayerId);
   writeSnapshot(world, currSnap, selfPlayerId);
   const playerState = createPlayerStateStore(selfPlayerId);
 
   playerState.update(currSnap);
 
-  function isViewerTypeAvailable(unitType: number): boolean {
-    return playerState.availability(unitType).available;
+  function isViewerTypeAvailable(unitType: number, producerType?: number): boolean {
+    return playerState.availability(unitType, producerType).available;
   }
 
   let [terrain, units] = await Promise.all([
@@ -478,7 +525,7 @@ export async function createGame(
             if (
               world.selected[i] === 1 &&
               world.owner[i] === selfPlayerId &&
-              (type === TYPE_VILLAGER || type === TYPE_MILITIA)
+              (UNIT_TYPES[type]!.classes & UNIT_CLASS_HUMAN) !== 0
             ) {
               selectedUnit = i;
               break;
@@ -511,6 +558,7 @@ export async function createGame(
 
             audio.acknowledge(
               issued,
+              world.unitType[selectedUnit]!,
               world.posX[selectedUnit]!,
               world.posZ[selectedUnit]!,
               resourceType,
@@ -525,6 +573,8 @@ export async function createGame(
     }
     let villagers = 0;
     let prayingVillagers = 0;
+    let builderType = -1;
+    let buildOptions = NO_OPTIONS;
     let producer: SelectionSummary["producer"] = null;
 
     for (let i = 0; i < world.count; i += 1) {
@@ -535,23 +585,36 @@ export async function createGame(
       const unitType = world.unitType[i]!;
       const unitStats = UNIT_TYPES[unitType]!;
 
-      if (unitType === TYPE_VILLAGER) {
+      if ((unitStats.classes & UNIT_CLASS_WORKER) !== 0) {
         villagers += 1;
+
+        if (builderType === -1) {
+          builderType = unitType;
+          buildOptions = BUILD_OPTIONS_BY_WORKER[unitType] ?? NO_OPTIONS;
+        }
 
         if (world.mode[i] === MODE_PRAYING && world.moving[i] === 0) {
           prayingVillagers += 1;
         }
       }
 
-      if (producer === null && unitStats.trains >= 0) {
+      if (producer === null && TRAIN_OPTIONS_BY_PRODUCER[unitType] !== undefined) {
         const remaining = world.trainRemaining[i]!;
+        const queueStart = i * MAX_TRAIN_QUEUE;
+        const queueTypes = Array.from(
+          world.trainQueueTypes.subarray(queueStart, queueStart + world.trainQueueLength[i]!),
+        );
 
         producer = {
           id: unitIdAt(world, i),
           type: unitType,
           complete: world.buildProgress[i]! >= unitStats.buildTicks,
-          queueLength: world.trainQueueLength[i]!,
-          progress: remaining > 0 ? 1 - remaining / UNIT_TYPES[world.trainType[i]!]!.buildTicks : 0,
+          trainOptions: TRAIN_OPTIONS_BY_PRODUCER[unitType]!,
+          queueTypes,
+          progress:
+            remaining > 0 && queueTypes.length > 0
+              ? 1 - remaining / UNIT_TYPES[queueTypes[0]!]!.buildTicks
+              : 0,
         };
       }
     }
@@ -560,13 +623,19 @@ export async function createGame(
     if (
       villagers !== lastSelection.villagers ||
       prayingVillagers !== lastSelection.prayingVillagers ||
+      builderType !== lastSelection.builderType ||
+      !optionListsEqual(buildOptions, lastSelection.buildOptions) ||
       producer?.id !== lastProducer?.id ||
       producer?.type !== lastProducer?.type ||
       producer?.complete !== lastProducer?.complete ||
-      producer?.queueLength !== lastProducer?.queueLength ||
+      !optionListsEqual(
+        producer?.trainOptions ?? NO_OPTIONS,
+        lastProducer?.trainOptions ?? NO_OPTIONS,
+      ) ||
+      !typeListsEqual(producer?.queueTypes ?? NO_TYPES, lastProducer?.queueTypes ?? NO_TYPES) ||
       producer?.progress !== lastProducer?.progress
     ) {
-      lastSelection = { villagers, prayingVillagers, producer };
+      lastSelection = { villagers, prayingVillagers, builderType, buildOptions, producer };
 
       for (const cb of selectionCbs) {
         cb(lastSelection);
@@ -727,7 +796,7 @@ export async function createGame(
     onPlayerState: playerState.subscribe,
     startPlacement(buildingType: number): void {
       // UI-driven modal — the React build bar calls this.
-      if (!isViewerTypeAvailable(buildingType)) {
+      if (!isViewerTypeAvailable(buildingType, selfWorkerType)) {
         return;
       }
 
@@ -740,10 +809,6 @@ export async function createGame(
       placementValid = false;
     },
     trainSelected(unitType: number): void {
-      if (!isViewerTypeAvailable(unitType)) {
-        return;
-      }
-
       for (let i = 0; i < world.count; i += 1) {
         if (world.selected[i] !== 1 || world.owner[i] !== selfPlayerId) {
           continue;
@@ -751,7 +816,13 @@ export async function createGame(
 
         const unitStats = UNIT_TYPES[world.unitType[i]!]!;
 
-        if (unitStats.trains !== unitType || world.buildProgress[i]! < unitStats.buildTicks) {
+        if (
+          !isViewerTypeAvailable(unitType, world.unitType[i]!) ||
+          !TRAIN_OPTIONS_BY_PRODUCER[world.unitType[i]!]?.some(
+            (option) => option.type === unitType,
+          ) ||
+          world.buildProgress[i]! < unitStats.buildTicks
+        ) {
           continue;
         }
 
@@ -761,6 +832,21 @@ export async function createGame(
         return;
       }
     },
+    cancelTraining(buildingId: number, queueIndex: number): void {
+      const building = resolveId(world, buildingId);
+
+      if (
+        building < 0 ||
+        world.owner[building] !== selfPlayerId ||
+        queueIndex < 0 ||
+        queueIndex >= world.trainQueueLength[building]!
+      ) {
+        return;
+      }
+
+      sink.submitCancelTrain(buildingId, queueIndex);
+      audio.uiClick();
+    },
     advanceAge(buildingId: number, minorGod: number): void {
       const building = resolveId(world, buildingId);
 
@@ -768,8 +854,8 @@ export async function createGame(
         building < 0 ||
         world.selected[building] !== 1 ||
         world.owner[building] !== selfPlayerId ||
-        world.unitType[building] !== TYPE_TOWN_CENTER ||
-        world.buildProgress[building]! < UNIT_TYPES[TYPE_TOWN_CENTER]!.buildTicks
+        world.unitType[building] !== selfTownCenterType ||
+        world.buildProgress[building]! < UNIT_TYPES[selfTownCenterType]!.buildTicks
       ) {
         return;
       }

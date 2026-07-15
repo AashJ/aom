@@ -11,7 +11,8 @@ import {
 } from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
 import { registerPlayer } from "./ecs/players";
-import { AGE_CLASSICAL } from "./ecs/progression";
+import { MAX_TRAIN_QUEUE } from "./ecs/production";
+import { AGE_CLASSICAL, GOD_RA, GOD_ZEUS } from "./ecs/progression";
 import {
   CARRY_CAPACITY,
   FAVOR,
@@ -19,14 +20,18 @@ import {
   GOLD,
   LEASH_FACTOR,
   RESOURCE_COUNT,
-  TYPE_BARRACKS,
   TYPE_BERRY,
+  TYPE_GREEK_HOUSE as TYPE_HOUSE,
+  TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
+  TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
+  TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
+  TYPE_EGYPTIAN_LABORER,
+  TYPE_EGYPTIAN_TOWN_CENTER,
+  TYPE_HOPLITE,
   TYPE_GOLD_MINE,
-  TYPE_HOUSE,
   TYPE_MILITIA,
-  TYPE_TOWN_CENTER,
+  TYPE_SPEARMAN,
   TYPE_TREE,
-  TYPE_VILLAGER,
   UNIT_TYPES,
   WOOD,
 } from "./ecs/types";
@@ -37,7 +42,6 @@ import {
   createWorld,
   killUnit,
   MATCH_DRAW,
-  MAX_TRAIN_QUEUE,
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_IDLE,
@@ -155,9 +159,9 @@ describe("sim", () => {
 
   test("snapshot copies tick count and narrows render values", () => {
     const world = createWorld(42);
-    const snapshot = createSnapshot(1000);
 
     spawnUnits(world, 1000);
+    const snapshot = createSnapshot(world.count);
     world.facingX[17] = 0.25;
     world.facingZ[17] = -0.75;
     tickWorld(world);
@@ -438,13 +442,26 @@ describe("packed entity ids", () => {
 
     expect(hashWorld(world)).not.toBe(before);
   });
+
+  test("mixed production queue contents are visible to the state hash", () => {
+    const world = flatWorld(42);
+    spawnUnits(world, 10);
+    world.trainQueueLength[0] = 2;
+    world.trainQueueTypes[0] = TYPE_HOPLITE;
+    world.trainQueueTypes[1] = TYPE_SPEARMAN;
+    const before = hashWorld(world);
+
+    world.trainQueueTypes[1] = TYPE_HOPLITE;
+
+    expect(hashWorld(world)).not.toBe(before);
+  });
 });
 
 describe("ownership", () => {
   test("commands only move units the issuer owns", () => {
     const world = flatWorld(42, [0, 1]);
     const mine = spawnUnit(world, 10, 10, 0, 0, 0);
-    const theirs = spawnUnit(world, 20, 20, 0, 0, 1);
+    const theirs = spawnUnit(world, 30, 20, 0, 0, 1);
 
     // One command addressing BOTH armies: the sim must slice it to the
     // issuer's units — the forged half dies identically on every client.
@@ -462,6 +479,7 @@ describe("ownership", () => {
     }
 
     expect(world.moving[0]).toBe(1);
+    expect(world.posX[1]).toBe(30);
     expect(world.posZ[1]).toBe(20);
     expect(world.moving[1]).toBe(0);
   });
@@ -1271,7 +1289,7 @@ describe("gathering", () => {
         patchStock += world.hp[i]!;
       }
 
-      if (world.unitType[i] === 0 && world.owner[i] === 0) {
+      if (world.unitType[i] === TYPE_VILLAGER && world.owner[i] === 0) {
         villagers.push(unitIdAt(world, i));
       }
     }
@@ -1320,7 +1338,11 @@ describe("gathering", () => {
         let best = Infinity;
 
         for (let i = 0; i < world.count; i += 1) {
-          if (world.owner[i] === issuer && world.unitType[i] === 0 && firstVillager < 0) {
+          if (
+            world.owner[i] === issuer &&
+            world.unitType[i] === TYPE_VILLAGER &&
+            firstVillager < 0
+          ) {
             firstVillager = i;
           }
         }
@@ -1642,6 +1664,26 @@ describe("building placement", () => {
 });
 
 describe("production", () => {
+  test("culture-specific starts spawn distinct worker and Town Center identities", () => {
+    const world = createWorld(42);
+    world.walkable.fill(1);
+    registerPlayer(world, 0, GOD_ZEUS);
+    registerPlayer(world, 1, GOD_RA);
+
+    spawnUnits(world, 2, [0, 1]);
+
+    const greekTypes: number[] = [];
+    const egyptianTypes: number[] = [];
+    for (let index = 0; index < world.count; index += 1) {
+      (world.owner[index] === 0 ? greekTypes : egyptianTypes).push(world.unitType[index]!);
+    }
+
+    expect(greekTypes).toContain(TYPE_TOWN_CENTER);
+    expect(greekTypes).toContain(TYPE_VILLAGER);
+    expect(egyptianTypes).toContain(TYPE_EGYPTIAN_TOWN_CENTER);
+    expect(egyptianTypes).toContain(TYPE_EGYPTIAN_LABORER);
+  });
+
   test("a town center trains a villager that spawns adjacent on walkable ground", () => {
     const world = flatWorld(42);
     const tc = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
@@ -1794,13 +1836,14 @@ describe("production", () => {
     expect(world.trainRemaining[resolveId(world, tcB)]).toBe(0);
   });
 
-  test("wrong producers and blueprints are silent no-ops; barracks trains militia", () => {
+  test("wrong producers and blueprints are silent no-ops; Academy trains a Hoplite", () => {
     const world = flatWorld(42);
     const barracks = spawnBuilding(world, 100, 100, 0, TYPE_BARRACKS, true);
     const house = spawnBuilding(world, 120, 120, 0, TYPE_HOUSE, true);
     const blueprintTc = spawnBuilding(world, 140, 140, 0, TYPE_TOWN_CENTER, false);
     world.stockpiles[FOOD] = 500;
     world.stockpiles[WOOD] = 500;
+    world.stockpiles[GOLD] = 500;
     world.playerAge[0] = AGE_CLASSICAL;
     const countBefore = world.count;
 
@@ -1834,40 +1877,41 @@ describe("production", () => {
     expect(world.stockpiles[FOOD]).toBe(500);
     expect(world.stockpiles[WOOD]).toBe(500);
 
-    // The legal order: militia from a finished barracks, food AND wood deducted.
+    // The legal order: Hoplite from a finished Military Academy.
     enqueueCommand(world, {
       tick: world.tick,
       issuer: 0,
       type: COMMAND_TRAIN,
       buildingId: barracks,
-      unitType: TYPE_MILITIA,
+      unitType: TYPE_HOPLITE,
     });
 
-    for (let t = 0; t < 200; t += 1) {
+    for (let t = 0; t < UNIT_TYPES[TYPE_HOPLITE]!.buildTicks + 5; t += 1) {
       tickWorld(world);
     }
 
-    expect(world.stockpiles[FOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costFood);
-    expect(world.stockpiles[WOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costWood);
+    expect(world.stockpiles[FOOD]).toBe(500 - UNIT_TYPES[TYPE_HOPLITE]!.costFood);
+    expect(world.stockpiles[GOLD]).toBe(500 - UNIT_TYPES[TYPE_HOPLITE]!.costGold);
     expect(world.count).toBe(countBefore + 1);
-    const militia = world.count - 1;
+    const hoplite = world.count - 1;
     const barracksIndex = resolveId(world, barracks);
-    expect(world.unitType[militia]).toBe(TYPE_MILITIA);
+    expect(world.unitType[hoplite]).toBe(TYPE_HOPLITE);
     // The original-scale barracks mesh overhangs its logical footprint. Units emerge from the
     // front door, clear of the model, instead of idling invisibly inside it.
-    expect(world.posZ[militia]).toBeLessThanOrEqual(
+    expect(world.posZ[hoplite]).toBeLessThanOrEqual(
       world.posZ[barracksIndex]! - UNIT_TYPES[TYPE_BARRACKS]!.trainExitOffset + 0.5,
     );
     expect(
       world.walkable[
-        Math.floor(world.posZ[militia]!) * MAP_TILES + Math.floor(world.posX[militia]!)
+        Math.floor(world.posZ[hoplite]!) * MAP_TILES + Math.floor(world.posX[hoplite]!)
       ],
     ).toBe(1);
   });
 });
 
 describe("combat", () => {
-  const stats = UNIT_TYPES[0]!;
+  const stats = UNIT_TYPES[TYPE_VILLAGER]!;
+  const attack = stats.meleeAttack!;
 
   test("adjacent enemies auto-acquire, trade damage, and produce a winner", () => {
     const world = flatWorld(42, [0, 1]);
@@ -1895,7 +1939,7 @@ describe("combat", () => {
   test("enemies outside aggro range ignore each other", () => {
     const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
-    spawnUnit(world, 100 + stats.aggroRange * 3, 100, 0, 0, 1);
+    spawnUnit(world, 100 + attack.aggroRange * 3, 100, 0, 0, 1);
     world.contested = true;
 
     for (let t = 0; t < 200; t += 1) {
@@ -2028,7 +2072,7 @@ describe("combat", () => {
   test("an auto-acquired chase leashes; an ordered one would not", () => {
     const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
-    const farId = spawnUnit(world, 100 + stats.aggroRange * LEASH_FACTOR + 2, 100, 0, 0, 1);
+    const farId = spawnUnit(world, 100 + attack.aggroRange * LEASH_FACTOR + 2, 100, 0, 0, 1);
     world.contested = true;
 
     // Simulate an auto-engagement whose target has slipped past the leash.

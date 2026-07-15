@@ -8,6 +8,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
@@ -33,6 +34,7 @@ export interface CommandSink {
   submitPray(unitIds: number[], targetId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
+  submitCancelTrain(buildingId: number, queueIndex: number): void;
   submitAdvanceAge(buildingId: number, minorGod: number): void;
   submitCheat(cheat: CheatId): void;
   submitPlace(buildingType: number, tileX: number, tileZ: number): void;
@@ -107,6 +109,15 @@ export function createLoopbackSink(world: World): CommandSink {
         type: COMMAND_TRAIN,
         buildingId,
         unitType,
+      });
+    },
+    submitCancelTrain(buildingId: number, queueIndex: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_CANCEL_TRAIN,
+        buildingId,
+        queueIndex,
       });
     },
     submitAdvanceAge(buildingId: number, minorGod: number): void {

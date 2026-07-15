@@ -1,9 +1,11 @@
 import {
   AGE_ARCHAIC,
+  cultureForMajorGod,
   FAVOR,
   FOOD,
   getTypeAvailability,
   GOLD,
+  MAX_TRAIN_QUEUE,
   NO_AGE,
   NO_GOD,
   RESOURCE_COUNT,
@@ -16,6 +18,7 @@ import {
 export interface PlayerState {
   age: number;
   majorGod: number;
+  minorGods: Uint8Array;
   food: number;
   wood: number;
   gold: number;
@@ -40,7 +43,7 @@ export type PlayerStateCallback = (state: PlayerState) => void;
 
 export interface PlayerStateStore {
   update(snapshot: RenderSnapshot): void;
-  availability(unitType: number): TypeAvailability;
+  availability(unitType: number, producerType?: number): TypeAvailability;
   subscribe(callback: PlayerStateCallback): () => void;
   clear(): void;
 }
@@ -63,6 +66,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
   let state: PlayerState = {
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
+    minorGods: new Uint8Array(4).fill(NO_GOD),
     food: 0,
     wood: 0,
     gold: 0,
@@ -79,6 +83,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     const stockpileBase = playerId * RESOURCE_COUNT;
     const age = snapshot.age;
     const majorGod = snapshot.majorGod;
+    const minorGods = snapshot.minorGods;
     const food = snapshot.stockpiles[stockpileBase + FOOD] ?? 0;
     const wood = snapshot.stockpiles[stockpileBase + WOOD] ?? 0;
     const gold = snapshot.stockpiles[stockpileBase + GOLD] ?? 0;
@@ -105,11 +110,12 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
 
       const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
 
-      if (stats.footprint === 0) {
-        pop += 1;
-      }
+      pop += stats.populationCost;
 
-      pop += snapshot.trainQueueLength[index]!;
+      const queueStart = index * MAX_TRAIN_QUEUE;
+      for (let queueIndex = 0; queueIndex < snapshot.trainQueueLength[index]!; queueIndex += 1) {
+        pop += UNIT_TYPES[snapshot.trainQueueTypes[queueStart + queueIndex]!]!.populationCost;
+      }
 
       if (stats.footprint > 0 && snapshot.buildProgress[index]! >= stats.buildTicks) {
         popCap += stats.popBonus;
@@ -119,6 +125,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     if (
       age === state.age &&
       majorGod === state.majorGod &&
+      arraysEqual(state.minorGods, minorGods) &&
       food === state.food &&
       wood === state.wood &&
       gold === state.gold &&
@@ -139,6 +146,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     state = {
       age,
       majorGod,
+      minorGods: minorGods.slice(),
       food,
       wood,
       gold,
@@ -155,12 +163,14 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     }
   }
 
-  function availability(unitType: number): TypeAvailability {
-    return getTypeAvailability(
-      unitType,
-      state.age,
-      (buildingType) => state.completedBuildings[buildingType] === 1,
-    );
+  function availability(unitType: number, producerType?: number): TypeAvailability {
+    return getTypeAvailability(unitType, {
+      playerAge: state.age,
+      playerCulture: cultureForMajorGod(state.majorGod),
+      producerType,
+      hasCompletedBuilding: (buildingType) => state.completedBuildings[buildingType] === 1,
+      hasGod: (god) => god === state.majorGod || state.minorGods.includes(god),
+    });
   }
 
   function subscribe(callback: PlayerStateCallback): () => void {

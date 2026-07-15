@@ -91,18 +91,36 @@ export function isFootprintVisibleTo(
 
 export function isEntityVisibleTo(world: World, playerId: number, entityIndex: number): boolean {
   if (entityIndex < 0 || entityIndex >= world.count) return false;
-  if (world.owner[entityIndex] === playerId) return true;
+  return isTypeAtPositionVisibleTo(
+    world,
+    playerId,
+    world.owner[entityIndex]!,
+    world.unitType[entityIndex]!,
+    world.posX[entityIndex]!,
+    world.posZ[entityIndex]!,
+  );
+}
+
+export function isTypeAtPositionVisibleTo(
+  world: World,
+  playerId: number,
+  owner: number,
+  unitType: number,
+  positionX: number,
+  positionZ: number,
+): boolean {
+  if (owner === playerId) return true;
 
   const slot = world.playerSlotById[playerId]!;
 
   if (slot < 0) return false;
 
-  const stats = UNIT_TYPES[world.unitType[entityIndex]!]!;
+  const stats = UNIT_TYPES[unitType]!;
   const footprint = stats.footprint;
 
   if (footprint > 0) {
-    const tileX = Math.round(world.posX[entityIndex]! - footprint / 2);
-    const tileZ = Math.round(world.posZ[entityIndex]! - footprint / 2);
+    const tileX = Math.round(positionX - footprint / 2);
+    const tileZ = Math.round(positionZ - footprint / 2);
     const base = slot * VISIBILITY_TILES;
 
     for (let z = tileZ; z < tileZ + footprint; z += 1) {
@@ -122,8 +140,8 @@ export function isEntityVisibleTo(world: World, playerId: number, entityIndex: n
     return false;
   }
 
-  const tileX = Math.max(0, Math.min(MAP_TILES - 1, Math.floor(world.posX[entityIndex]!)));
-  const tileZ = Math.max(0, Math.min(MAP_TILES - 1, Math.floor(world.posZ[entityIndex]!)));
+  const tileX = Math.max(0, Math.min(MAP_TILES - 1, Math.floor(positionX)));
+  const tileZ = Math.max(0, Math.min(MAP_TILES - 1, Math.floor(positionZ)));
 
   return world.visibility[slot * VISIBILITY_TILES + tileZ * MAP_TILES + tileX] === VIS_VISIBLE;
 }

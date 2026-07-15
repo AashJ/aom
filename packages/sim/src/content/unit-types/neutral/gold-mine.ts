@@ -1,0 +1,42 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GOLD_MINE } from "../../unit-type-ids";
+import {
+  CULTURE_SHARED,
+  GOLD,
+  NO_ARMOR,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_RESOURCE,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_GOLD_MINE,
+  key: "gold-mine",
+  label: "Gold Mine",
+  culture: CULTURE_SHARED,
+  classes: UNIT_CLASS_RESOURCE,
+  maxHp: 3000,
+  lineOfSight: 0,
+  movementSpeed: 0,
+  armor: NO_ARMOR,
+  meleeAttack: null,
+  isStatic: true,
+  resource: GOLD,
+  bodyRadius: 1.2,
+  footprint: 0,
+  costFood: 0,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 0,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

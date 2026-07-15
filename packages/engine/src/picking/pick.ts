@@ -1,13 +1,14 @@
 // CPU picking per ARCHITECTURE.md M1. GPU id-buffer picking is the known upgrade path.
 import {
   clearSelection,
+  CULTURE_GREEK,
   heightAt,
   isGreekMajorGod,
   NEUTRAL_OWNER,
   setSelected,
   SIM_MAP_SIZE,
-  TYPE_TEMPLE,
-  TYPE_VILLAGER,
+  UNIT_CLASS_TEMPLE,
+  UNIT_CLASS_WORKER,
   unitIdAt,
   UNIT_TYPES,
   type RenderSnapshot,
@@ -29,14 +30,14 @@ const commandTarget = vec3.create();
 
 interface SelectedCommandUnits {
   ids: number[];
-  hasVillager: boolean;
+  hasGreekWorker: boolean;
 }
 
 type TargetCommand = "attack" | "build" | "gather" | "pray";
 
 function collectSelectedCommandUnits(world: World, selfPlayerId: number): SelectedCommandUnits {
   const ids: number[] = [];
-  let hasVillager = false;
+  let hasGreekWorker = false;
 
   // Allocation is fine at click/key rate; commands are serializable plain data.
   for (let index = 0; index < world.count; index += 1) {
@@ -46,10 +47,11 @@ function collectSelectedCommandUnits(world: World, selfPlayerId: number): Select
     }
 
     ids.push(unitIdAt(world, index));
-    hasVillager ||= world.unitType[index] === TYPE_VILLAGER;
+    const stats = UNIT_TYPES[world.unitType[index]!]!;
+    hasGreekWorker ||= (stats.classes & UNIT_CLASS_WORKER) !== 0 && stats.culture === CULTURE_GREEK;
   }
 
-  return { ids, hasVillager };
+  return { ids, hasGreekWorker };
 }
 
 function classifyTargetCommand(
@@ -81,7 +83,8 @@ function classifyTargetCommand(
   if (
     canPray &&
     snapshot.owner[hit] === selfPlayerId &&
-    type === TYPE_TEMPLE &&
+    (stats.classes & UNIT_CLASS_TEMPLE) !== 0 &&
+    stats.culture === CULTURE_GREEK &&
     snapshot.buildProgress[hit]! >= stats.buildTicks
   ) {
     return "pray";
@@ -261,7 +264,7 @@ export function consumeCommandInput(
     curr,
     hit,
     selfPlayerId,
-    selected.hasVillager && isGreekMajorGod(curr.majorGod),
+    selected.hasGreekWorker && isGreekMajorGod(curr.majorGod),
   );
 
   if (targetCommand && selected.ids.length > 0) {

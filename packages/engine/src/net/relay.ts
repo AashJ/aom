@@ -10,6 +10,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
@@ -110,6 +111,14 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_TRAIN, buildingId, unitType }],
+      });
+    },
+
+    submitCancelTrain(buildingId: number, queueIndex: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_CANCEL_TRAIN, buildingId, queueIndex }],
       });
     },
 

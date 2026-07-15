@@ -2,7 +2,7 @@ import type { World } from "./world";
 import { isCompletedOwnedBuilding } from "./availability";
 import { isGreekMajorGod } from "./favor";
 import { assignFieldGoal, setFacingToward } from "./navigation";
-import { TYPE_TEMPLE, UNIT_TYPES } from "./types";
+import { CULTURE_GREEK, UNIT_CLASS_TEMPLE, UNIT_TYPES } from "./types";
 import { cellOf } from "../flow";
 
 // Packed id 0 is valid (handle 0, generation 0), so task targets use an
@@ -55,10 +55,14 @@ export function assignGatherTask(
 }
 
 export function isValidPrayerTarget(world: World, target: number, playerId: number): boolean {
+  const targetStats =
+    target >= 0 && target < world.count ? UNIT_TYPES[world.unitType[target]!] : null;
+
   return (
-    target >= 0 &&
-    target < world.count &&
-    world.unitType[target] === TYPE_TEMPLE &&
+    targetStats !== null &&
+    targetStats !== undefined &&
+    (targetStats.classes & UNIT_CLASS_TEMPLE) !== 0 &&
+    targetStats.culture === CULTURE_GREEK &&
     isGreekMajorGod(world.playerMajorGod[playerId]!) &&
     isCompletedOwnedBuilding(world, target, playerId)
   );
@@ -77,7 +81,7 @@ export function tickPrayerTask(
     return;
   }
 
-  const templeStats = UNIT_TYPES[TYPE_TEMPLE]!;
+  const templeStats = UNIT_TYPES[world.unitType[target]!]!;
   const targetX = world.posX[target]!;
   const targetZ = world.posZ[target]!;
   const dx = targetX - world.posX[index]!;

@@ -4,6 +4,7 @@
 // state (ARCHITECTURE.md M3 decision). Also excludes the grid/push scratch arrays
 // cellCount/cellStart/cellUnits/pushX/pushZ and flow caches unitField/fieldCache,
 // which are rebuilt or derived from hashed state (moveTargets + walkable).
+import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import type { World } from "./ecs/world";
 import { AGE_COUNT } from "./ecs/progression";
 import { VISIBILITY_TILES } from "./visibility";
@@ -85,6 +86,7 @@ export function hashWorld(world: World): number {
     world.moveTargetZ,
     world.facingX,
     world.facingZ,
+    world.hp,
   ];
 
   for (let arrayIndex = 0; arrayIndex < arrays.length; arrayIndex += 1) {
@@ -161,13 +163,7 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
-  // Shared combat state: HP, cooldowns, targets, and order flags affect future strikes.
-  for (let i = 0; i < world.count; i += 1) {
-    word = world.hp[i]!;
-    h ^= word;
-    h = Math.imul(h, FNV_PRIME);
-  }
-
+  // Shared combat state: cooldowns, targets, and order flags affect future strikes.
   for (let i = 0; i < world.count; i += 1) {
     word = world.attackCooldown[i]!;
     h ^= word;
@@ -242,10 +238,6 @@ export function hashWorld(world: World): number {
 
   // In-flight production and every promised queue slot are sim state like any other.
   for (let i = 0; i < world.count; i += 1) {
-    word = world.trainType[i]!;
-    h ^= word;
-    h = Math.imul(h, FNV_PRIME);
-
     word = world.trainRemaining[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
@@ -253,6 +245,13 @@ export function hashWorld(world: World): number {
     word = world.trainQueueLength[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    const queueStart = i * MAX_TRAIN_QUEUE;
+    for (let queueIndex = 0; queueIndex < world.trainQueueLength[i]!; queueIndex += 1) {
+      word = world.trainQueueTypes[queueStart + queueIndex]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
 
     word = world.researchId[i]!;
     h ^= word;

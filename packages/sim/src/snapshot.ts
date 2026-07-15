@@ -1,12 +1,13 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
-import { FAVOR, RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
+import { FAVOR, NO_UNIT_TYPE, RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
 import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
 import { findAgeAdvanceResearch } from "./ecs/research";
+import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
-import { isEntityVisibleTo, VISIBILITY_TILES } from "./visibility";
+import { isEntityVisibleTo, isTypeAtPositionVisibleTo, VISIBILITY_TILES } from "./visibility";
 
 export interface RenderSnapshot {
   tick: number;
@@ -18,18 +19,27 @@ export interface RenderSnapshot {
   facingZ: Float32Array;
   moving: Uint8Array;
   mode: Uint8Array;
-  gatherTargetType: Uint8Array;
+  gatherTargetType: Uint16Array;
   actionCooldown: Uint16Array;
   visible: Uint8Array;
   fog: Uint8Array;
   selected: Uint8Array;
   owner: Uint8Array;
-  unitType: Uint8Array;
-  hp: Uint16Array;
+  unitType: Uint16Array;
+  deathCount: number;
+  deathIds: Uint32Array;
+  deathTypes: Uint16Array;
+  deathPosX: Float32Array;
+  deathPosZ: Float32Array;
+  deathFacingX: Float32Array;
+  deathFacingZ: Float32Array;
+  deathOwners: Uint8Array;
+  deathVisible: Uint8Array;
+  hp: Float32Array;
   buildProgress: Uint16Array;
-  trainType: Uint8Array;
   trainRemaining: Uint16Array;
   trainQueueLength: Uint8Array;
+  trainQueueTypes: Uint16Array;
   carried: Uint16Array;
   stockpiles: Uint32Array;
   age: number;
@@ -57,18 +67,27 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     facingZ: new Float32Array(capacity),
     moving: new Uint8Array(capacity),
     mode: new Uint8Array(capacity),
-    gatherTargetType: new Uint8Array(capacity).fill(255),
+    gatherTargetType: new Uint16Array(capacity).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(capacity),
     visible: new Uint8Array(capacity),
     fog: new Uint8Array(VISIBILITY_TILES),
     selected: new Uint8Array(capacity),
     owner: new Uint8Array(capacity),
-    unitType: new Uint8Array(capacity),
-    hp: new Uint16Array(capacity),
+    unitType: new Uint16Array(capacity),
+    deathCount: 0,
+    deathIds: new Uint32Array(capacity),
+    deathTypes: new Uint16Array(capacity),
+    deathPosX: new Float32Array(capacity),
+    deathPosZ: new Float32Array(capacity),
+    deathFacingX: new Float32Array(capacity),
+    deathFacingZ: new Float32Array(capacity),
+    deathOwners: new Uint8Array(capacity),
+    deathVisible: new Uint8Array(capacity),
+    hp: new Float32Array(capacity),
     buildProgress: new Uint16Array(capacity),
-    trainType: new Uint8Array(capacity),
     trainRemaining: new Uint16Array(capacity),
     trainQueueLength: new Uint8Array(capacity),
+    trainQueueTypes: new Uint16Array(capacity * MAX_TRAIN_QUEUE).fill(NO_UNIT_TYPE),
     carried: new Uint16Array(capacity),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     age: AGE_ARCHAIC,
@@ -89,6 +108,7 @@ export function createSnapshot(capacity: number): RenderSnapshot {
 export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): void {
   out.tick = world.tick;
   out.count = world.count;
+  out.deathCount = world.deathEventCount;
   // HP bars and the win banner are 4a/4b consumers.
   out.winner = world.winner;
   // Full copy each write: 4 KB at 20 Hz is negligible.
@@ -137,6 +157,24 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.fog.fill(0);
   }
 
+  for (let eventIndex = 0; eventIndex < world.deathEventCount; eventIndex += 1) {
+    const owner = world.deathEventOwners[eventIndex]!;
+    const unitType = world.deathEventTypes[eventIndex]!;
+    const x = world.deathEventPosX[eventIndex]!;
+    const z = world.deathEventPosZ[eventIndex]!;
+
+    out.deathIds[eventIndex] = world.deathEventIds[eventIndex]!;
+    out.deathTypes[eventIndex] = unitType;
+    out.deathPosX[eventIndex] = x;
+    out.deathPosZ[eventIndex] = z;
+    out.deathFacingX[eventIndex] = world.deathEventFacingX[eventIndex]!;
+    out.deathFacingZ[eventIndex] = world.deathEventFacingZ[eventIndex]!;
+    out.deathOwners[eventIndex] = owner;
+    out.deathVisible[eventIndex] = isTypeAtPositionVisibleTo(world, viewerId, owner, unitType, x, z)
+      ? 1
+      : 0;
+  }
+
   for (let i = 0; i < world.count; i += 1) {
     // The renderer will use id equality to decide interpolate-vs-snap once swap-remove exists;
     // picking uses it to convert screen hits into command ids.
@@ -150,7 +188,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.moving[i] = world.moving[i]!;
     out.mode[i] = world.mode[i]!;
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
-    out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : 255;
+    out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;
     out.actionCooldown[i] = world.attackCooldown[i]!;
     out.visible[i] = isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
     // Copies selected, not selectable; selectable only means the unit may be selected.
@@ -166,9 +204,13 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     }
 
     // Production progress for the build-bar UI.
-    out.trainType[i] = world.trainType[i]!;
     out.trainRemaining[i] = world.trainRemaining[i]!;
     out.trainQueueLength[i] = world.trainQueueLength[i]!;
+    const queueStart = i * MAX_TRAIN_QUEUE;
+    out.trainQueueTypes.set(
+      world.trainQueueTypes.subarray(queueStart, queueStart + MAX_TRAIN_QUEUE),
+      queueStart,
+    );
     out.carried[i] = world.carried[i]!;
   }
 }

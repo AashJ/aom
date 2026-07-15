@@ -1,123 +1,31 @@
 import {
   GATHER_COOLDOWN_TICKS,
-  GOD_RA,
   idIndex,
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_PRAYING,
   TICK_HZ,
-  TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
-  TYPE_HOUSE,
-  TYPE_MILITIA,
-  TYPE_TEMPLE,
-  TYPE_TOWN_CENTER,
   TYPE_TREE,
-  TYPE_VILLAGER,
   UNIT_TYPES,
   type RenderSnapshot,
 } from "@aom/sim";
-import barracksSpriteUrl from "../assets/barracks.png";
-import berryBushSpriteUrl from "../assets/berry-bush.png";
-import goldMineSpriteUrl from "../assets/gold-mine.png";
-import houseSpriteUrl from "../assets/house.png";
-import townCenterSpriteUrl from "../assets/town-center.png";
-import treeWoodSpriteUrl from "../assets/tree-wood.png";
-import type { ModelKey } from "./model-assets";
+import { UNIT_PRESENTATIONS } from "../content/generated/unit-media";
+import type {
+  ModelAnimationClock,
+  RuntimeModelActionDefinition,
+  RuntimeModelUnitPresentation,
+  StaticSpritePresentation,
+  UnitMediaAction,
+} from "../content/unit-media-schema";
 
-interface PresentationMetrics {
-  worldHeight: number;
-  bottomPadding: number;
-}
-
-export interface ModelUnitPresentation extends PresentationMetrics {
-  kind: "model";
-}
-
-interface ConstructionStage {
-  readonly threshold: number;
-}
-
-type ConstructionStages = readonly [ConstructionStage, ...ConstructionStage[]];
-
-export type StaticSpriteFramePolicy =
-  | { readonly kind: "fixed"; readonly columns: 1 }
-  | { readonly kind: "variation"; readonly columns: number }
-  | { readonly kind: "depletion"; readonly columns: number }
-  | {
-      readonly kind: "construction";
-      readonly completedFrames: number;
-      readonly stages: ConstructionStages;
-    };
-
-export interface StaticSpritePresentation extends PresentationMetrics {
-  kind: "sprite";
-  url: string;
-  frames: StaticSpriteFramePolicy;
-}
-
-export type UnitPresentation = ModelUnitPresentation | StaticSpritePresentation;
-
-export const UNIT_PRESENTATIONS: readonly UnitPresentation[] = [
-  { kind: "model", worldHeight: 2.2, bottomPadding: 0 },
-  { kind: "model", worldHeight: 2.2, bottomPadding: 0 },
-  {
-    kind: "sprite",
-    url: treeWoodSpriteUrl,
-    frames: { kind: "variation", columns: 3 },
-    worldHeight: 3.8,
-    bottomPadding: 0,
-  },
-  {
-    kind: "sprite",
-    url: berryBushSpriteUrl,
-    frames: { kind: "fixed", columns: 1 },
-    worldHeight: 1.3,
-    bottomPadding: 0,
-  },
-  {
-    kind: "sprite",
-    url: townCenterSpriteUrl,
-    frames: { kind: "fixed", columns: 1 },
-    worldHeight: 5.5,
-    bottomPadding: 0,
-  },
-  {
-    kind: "sprite",
-    url: houseSpriteUrl,
-    frames: {
-      kind: "construction",
-      completedFrames: 3,
-      stages: [{ threshold: 0 }, { threshold: 0.33 }, { threshold: 0.66 }],
-    },
-    worldHeight: 2.6,
-    bottomPadding: 0,
-  },
-  {
-    kind: "sprite",
-    url: barracksSpriteUrl,
-    frames: { kind: "fixed", columns: 1 },
-    worldHeight: 4.2,
-    bottomPadding: 0,
-  },
-  {
-    kind: "sprite",
-    url: goldMineSpriteUrl,
-    frames: { kind: "depletion", columns: 4 },
-    worldHeight: 2.8,
-    bottomPadding: 0,
-  },
-  {
-    // Temporary presentation until the Greek Temple model is added to the
-    // existing private-asset extraction pipeline.
-    kind: "sprite",
-    url: barracksSpriteUrl,
-    frames: { kind: "fixed", columns: 1 },
-    worldHeight: 4.8,
-    bottomPadding: 0,
-  },
-];
+export { UNIT_PRESENTATIONS };
+export type {
+  StaticSpriteFramePolicy,
+  StaticSpritePresentation,
+  UnitPresentation,
+} from "../content/unit-media-schema";
 
 export interface ResolvedStaticSpritePresentation {
   readonly frame: number;
@@ -142,9 +50,9 @@ export function resolveStaticSpritePresentation(
   if (policy.kind === "construction") {
     if (buildFrac < 1) {
       let stage = 0;
-      for (let i = 1; i < policy.stages.length; i += 1) {
-        if (buildFrac < policy.stages[i]!.threshold) break;
-        stage = i;
+      for (let index = 1; index < policy.stages.length; index += 1) {
+        if (buildFrac < policy.stages[index]!.threshold) break;
+        stage = index;
       }
       return { frame: policy.completedFrames + stage, buildFrac: 1 };
     }
@@ -163,99 +71,61 @@ export function resolveStaticSpritePresentation(
   return { frame: 0, buildFrac };
 }
 
-export type ModelAnimationClock = "loop" | "action-cycle";
-
 export interface ResolvedModelPresentation {
-  model: ModelKey;
-  animationClock: ModelAnimationClock;
+  readonly modelIndex: number;
+  readonly action: UnitMediaAction;
+  readonly animationClock: ModelAnimationClock;
 }
 
-type VillagerSex = "male" | "female";
-type VillagerAction = "idle" | "walk" | "mine" | "harvest" | "chop" | "build";
+function actionFor(
+  presentation: RuntimeModelUnitPresentation,
+  snapshot: RenderSnapshot,
+  index: number,
+  moved: boolean,
+): UnitMediaAction {
+  const actions = presentation.actions;
+  const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
 
-function looping(model: ModelKey): ResolvedModelPresentation {
-  return { model, animationClock: "loop" };
-}
-
-function actionCycle(model: ModelKey): ResolvedModelPresentation {
-  return { model, animationClock: "action-cycle" };
-}
-
-const VILLAGER_PRESENTATIONS = {
-  male: {
-    idle: looping("villagerMaleIdle"),
-    walk: looping("villagerMaleWalk"),
-    mine: actionCycle("villagerMaleMine"),
-    harvest: actionCycle("villagerMaleHarvest"),
-    chop: actionCycle("villagerMaleChop"),
-    build: actionCycle("villagerMaleBuild"),
-  },
-  female: {
-    idle: looping("villagerFemaleIdle"),
-    walk: looping("villagerFemaleWalk"),
-    mine: actionCycle("villagerFemaleMine"),
-    harvest: actionCycle("villagerFemaleHarvest"),
-    chop: actionCycle("villagerFemaleChop"),
-    build: actionCycle("villagerFemaleBuild"),
-  },
-} satisfies Record<VillagerSex, Record<VillagerAction, ResolvedModelPresentation>>;
-
-const EGYPTIAN_VILLAGER_PRESENTATIONS = {
-  male: {
-    idle: looping("egyptianVillagerMaleIdle"),
-    walk: looping("egyptianVillagerMaleWalk"),
-    mine: actionCycle("egyptianVillagerMaleMine"),
-    harvest: actionCycle("egyptianVillagerMaleHarvest"),
-    chop: actionCycle("egyptianVillagerMaleChop"),
-    build: actionCycle("egyptianVillagerMaleBuild"),
-  },
-  female: {
-    idle: looping("egyptianVillagerFemaleIdle"),
-    walk: looping("egyptianVillagerFemaleWalk"),
-    mine: actionCycle("egyptianVillagerFemaleMine"),
-    harvest: actionCycle("egyptianVillagerFemaleHarvest"),
-    chop: actionCycle("egyptianVillagerFemaleChop"),
-    build: actionCycle("egyptianVillagerFemaleBuild"),
-  },
-} satisfies Record<VillagerSex, Record<VillagerAction, ResolvedModelPresentation>>;
-
-const GREEK_PRAYER_PRESENTATIONS = {
-  male: [looping("villagerMalePrayA"), looping("villagerMalePrayB")],
-  female: [looping("villagerFemalePrayA"), looping("villagerFemalePrayB")],
-} satisfies Record<VillagerSex, readonly [ResolvedModelPresentation, ResolvedModelPresentation]>;
-
-const MILITIA_PRESENTATIONS = {
-  idle: looping("militiaIdle"),
-  walk: looping("militiaWalk"),
-};
-
-const EGYPTIAN_HOUSE_PRESENTATION = looping("egyptianHouse");
-const EGYPTIAN_TOWN_CENTER_PRESENTATION = looping("egyptianTownCenter");
-const GREEK_BARRACKS_PRESENTATION = looping("greekBarracks");
-const GREEK_HOUSE_PRESENTATIONS = [
-  looping("greekHouseA"),
-  looping("greekHouseB"),
-  looping("greekHouseC"),
-] as const;
-const GREEK_HOUSE_CONSTRUCTION_PRESENTATIONS = [
-  looping("greekHouseConstructionA"),
-  looping("greekHouseConstructionB"),
-  looping("greekHouseConstructionC"),
-] as const;
-const GREEK_TEMPLE_PRESENTATION = looping("greekTemple");
-const GREEK_TOWN_CENTER_PRESENTATION = looping("greekTownCenter");
-
-function villagerAction(snapshot: RenderSnapshot, index: number, moved: boolean): VillagerAction {
-  if (snapshot.moving[index] === 0) {
-    if (snapshot.mode[index] === MODE_BUILDING) return "build";
-    if (snapshot.mode[index] === MODE_GATHERING) {
-      if (snapshot.gatherTargetType[index] === TYPE_GOLD_MINE) return "mine";
-      if (snapshot.gatherTargetType[index] === TYPE_BERRY) return "harvest";
-      if (snapshot.gatherTargetType[index] === TYPE_TREE) return "chop";
-    }
+  if (
+    actions.construction &&
+    stats.buildTicks > 0 &&
+    snapshot.buildProgress[index]! < stats.buildTicks
+  ) {
+    return "construction";
   }
+  if (moved && actions.walk) return "walk";
+  if (snapshot.mode[index] === MODE_PRAYING && actions.pray) return "pray";
+  if (snapshot.mode[index] === MODE_BUILDING && actions.build) return "build";
+  if (snapshot.mode[index] === MODE_GATHERING) {
+    const targetType = snapshot.gatherTargetType[index]!;
+    if (targetType === TYPE_GOLD_MINE && actions.gatherGold) return "gatherGold";
+    if (targetType === TYPE_BERRY && actions.gatherFood) return "gatherFood";
+    if (targetType === TYPE_TREE && actions.gatherWood) return "gatherWood";
+  }
+  if (snapshot.actionCooldown[index]! > 0 && actions.attack) return "attack";
+  return "idle";
+}
 
-  return moved ? "walk" : "idle";
+function resolveModelAction(
+  definition: RuntimeModelActionDefinition,
+  action: UnitMediaAction,
+  snapshot: RenderSnapshot,
+  index: number,
+): ResolvedModelPresentation {
+  let variant = idIndex(snapshot.ids[index]!) % definition.modelIndices.length;
+  if (definition.variant === "construction-stage") {
+    const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
+    const buildFraction = snapshot.buildProgress[index]! / Math.max(1, stats.buildTicks);
+    variant = Math.min(
+      definition.modelIndices.length - 1,
+      Math.floor(buildFraction * definition.modelIndices.length),
+    );
+  }
+  return {
+    modelIndex: definition.modelIndices[variant]!,
+    action,
+    animationClock: definition.animationClock,
+  };
 }
 
 export function resolveModelPresentation(
@@ -263,56 +133,40 @@ export function resolveModelPresentation(
   index: number,
   moved: boolean,
 ): ResolvedModelPresentation | null {
-  const type = snapshot.unitType[index]!;
-  const isEgyptian = snapshot.playerMajorGods[snapshot.owner[index]!] === GOD_RA;
+  const presentation = UNIT_PRESENTATIONS[snapshot.unitType[index]!];
+  if (!presentation || presentation.kind !== "model") return null;
 
-  if (type === TYPE_VILLAGER) {
-    const entityIndex = idIndex(snapshot.ids[index]!);
-    const sex: VillagerSex = (entityIndex & 1) === 0 ? "male" : "female";
-    if (!isEgyptian && snapshot.moving[index] === 0 && snapshot.mode[index] === MODE_PRAYING) {
-      const prayers = GREEK_PRAYER_PRESENTATIONS[sex];
-      return prayers[(entityIndex >>> 1) % prayers.length]!;
-    }
-    const presentations = isEgyptian ? EGYPTIAN_VILLAGER_PRESENTATIONS : VILLAGER_PRESENTATIONS;
-    return presentations[sex][villagerAction(snapshot, index, moved)];
-  }
-
-  if (type === TYPE_TOWN_CENTER) {
-    return isEgyptian ? EGYPTIAN_TOWN_CENTER_PRESENTATION : GREEK_TOWN_CENTER_PRESENTATION;
-  }
-  if (type === TYPE_HOUSE) {
-    if (isEgyptian) return EGYPTIAN_HOUSE_PRESENTATION;
-    const buildTicks = UNIT_TYPES[TYPE_HOUSE]!.buildTicks;
-    const buildProgress = snapshot.buildProgress[index]!;
-    if (buildProgress < buildTicks) {
-      const buildFrac = buildProgress / buildTicks;
-      const stage = buildFrac < 0.33 ? 0 : buildFrac < 0.66 ? 1 : 2;
-      return GREEK_HOUSE_CONSTRUCTION_PRESENTATIONS[stage];
-    }
-    return GREEK_HOUSE_PRESENTATIONS[
-      idIndex(snapshot.ids[index]!) % GREEK_HOUSE_PRESENTATIONS.length
-    ]!;
-  }
-  if (!isEgyptian && type === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
-  if (!isEgyptian && type === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
-  if (type === TYPE_MILITIA) return moved ? MILITIA_PRESENTATIONS.walk : MILITIA_PRESENTATIONS.idle;
-  return null;
+  const action = actionFor(presentation, snapshot, index, moved);
+  return resolveModelAction(presentation.actions[action]!, action, snapshot, index);
 }
 
 export function resolveModelGhostPresentation(
-  snapshot: RenderSnapshot,
+  _snapshot: RenderSnapshot,
   unitType: number,
 ): ResolvedModelPresentation | null {
-  const isEgyptian = snapshot.majorGod === GOD_RA;
-  if (unitType === TYPE_TOWN_CENTER) {
-    return isEgyptian ? EGYPTIAN_TOWN_CENTER_PRESENTATION : GREEK_TOWN_CENTER_PRESENTATION;
-  }
-  if (unitType === TYPE_HOUSE) {
-    return isEgyptian ? EGYPTIAN_HOUSE_PRESENTATION : GREEK_HOUSE_PRESENTATIONS[0];
-  }
-  if (!isEgyptian && unitType === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
-  if (!isEgyptian && unitType === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
-  return null;
+  const presentation = UNIT_PRESENTATIONS[unitType];
+  if (!presentation || presentation.kind !== "model") return null;
+  const action = presentation.actions.idle;
+  return {
+    modelIndex: action.modelIndices[0],
+    action: "idle",
+    animationClock: action.animationClock,
+  };
+}
+
+export function resolveModelDeathPresentation(
+  unitType: number,
+  entityId: number,
+): ResolvedModelPresentation | null {
+  const presentation = UNIT_PRESENTATIONS[unitType];
+  if (!presentation || presentation.kind !== "model") return null;
+  const action = presentation.actions.death;
+  if (!action) return null;
+  return {
+    modelIndex: action.modelIndices[idIndex(entityId) % action.modelIndices.length]!,
+    action: "death",
+    animationClock: action.animationClock,
+  };
 }
 
 export function resolveStaticSpriteUnitPresentation(
@@ -320,19 +174,15 @@ export function resolveStaticSpriteUnitPresentation(
   index: number,
 ): StaticSpritePresentation | null {
   const presentation = UNIT_PRESENTATIONS[snapshot.unitType[index]!];
-
-  if (!presentation || presentation.kind !== "sprite") return null;
-  return resolveModelPresentation(snapshot, index, false) ? null : presentation;
+  return presentation?.kind === "sprite" ? presentation : null;
 }
 
 export function resolveStaticSpriteGhostPresentation(
-  snapshot: RenderSnapshot,
+  _snapshot: RenderSnapshot,
   unitType: number,
 ): StaticSpritePresentation | null {
   const presentation = UNIT_PRESENTATIONS[unitType];
-
-  if (!presentation || presentation.kind !== "sprite") return null;
-  return resolveModelGhostPresentation(snapshot, unitType) ? null : presentation;
+  return presentation?.kind === "sprite" ? presentation : null;
 }
 
 export function modelAnimationTime(
@@ -343,11 +193,16 @@ export function modelAnimationTime(
   duration: number,
 ): number {
   if (presentation.animationClock === "action-cycle") {
+    const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
+    const actionTicks =
+      presentation.action === "attack"
+        ? (stats.meleeAttack?.cooldownTicks ?? GATHER_COOLDOWN_TICKS)
+        : GATHER_COOLDOWN_TICKS;
     const elapsedTicks = Math.min(
-      GATHER_COOLDOWN_TICKS,
-      Math.max(0, GATHER_COOLDOWN_TICKS - snapshot.actionCooldown[index]! + alpha),
+      actionTicks,
+      Math.max(0, actionTicks - snapshot.actionCooldown[index]! + alpha),
     );
-    return duration * (elapsedTicks / Math.max(1, GATHER_COOLDOWN_TICKS));
+    return duration * (elapsedTicks / Math.max(1, actionTicks));
   }
 
   return (snapshot.tick + alpha) / TICK_HZ + (snapshot.ids[index]! % 17) * 0.037;

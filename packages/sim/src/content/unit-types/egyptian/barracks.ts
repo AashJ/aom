@@ -1,0 +1,41 @@
+import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_BARRACKS, TYPE_EGYPTIAN_LABORER } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_ARMOR,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_BARRACKS,
+  key: "egyptian-barracks",
+  label: "Barracks",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 1200,
+  lineOfSight: 10,
+  movementSpeed: 0,
+  armor: NO_ARMOR,
+  meleeAttack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 2.2,
+  footprint: 3,
+  costFood: 0,
+  costWood: 0,
+  costGold: 50,
+  costFavor: 0,
+  buildTicks: 200,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 6,
+  isDropsite: false,
+  requiredAge: AGE_CLASSICAL,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_EGYPTIAN_LABORER, commandSlot: 1 }],
+} as const satisfies UnitTypeStats;

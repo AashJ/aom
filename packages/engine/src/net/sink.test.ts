@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { createWorld, hashWorld, registerPlayer, spawnUnit, tickWorld, type World } from "@aom/sim";
+import {
+  COMMAND_CANCEL_TRAIN,
+  createWorld,
+  hashWorld,
+  registerPlayer,
+  spawnUnit,
+  tickWorld,
+  type World,
+} from "@aom/sim";
 import { createLoopbackSink, INPUT_DELAY_TICKS } from "./sink";
 
 // Walkability is flattened so these tests exercise sink scheduling, not the map.
@@ -11,6 +19,23 @@ function flatWorld(seed: number): World {
 }
 
 describe("loopback command sink", () => {
+  test("stamps queue cancellation through the same delayed command seam", () => {
+    const world = flatWorld(42);
+    const sink = createLoopbackSink(world);
+
+    sink.submitCancelTrain(17, 2);
+
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_CANCEL_TRAIN,
+        buildingId: 17,
+        queueIndex: 2,
+      },
+    ]);
+  });
+
   test("a move submitted now executes exactly INPUT_DELAY_TICKS later", () => {
     const world = flatWorld(42);
     const id = spawnUnit(world, 10, 10, 0, 0);

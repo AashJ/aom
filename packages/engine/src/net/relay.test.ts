@@ -3,6 +3,7 @@ import {
   CHEAT_ADD_FOOD,
   COMMAND_ADVANCE_AGE,
   COMMAND_CHEAT,
+  COMMAND_CANCEL_TRAIN,
   COMMAND_MOVE,
   COMMAND_PRAY,
   COMMAND_STOP,
@@ -67,6 +68,21 @@ describe("relay sink", () => {
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_PRAY, unitIds: [3, 5], targetId: 17 }],
+      },
+    ]);
+  });
+
+  test("submitCancelTrain sends the producer and queue position", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitCancelTrain(17, 2);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_CANCEL_TRAIN, buildingId: 17, queueIndex: 2 }],
       },
     ]);
   });

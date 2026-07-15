@@ -1,0 +1,93 @@
+export interface UnitTypeStats {
+  readonly id: number;
+  readonly key: string;
+  readonly label: string;
+  readonly culture: number;
+  readonly classes: number;
+  readonly maxHp: number;
+  readonly lineOfSight: number;
+  readonly movementSpeed: number;
+  readonly workRange?: number;
+  readonly armor: ArmorProfile;
+  readonly meleeAttack: MeleeAttack | null;
+  readonly isStatic: boolean;
+  readonly resource: number;
+  // Melee reach measures to the target's surface, not center.
+  readonly bodyRadius: number;
+  // Tiles per side, square; 0 = no footprint.
+  readonly footprint: number;
+  readonly costFood: number;
+  readonly costWood: number;
+  readonly costGold: number;
+  readonly costFavor: number;
+  readonly buildTicks: number;
+  readonly populationCost: number;
+  readonly popBonus: number;
+  // Distance along the building's forward (-Z) axis where trained units emerge.
+  readonly trainExitOffset: number;
+  readonly isDropsite: boolean;
+  readonly requiredAge: number;
+  readonly requiredGod: number;
+  readonly prerequisiteBuildings: readonly number[];
+  readonly trainedAt: readonly TypeCommandRelationship[];
+  readonly builtBy: readonly TypeCommandRelationship[];
+}
+
+export type DamageProfile = readonly [hack: number, pierce: number, crush: number];
+export type ArmorProfile = readonly [hack: number, pierce: number, crush: number];
+
+export interface MeleeAttack {
+  readonly damage: DamageProfile;
+  readonly range: number;
+  readonly aggroRange: number;
+  readonly cooldownTicks: number;
+  readonly bonuses: readonly DamageBonus[];
+}
+
+export interface DamageBonus {
+  // Every bit must be present. Culture gates cover Classic exceptions such as
+  // Myrmidons without inventing a second attack shape.
+  readonly requiredClasses: number;
+  readonly requiredCulture?: number;
+  readonly excludedCulture?: number;
+  readonly multiplier: number;
+}
+
+export interface TypeCommandRelationship {
+  readonly type: number;
+  readonly commandSlot: number;
+}
+
+export const CULTURE_SHARED = 0;
+export const CULTURE_GREEK = 1;
+export const CULTURE_EGYPTIAN = 2;
+
+export const UNIT_CLASS_WORKER = 1 << 0;
+export const UNIT_CLASS_HUMAN = 1 << 1;
+export const UNIT_CLASS_INFANTRY = 1 << 2;
+export const UNIT_CLASS_CAVALRY = 1 << 3;
+export const UNIT_CLASS_MILITARY = 1 << 4;
+export const UNIT_CLASS_MELEE = 1 << 5;
+export const UNIT_CLASS_BUILDING = 1 << 6;
+export const UNIT_CLASS_RESOURCE = 1 << 7;
+export const UNIT_CLASS_TEMPLE = 1 << 8;
+export const UNIT_CLASS_SIEGE = 1 << 9;
+
+export const DAMAGE_HACK = 0;
+export const DAMAGE_PIERCE = 1;
+export const DAMAGE_CRUSH = 2;
+export const DAMAGE_CLASS_COUNT = 3;
+
+// Fixed resource ids are shared by costs, carrying, stockpiles, snapshots, and UI.
+export const FOOD = 0;
+export const WOOD = 1;
+export const GOLD = 2;
+export const FAVOR = 3;
+export const RESOURCE_COUNT = 4;
+
+export const NO_UNIT_TYPE = 0xffff;
+export const NO_PREREQUISITE_BUILDINGS: readonly number[] = Object.freeze([]);
+export const NO_TYPE_RELATIONSHIPS: readonly TypeCommandRelationship[] = Object.freeze([]);
+export const NO_ARMOR: ArmorProfile = Object.freeze([0, 0, 0]);
+export const NO_DAMAGE: DamageProfile = Object.freeze([0, 0, 0]);
+export const NO_DAMAGE_BONUSES: readonly DamageBonus[] = Object.freeze([]);

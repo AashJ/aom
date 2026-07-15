@@ -11,6 +11,8 @@ struct Material {
 
 const MATERIAL_ALPHA_MASK = 1u;
 const MATERIAL_MULTIPLY_PLAYER_COLOR = 2u;
+const MATERIAL_FULL_PLAYER_COLOR = 4u;
+const MATERIAL_DARK_PLAYER_COLOR = 8u;
 const MODEL_MORPH_TARGET_COUNT = 20u;
 
 struct MorphValues {
@@ -118,6 +120,10 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
 
   if ((material.flags & MATERIAL_MULTIPLY_PLAYER_COLOR) != 0u) {
     color *= mix(vec3f(1.0), PLAYER_PALETTE[u32(in.owner) % 4u], 0.72);
+  } else if ((material.flags & MATERIAL_FULL_PLAYER_COLOR) != 0u) {
+    color *= PLAYER_PALETTE[u32(in.owner) % 4u];
+  } else if ((material.flags & MATERIAL_DARK_PLAYER_COLOR) != 0u) {
+    color *= mix(vec3f(0.72), PLAYER_PALETTE[u32(in.owner) % 4u] * 0.62, 0.78);
   }
 
   color *= mix(vec3f(0.55, 0.45, 0.35), vec3f(1.0), in.buildFrac);

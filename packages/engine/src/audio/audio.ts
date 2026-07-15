@@ -2,24 +2,14 @@ import {
   GOD_RA,
   GOD_ZEUS,
   NEUTRAL_OWNER,
-  TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
-  TYPE_HOUSE,
-  TYPE_MILITIA,
-  TYPE_TOWN_CENTER,
   TYPE_TREE,
-  TYPE_VILLAGER,
   UNIT_TYPES,
   type RenderSnapshot,
 } from "@aom/sim";
-import {
-  AUDIO_CUES,
-  CULTURE_MUSIC_TRACKS,
-  EGYPTIAN_VILLAGER_CUES,
-  MUSIC_TRACKS,
-  type AudioCue,
-} from "./assets";
+import { UNIT_MEDIA, UNIT_MEDIA_DEFINITIONS } from "../content/generated/unit-media";
+import { AUDIO_CUES, CULTURE_MUSIC_TRACKS, MUSIC_TRACKS, type AudioCue } from "./assets";
 
 const BATTLE_HOLD_MS = 20_000;
 const AMBIENT_MIN_MS = 9_000;
@@ -41,6 +31,7 @@ interface EntityAudioState {
 export interface GameAudio {
   acknowledge(
     kind: CommandMarkerKind,
+    selectedType: number,
     selectedX: number,
     selectedZ: number,
     resourceType?: number,
@@ -85,8 +76,6 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
   let musicPhase: MusicPhase = "culture";
   let peacefulTrack = 0;
   let battleTrack = 0;
-  const villagerCues =
-    majorGod === GOD_RA ? { ...AUDIO_CUES, ...EGYPTIAN_VILLAGER_CUES } : AUDIO_CUES;
   const cultureMusic =
     majorGod === GOD_RA ? CULTURE_MUSIC_TRACKS.egyptian : CULTURE_MUSIC_TRACKS.greek;
 
@@ -271,7 +260,11 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
   }
 
   function preloadEffects(): void {
-    for (const cue of Object.values(villagerCues)) {
+    const cues: AudioCue[] = Object.values(AUDIO_CUES);
+    for (const definition of UNIT_MEDIA_DEFINITIONS) {
+      cues.push(...Object.values(definition.audio));
+    }
+    for (const cue of cues) {
       for (const url of cue.files) {
         void bufferFor(url).catch(() => undefined);
       }
@@ -341,13 +334,8 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
   }
 
   function playBuildingCue(type: number, x: number, z: number): void {
-    if (type === TYPE_TOWN_CENTER) {
-      playCue(AUDIO_CUES.settlement, effectsGain, x, z);
-    } else if (type === TYPE_HOUSE) {
-      playCue(AUDIO_CUES.house, effectsGain, x, z);
-    } else if (type === TYPE_BARRACKS) {
-      playCue(AUDIO_CUES.barracks, effectsGain, x, z);
-    }
+    const cue = UNIT_MEDIA[type]?.audio.completed;
+    if (cue) playCue(cue, effectsGain, x, z);
   }
 
   function playGatherCue(type: number, x: number, z: number): void {
@@ -361,43 +349,36 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
   }
 
   function playSelectionCue(type: number, x: number, z: number): void {
-    if (type === TYPE_VILLAGER) {
-      playCue(villagerCues.villagerSelect, voicesGain, x, z);
-      return;
-    }
-
-    if (type === TYPE_MILITIA) {
-      playCue(AUDIO_CUES.villagerSelect, voicesGain, x, z);
-      return;
-    }
-
-    playBuildingCue(type, x, z);
+    const cue = UNIT_MEDIA[type]?.audio.selection;
+    if (cue) playCue(cue, voicesGain, x, z);
+    else playBuildingCue(type, x, z);
   }
 
-  function playRemovalCue(state: EntityAudioState): void {
-    if (!state.visible) {
+  function playRemovalCue(type: number, visible: boolean, x: number, z: number): void {
+    if (!visible) {
       return;
     }
 
-    if (state.type === TYPE_TREE) {
-      playCue(AUDIO_CUES.chop, effectsGain, state.x, state.z);
-      playCue(AUDIO_CUES.treeFall, effectsGain, state.x, state.z);
+    if (type === TYPE_TREE) {
+      playCue(AUDIO_CUES.chop, effectsGain, x, z);
+      playCue(AUDIO_CUES.treeFall, effectsGain, x, z);
       return;
     }
 
-    if (state.type === TYPE_BERRY || state.type === TYPE_GOLD_MINE) {
-      playGatherCue(state.type, state.x, state.z);
+    if (type === TYPE_BERRY || type === TYPE_GOLD_MINE) {
+      playGatherCue(type, x, z);
       return;
     }
 
-    if (state.type === TYPE_VILLAGER || state.type === TYPE_MILITIA) {
-      playCue(AUDIO_CUES.maleDeath, voicesGain, state.x, state.z);
+    const deathCue = UNIT_MEDIA[type]?.audio.death;
+    if (deathCue) {
+      playCue(deathCue, voicesGain, x, z);
       enterBattle();
       return;
     }
 
-    if (UNIT_TYPES[state.type]!.footprint > 0) {
-      playCue(AUDIO_CUES.buildingDeath, effectsGain, state.x, state.z);
+    if (UNIT_TYPES[type]!.footprint > 0) {
+      playCue(AUDIO_CUES.buildingDeath, effectsGain, x, z);
       enterBattle();
     }
   }
@@ -453,10 +434,9 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
       }
 
       if (!previous) {
-        if (state.owner === selfPlayerId && type === TYPE_VILLAGER) {
-          playCue(AUDIO_CUES.villagerCreate, voicesGain, state.x, state.z);
-        } else if (state.owner === selfPlayerId && type === TYPE_MILITIA) {
-          playCue(AUDIO_CUES.militaryCreate, voicesGain, state.x, state.z);
+        const createdCue = UNIT_MEDIA[type]?.audio.created;
+        if (state.owner === selfPlayerId && createdCue) {
+          playCue(createdCue, voicesGain, state.x, state.z);
         }
 
         continue;
@@ -492,10 +472,13 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
     }
 
     if (initialized) {
-      for (const [id, state] of entities) {
-        if (!nextEntities.has(id)) {
-          playRemovalCue(state);
-        }
+      for (let eventIndex = 0; eventIndex < snapshot.deathCount; eventIndex += 1) {
+        playRemovalCue(
+          snapshot.deathTypes[eventIndex]!,
+          snapshot.deathVisible[eventIndex] === 1,
+          snapshot.deathPosX[eventIndex]!,
+          snapshot.deathPosZ[eventIndex]!,
+        );
       }
     }
 
@@ -513,25 +496,27 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
 
   function acknowledge(
     kind: CommandMarkerKind,
+    selectedType: number,
     selectedX: number,
     selectedZ: number,
     resourceType?: number,
   ): void {
-    let cue = villagerCues.villagerAcknowledge;
+    const audio = UNIT_MEDIA[selectedType]?.audio;
+    let cue = audio?.acknowledge;
 
     if (kind === 2) {
-      cue = villagerCues.villagerAttack;
+      cue = audio?.attackAcknowledge ?? cue;
     } else if (kind === 3 && resourceType === TYPE_TREE) {
-      cue = villagerCues.villagerLumber;
+      cue = audio?.gatherWood ?? cue;
     } else if (kind === 3 && resourceType === TYPE_GOLD_MINE) {
-      cue = villagerCues.villagerMine;
+      cue = audio?.gatherGold ?? cue;
     } else if (kind === 3 && resourceType === TYPE_BERRY) {
-      cue = villagerCues.villagerForage;
+      cue = audio?.gatherFood ?? cue;
     } else if (kind === 4) {
-      cue = villagerCues.villagerRepair;
+      cue = audio?.repair ?? cue;
     }
 
-    playCue(cue, voicesGain, selectedX, selectedZ);
+    if (cue) playCue(cue, voicesGain, selectedX, selectedZ);
   }
 
   function setActive(nextActive: boolean): void {

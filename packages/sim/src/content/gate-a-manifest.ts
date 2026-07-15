@@ -1,0 +1,203 @@
+import { GOD_POSEIDON, GOD_ZEUS, NO_GOD } from "../ecs/progression";
+import {
+  TYPE_AXEMAN,
+  TYPE_CAMELRY,
+  TYPE_EGYPTIAN_BARRACKS,
+  TYPE_EGYPTIAN_MIGDOL_STRONGHOLD,
+  TYPE_EGYPTIAN_TOWN_CENTER,
+  TYPE_GREEK_FORTRESS,
+  TYPE_GREEK_MILITARY_ACADEMY,
+  TYPE_GREEK_STABLE,
+  TYPE_HETAIROI,
+  TYPE_HIPPIKON,
+  TYPE_HOPLITE,
+  TYPE_HYPASPIST,
+  TYPE_KATASKOPOS,
+  TYPE_MERCENARY,
+  TYPE_MERCENARY_CAVALRY,
+  TYPE_MILITIA,
+  TYPE_MYRMIDON,
+  TYPE_PRODROMOS,
+  TYPE_SPEARMAN,
+  TYPE_WAR_ELEPHANT,
+} from "./unit-type-ids";
+import { CULTURE_EGYPTIAN, CULTURE_GREEK, type TypeCommandRelationship } from "./unit-type-schema";
+
+export type GateAStatus = "proof" | "ready" | "blocked";
+
+export interface GateAManifestEntry {
+  readonly id: number;
+  readonly key: string;
+  readonly label: string;
+  readonly culture: number;
+  readonly requiredGod: number;
+  readonly trainedAt: readonly TypeCommandRelationship[];
+  readonly lane: string;
+  readonly status: GateAStatus;
+  readonly blocker: string | null;
+}
+
+// Integration-owned and frozen before fan-out. Unit packs consume these assignments;
+// contributors never choose ids, producers, slots, gates, or content keys ad hoc.
+export const GATE_A_MANIFEST = [
+  {
+    id: TYPE_HOPLITE,
+    key: "greek-hoplite",
+    label: "Hoplite",
+    culture: CULTURE_GREEK,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 0 }],
+    lane: "greek-hoplite",
+    status: "proof",
+    blocker: null,
+  },
+  {
+    id: TYPE_HYPASPIST,
+    key: "greek-hypaspist",
+    label: "Hypaspist",
+    culture: CULTURE_GREEK,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 1 }],
+    lane: "greek-hypaspist",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_HIPPIKON,
+    key: "greek-hippikon",
+    label: "Hippikon",
+    culture: CULTURE_GREEK,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_GREEK_STABLE, commandSlot: 0 }],
+    lane: "greek-hippikon",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_PRODROMOS,
+    key: "greek-prodromos",
+    label: "Prodromos",
+    culture: CULTURE_GREEK,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_GREEK_STABLE, commandSlot: 1 }],
+    lane: "greek-prodromos",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_MYRMIDON,
+    key: "greek-myrmidon",
+    label: "Myrmidon",
+    culture: CULTURE_GREEK,
+    requiredGod: GOD_ZEUS,
+    trainedAt: [
+      { type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 2 },
+      { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
+    ],
+    lane: "greek-myrmidon",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_HETAIROI,
+    key: "greek-hetairoi",
+    label: "Hetairoi",
+    culture: CULTURE_GREEK,
+    requiredGod: GOD_POSEIDON,
+    trainedAt: [
+      { type: TYPE_GREEK_STABLE, commandSlot: 2 },
+      { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
+    ],
+    lane: "greek-hetairoi",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_MILITIA,
+    key: "militia",
+    label: "Militia",
+    culture: CULTURE_GREEK,
+    requiredGod: GOD_POSEIDON,
+    trainedAt: [],
+    lane: "serial-death-spawn-units",
+    status: "blocked",
+    blocker: "Gate D: Poseidon building-destruction spawn and exceptional creation rules.",
+  },
+  {
+    id: TYPE_KATASKOPOS,
+    key: "greek-kataskopos",
+    label: "Kataskopos",
+    culture: CULTURE_GREEK,
+    requiredGod: NO_GOD,
+    trainedAt: [],
+    lane: "serial-starting-units",
+    status: "blocked",
+    blocker: "Gate D: starting-only creation; Classic players cannot train replacements.",
+  },
+  {
+    id: TYPE_SPEARMAN,
+    key: "egyptian-spearman",
+    label: "Spearman",
+    culture: CULTURE_EGYPTIAN,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_EGYPTIAN_BARRACKS, commandSlot: 0 }],
+    lane: "egyptian-spearman",
+    status: "proof",
+    blocker: null,
+  },
+  {
+    id: TYPE_AXEMAN,
+    key: "egyptian-axeman",
+    label: "Axeman",
+    culture: CULTURE_EGYPTIAN,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_EGYPTIAN_BARRACKS, commandSlot: 1 }],
+    lane: "egyptian-axeman",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_CAMELRY,
+    key: "egyptian-camelry",
+    label: "Camelry",
+    culture: CULTURE_EGYPTIAN,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_EGYPTIAN_MIGDOL_STRONGHOLD, commandSlot: 1 }],
+    lane: "egyptian-camelry",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_WAR_ELEPHANT,
+    key: "egyptian-war-elephant",
+    label: "War Elephant",
+    culture: CULTURE_EGYPTIAN,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_EGYPTIAN_MIGDOL_STRONGHOLD, commandSlot: 2 }],
+    lane: "egyptian-war-elephant",
+    status: "ready",
+    blocker: null,
+  },
+  {
+    id: TYPE_MERCENARY,
+    key: "egyptian-mercenary",
+    label: "Mercenary",
+    culture: CULTURE_EGYPTIAN,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_EGYPTIAN_TOWN_CENTER, commandSlot: 1 }],
+    lane: "serial-temporary-units",
+    status: "blocked",
+    blocker: "Gate D: deterministic 45-second lifetime and exceptional removal rules.",
+  },
+  {
+    id: TYPE_MERCENARY_CAVALRY,
+    key: "egyptian-mercenary-cavalry",
+    label: "Mercenary Cavalry",
+    culture: CULTURE_EGYPTIAN,
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_EGYPTIAN_TOWN_CENTER, commandSlot: 2 }],
+    lane: "serial-temporary-units",
+    status: "blocked",
+    blocker: "Gate D: deterministic 45-second lifetime and exceptional removal rules.",
+  },
+] as const satisfies readonly GateAManifestEntry[];

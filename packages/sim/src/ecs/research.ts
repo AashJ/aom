@@ -1,5 +1,6 @@
 import {
   getAgeAdvanceAvailability,
+  getAgeAdvanceProducerType,
   getAgeAdvanceRuleByResearchId,
   isMinorGodAvailableForAgeAdvance,
   NO_RESEARCH,
@@ -91,13 +92,15 @@ export function tryStartAgeAdvance(
   }
 
   const rule = availability.rule;
-  const producer = UNIT_TYPES[rule.producerType]!;
+  const producerType = getAgeAdvanceProducerType(rule, world.playerMajorGod[playerId]!);
+  const producer = producerType === undefined ? undefined : UNIT_TYPES[producerType];
 
   if (
+    producer === undefined ||
     world.dying[building] === 1 ||
     world.hp[building] === 0 ||
     world.owner[building] !== playerId ||
-    world.unitType[building] !== rule.producerType ||
+    world.unitType[building] !== producerType ||
     world.buildProgress[building]! < producer.buildTicks ||
     isBuildingResearching(world, building)
   ) {

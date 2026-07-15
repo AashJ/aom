@@ -10,6 +10,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
@@ -20,6 +21,11 @@ import {
   type Command,
 } from "../commands";
 import { TICK_S } from "../clock";
+import {
+  cultureForMajorGod,
+  townCenterTypeForCulture,
+  workerTypeForCulture,
+} from "../content/culture-types";
 import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import {
@@ -36,12 +42,22 @@ import {
   VISIBILITY_TILES,
 } from "../visibility";
 import { idGeneration, idIndex, packId } from "./id";
+import { resolveMeleeDamage } from "./combat";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickGreekFavor } from "./favor";
 import { registerPlayer } from "./players";
 import { assignFieldGoal, setFacingToward } from "./navigation";
 import { AGE_COUNT, NO_GOD } from "./progression";
+import {
+  activeTrainType,
+  cancelProduction,
+  clearProductionQueue,
+  copyProductionQueue,
+  enqueueProduction,
+  finishActiveProduction,
+  MAX_TRAIN_QUEUE,
+} from "./production";
 import {
   cancelBuildingResearch,
   isBuildingResearching,
@@ -51,6 +67,7 @@ import {
 import {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
+  CULTURE_GREEK,
   FAVOR,
   FOOD,
   GATHER_COOLDOWN_TICKS,
@@ -58,12 +75,14 @@ import {
   GOLD,
   LEASH_FACTOR,
   NODE_RETARGET_RADIUS,
+  NO_UNIT_TYPE,
   RESOURCE_COUNT,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
-  TYPE_TOWN_CENTER,
+  TYPE_GREEK_VILLAGER,
   TYPE_TREE,
-  TYPE_VILLAGER,
+  TRAIN_OPTIONS_BY_PRODUCER,
+  UNIT_CLASS_WORKER,
   UNIT_TYPES,
   WOOD,
 } from "./types";
@@ -93,12 +112,10 @@ export {
 } from "./worker-tasks";
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
-export const MAX_TRAIN_QUEUE = 15;
 // Players use real ids < 256, but stockpiles index by actual id; a 256-wide
 // four-resource array is 4 KB, cheaper than an id-to-slot map.
 export const NEUTRAL_OWNER = 255;
 export const MAX_PLAYERS = 8;
-export const UNIT_SPEED = 3;
 // world.winner values: -1 = match ongoing, >= 0 = that player id won,
 // MATCH_DRAW = everyone is dead (mutual annihilation).
 export const MATCH_DRAW = -2;
@@ -132,7 +149,10 @@ const MAX_TARGET_BODY_RADIUS = (() => {
   let maxRadius = 0;
 
   for (let type = 0; type < UNIT_TYPES.length; type += 1) {
-    maxRadius = Math.max(maxRadius, UNIT_TYPES[type]!.bodyRadius);
+    const stats = UNIT_TYPES[type];
+    if (stats !== undefined) {
+      maxRadius = Math.max(maxRadius, stats.bodyRadius);
+    }
   }
 
   return maxRadius;
@@ -174,14 +194,14 @@ export interface World {
   playerFavorProgress: Uint32Array;
   // Rebuilt from active prayer tasks every tick for Favor generation and HUD rate.
   prayingVillagers: Uint16Array;
-  unitType: Uint8Array;
-  hp: Uint16Array;
+  unitType: Uint16Array;
+  // Armor can produce fractional damage, so authoritative hit points remain f64.
+  hp: Float64Array;
   buildProgress: Uint16Array;
-  // Producers currently train one unit type, so the FIFO is a count; trainType/trainRemaining
-  // describe the active front item and trainQueueLength includes it.
-  trainType: Uint8Array;
+  // Queue slot 0 is the authoritative active item. trainRemaining belongs only to that slot.
   trainRemaining: Uint16Array;
   trainQueueLength: Uint8Array;
+  trainQueueTypes: Uint16Array;
   // Research is owned by its building and shares that producer's countdown slot.
   researchId: Uint8Array;
   researchChoice: Uint8Array;
@@ -211,6 +231,16 @@ export interface World {
   dying: Uint8Array;
   pendingDeaths: Uint32Array;
   pendingDeathCount: number;
+  // Transient output for the last completed tick. Snapshots copy these before the
+  // next tick clears them, so presentation never infers deaths from missing ids.
+  deathEventCount: number;
+  deathEventIds: Uint32Array;
+  deathEventTypes: Uint16Array;
+  deathEventPosX: Float64Array;
+  deathEventPosZ: Float64Array;
+  deathEventFacingX: Float64Array;
+  deathEventFacingZ: Float64Array;
+  deathEventOwners: Uint8Array;
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
@@ -278,12 +308,12 @@ export function createWorld(seed: number): World {
     playerMinorGods,
     playerFavorProgress: new Uint32Array(256),
     prayingVillagers: new Uint16Array(256),
-    unitType: new Uint8Array(MAX_UNITS),
-    hp: new Uint16Array(MAX_UNITS),
+    unitType: new Uint16Array(MAX_UNITS),
+    hp: new Float64Array(MAX_UNITS),
     buildProgress: new Uint16Array(MAX_UNITS),
-    trainType: new Uint8Array(MAX_UNITS),
     trainRemaining: new Uint16Array(MAX_UNITS),
     trainQueueLength: new Uint8Array(MAX_UNITS),
+    trainQueueTypes: new Uint16Array(MAX_UNITS * MAX_TRAIN_QUEUE).fill(NO_UNIT_TYPE),
     researchId,
     researchChoice,
     researchRemaining: new Uint16Array(MAX_UNITS),
@@ -305,6 +335,14 @@ export function createWorld(seed: number): World {
     dying: new Uint8Array(MAX_UNITS),
     pendingDeaths: new Uint32Array(MAX_UNITS),
     pendingDeathCount: 0,
+    deathEventCount: 0,
+    deathEventIds: new Uint32Array(MAX_UNITS),
+    deathEventTypes: new Uint16Array(MAX_UNITS),
+    deathEventPosX: new Float64Array(MAX_UNITS),
+    deathEventPosZ: new Float64Array(MAX_UNITS),
+    deathEventFacingX: new Float64Array(MAX_UNITS),
+    deathEventFacingZ: new Float64Array(MAX_UNITS),
+    deathEventOwners: new Uint8Array(MAX_UNITS),
     selectable: new Uint8Array(MAX_UNITS),
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
@@ -322,7 +360,12 @@ export function createWorld(seed: number): World {
   };
 }
 
-function isTypeAvailableToPlayer(world: World, playerId: number, unitType: number): boolean {
+function isTypeAvailableToPlayer(
+  world: World,
+  playerId: number,
+  unitType: number,
+  producerType = NO_UNIT_TYPE,
+): boolean {
   if (
     playerId < 0 ||
     playerId >= world.playerSlotById.length ||
@@ -331,9 +374,22 @@ function isTypeAvailableToPlayer(world: World, playerId: number, unitType: numbe
     return false;
   }
 
-  return isTypeAvailable(unitType, world.playerAge[playerId]!, (buildingType) =>
-    hasCompletedBuilding(world, playerId, buildingType),
-  );
+  const majorGod = world.playerMajorGod[playerId]!;
+  const minorGodStart = playerId * AGE_COUNT;
+
+  return isTypeAvailable(unitType, {
+    playerAge: world.playerAge[playerId]!,
+    playerCulture: cultureForMajorGod(majorGod),
+    producerType,
+    hasCompletedBuilding: (buildingType) => hasCompletedBuilding(world, playerId, buildingType),
+    hasGod: (god) => {
+      if (god === majorGod) return true;
+      for (let age = 0; age < AGE_COUNT; age += 1) {
+        if (world.playerMinorGods[minorGodStart + age] === god) return true;
+      }
+      return false;
+    },
+  });
 }
 
 function isWalkableStep(
@@ -411,7 +467,7 @@ export function spawnUnit(
   vx: number,
   vz: number,
   owner = 0,
-  type = 0,
+  type = TYPE_GREEK_VILLAGER,
 ): number {
   if (world.count >= MAX_UNITS) {
     throw new RangeError("World unit capacity exceeded.");
@@ -442,9 +498,7 @@ export function spawnUnit(
   world.unitType[index] = type;
   world.hp[index] = UNIT_TYPES[type]!.maxHp;
   world.buildProgress[index] = 0;
-  world.trainType[index] = 0;
-  world.trainRemaining[index] = 0;
-  world.trainQueueLength[index] = 0;
+  clearProductionQueue(world, index);
   world.researchId[index] = NO_RESEARCH;
   world.researchChoice[index] = NO_GOD;
   world.researchRemaining[index] = 0;
@@ -604,10 +658,13 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
     const owner = ownerIds[ownerIndex]!;
     const [centerX, centerZ] = START_CORNERS[ownerIndex]!;
     const unitsForOwner = baseCount + (ownerIndex < extraCount ? 1 : 0);
+    const culture = cultureForMajorGod(world.playerMajorGod[owner]!);
+    const townCenterType = townCenterTypeForCulture(culture);
+    const workerType = workerTypeForCulture(culture);
 
     // Placed before units so the walkable-resample naturally keeps the army off the footprint;
     // deterministic order is preserved.
-    spawnBuilding(world, centerX - 2, centerZ - 2, owner, TYPE_TOWN_CENTER);
+    spawnBuilding(world, centerX - 2, centerZ - 2, owner, townCenterType);
 
     for (let i = 0; i < unitsForOwner; i += 1) {
       let x = 0;
@@ -628,7 +685,7 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
       // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
       // Spawn retry consumes a seed-derived, deterministic number of rng draws; spawn layout
       // shifts vs. step 2, acceptable before anything persists.
-      spawnUnit(world, x, z, 0, 0, owner);
+      spawnUnit(world, x, z, 0, 0, owner, workerType);
     }
   }
 }
@@ -896,6 +953,8 @@ export function spawnResourceNodes(world: World): void {
 }
 
 export function tickWorld(world: World): void {
+  world.deathEventCount = 0;
+
   // 1. Visibility reads positions from the last completed movement step. Command
   // validation and combat below therefore consult the same authoritative mask.
   updateVisibility(world);
@@ -940,9 +999,10 @@ export function tickWorld(world: World): void {
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
+    const attack = stats.meleeAttack;
 
-    if (stats.isStatic) {
-      // Trees don't fight; static rows never auto-acquire or strike.
+    if (stats.isStatic || attack === null) {
+      // Static and unarmed rows never auto-acquire or strike.
       continue;
     }
 
@@ -978,7 +1038,7 @@ export function tickWorld(world: World): void {
         const dz = targetZ - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
         const targetStats = UNIT_TYPES[world.unitType[target]!]!;
-        const surfaceAttackRange = stats.attackRange + targetStats.bodyRadius;
+        const surfaceAttackRange = attack.range + targetStats.bodyRadius;
         const attackRangeSq = surfaceAttackRange * surfaceAttackRange;
 
         // Always refresh the memory while visible, including while already in strike range.
@@ -993,11 +1053,11 @@ export function tickWorld(world: World): void {
           setFacingToward(world, i, targetX, targetZ);
 
           if (world.attackCooldown[i] === 0) {
-            dealDamage(world, target, stats.attackDamage);
-            world.attackCooldown[i] = stats.attackCooldownTicks;
+            dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
+            world.attackCooldown[i] = attack.cooldownTicks;
           }
         } else {
-          const leashRange = stats.aggroRange * LEASH_FACTOR;
+          const leashRange = attack.aggroRange * LEASH_FACTOR;
           const leashRangeSq = leashRange * leashRange;
 
           if (world.attackOrdered[i] === 1 || distSq <= leashRangeSq) {
@@ -1042,7 +1102,7 @@ export function tickWorld(world: World): void {
 
       const x = world.posX[i]!;
       const z = world.posZ[i]!;
-      const aggroSearchRange = stats.aggroRange + MAX_TARGET_BODY_RADIUS;
+      const aggroSearchRange = attack.aggroRange + MAX_TARGET_BODY_RADIUS;
       const searchRadius = Math.ceil(aggroSearchRange / GRID_CELL);
       const rawCellX = Math.floor(x / GRID_CELL);
       const rawCellZ = Math.floor(z / GRID_CELL);
@@ -1076,7 +1136,8 @@ export function tickWorld(world: World): void {
             const dx = world.posX[j]! - x;
             const dz = world.posZ[j]! - z;
             const distSq = dx * dx + dz * dz;
-            const surfaceAggroRange = stats.aggroRange + UNIT_TYPES[world.unitType[j]!]!.bodyRadius;
+            const surfaceAggroRange =
+              attack.aggroRange + UNIT_TYPES[world.unitType[j]!]!.bodyRadius;
 
             // A large building's edge can be inside aggro range while its center is not.
             if (distSq > surfaceAggroRange * surfaceAggroRange) {
@@ -1105,7 +1166,6 @@ export function tickWorld(world: World): void {
 
   // 5. Economy reads the same fresh grid as combat and writes moveTarget/moving for
   // movement to consume - the third costume for chase/strike.
-  const villagerReach = UNIT_TYPES[TYPE_VILLAGER]!.attackRange;
   const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
 
   world.prayingVillagers.fill(0);
@@ -1115,9 +1175,16 @@ export function tickWorld(world: World): void {
       continue;
     }
 
-    if (world.dying[i] === 1 || world.hp[i] === 0 || world.unitType[i] !== TYPE_VILLAGER) {
+    const workerStats = UNIT_TYPES[world.unitType[i]!]!;
+
+    if (
+      world.dying[i] === 1 ||
+      world.hp[i] === 0 ||
+      (workerStats.classes & UNIT_CLASS_WORKER) === 0
+    ) {
       continue;
     }
+    const workerReach = workerStats.workRange ?? 0;
 
     if (world.mode[i] === MODE_GATHERING) {
       if (world.carried[i]! >= CARRY_CAPACITY) {
@@ -1325,7 +1392,7 @@ export function tickWorld(world: World): void {
       const dx = world.posX[target]! - world.posX[i]!;
       const dz = world.posZ[target]! - world.posZ[i]!;
       const distSq = dx * dx + dz * dz;
-      const reach = villagerReach + nodeStats.bodyRadius;
+      const reach = workerReach + nodeStats.bodyRadius;
 
       if (distSq <= reach * reach) {
         world.moving[i] = 0;
@@ -1383,7 +1450,7 @@ export function tickWorld(world: World): void {
         const dx = world.posX[j]! - world.posX[i]!;
         const dz = world.posZ[j]! - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
-        const reach = villagerReach + dropsiteStats.bodyRadius;
+        const reach = workerReach + dropsiteStats.bodyRadius;
 
         if (distSq <= reach * reach) {
           depositDropsite = j;
@@ -1498,7 +1565,7 @@ export function tickWorld(world: World): void {
       const dx = world.posX[target]! - world.posX[i]!;
       const dz = world.posZ[target]! - world.posZ[i]!;
       const distSq = dx * dx + dz * dz;
-      const reach = villagerReach + siteStats.bodyRadius;
+      const reach = workerReach + siteStats.bodyRadius;
 
       if (distSq <= reach * reach) {
         world.moving[i] = 0;
@@ -1525,7 +1592,7 @@ export function tickWorld(world: World): void {
       }
     } else if (world.mode[i] === MODE_PRAYING) {
       const target = resolveId(world, world.taskTarget[i]!);
-      tickPrayerTask(world, i, target, villagerReach);
+      tickPrayerTask(world, i, target, workerReach);
     }
   }
 
@@ -1555,6 +1622,12 @@ export function tickWorld(world: World): void {
       world.posZ[i]! - producerStats.trainExitOffset,
     );
 
+    const completedType = activeTrainType(world, i);
+    if (completedType === NO_UNIT_TYPE) {
+      world.trainRemaining[i] = 0;
+      continue;
+    }
+
     spawnUnit(
       world,
       (cell % MAP_TILES) + 0.5,
@@ -1562,29 +1635,22 @@ export function tickWorld(world: World): void {
       0,
       0,
       world.owner[i]!,
-      world.trainType[i]!,
+      completedType,
     );
-
-    world.trainQueueLength[i] = world.trainQueueLength[i]! - 1;
-
-    if (world.trainQueueLength[i]! > 0) {
-      world.trainRemaining[i] = UNIT_TYPES[world.trainType[i]!]!.buildTicks;
-    } else {
-      world.trainType[i] = 0;
-    }
+    finishActiveProduction(world, i, (unitType) => UNIT_TYPES[unitType]!.buildTicks);
   }
 
   // 7. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
-  const step = UNIT_SPEED * TICK_S;
-
   for (let i = 0; i < world.count; i += 1) {
     const x = world.posX[i]!;
     const z = world.posZ[i]!;
+    const stats = UNIT_TYPES[world.unitType[i]!]!;
+    const step = stats.movementSpeed * TICK_S;
     const wasMoving = world.moving[i] === 1;
     let pushX = 0;
     let pushZ = 0;
 
-    if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
+    if (stats.isStatic) {
       // Static nodes stay in the grid as separation sources, but never accumulate pushes.
       world.pushX[i] = 0;
       world.pushZ[i] = 0;
@@ -1807,6 +1873,16 @@ function applyDeaths(world: World): void {
     const last = world.count - 1;
     const handle = world.handleOf[i]!;
     const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
+    const eventIndex = world.deathEventCount;
+
+    world.deathEventIds[eventIndex] = unitIdAt(world, i);
+    world.deathEventTypes[eventIndex] = world.unitType[i]!;
+    world.deathEventPosX[eventIndex] = world.posX[i]!;
+    world.deathEventPosZ[eventIndex] = world.posZ[i]!;
+    world.deathEventFacingX[eventIndex] = world.facingX[i]!;
+    world.deathEventFacingZ[eventIndex] = world.facingZ[i]!;
+    world.deathEventOwners[eventIndex] = world.owner[i]!;
+    world.deathEventCount = eventIndex + 1;
 
     // Building-owned research is canceled before the producer's components disappear.
     cancelBuildingResearch(world, i);
@@ -1847,9 +1923,7 @@ function applyDeaths(world: World): void {
       world.unitType[i] = world.unitType[last]!;
       world.hp[i] = world.hp[last]!;
       world.buildProgress[i] = world.buildProgress[last]!;
-      world.trainType[i] = world.trainType[last]!;
-      world.trainRemaining[i] = world.trainRemaining[last]!;
-      world.trainQueueLength[i] = world.trainQueueLength[last]!;
+      copyProductionQueue(world, i, last);
       world.researchId[i] = world.researchId[last]!;
       world.researchChoice[i] = world.researchChoice[last]!;
       world.researchRemaining[i] = world.researchRemaining[last]!;
@@ -1873,6 +1947,7 @@ function applyDeaths(world: World): void {
     }
 
     world.unitField[last] = null;
+    clearProductionQueue(world, last);
     world.count -= 1;
     world.dying[i] = 0;
     world.dying[last] = 0;
@@ -2010,7 +2085,7 @@ function applyPendingCommands(world: World): void {
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
           // Militia in a mixed selection are silently skipped, not treated as an error.
-          if (world.unitType[index] !== TYPE_VILLAGER) continue;
+          if ((UNIT_TYPES[world.unitType[index]!]!.classes & UNIT_CLASS_WORKER) === 0) continue;
           assignGatherTask(
             world,
             index,
@@ -2040,7 +2115,7 @@ function applyPendingCommands(world: World): void {
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
           // Militia in a mixed selection are silently skipped, not treated as an error.
-          if (world.unitType[index] !== TYPE_VILLAGER) continue;
+          if ((UNIT_TYPES[world.unitType[index]!]!.classes & UNIT_CLASS_WORKER) === 0) continue;
           assignWorkerTask(world, index, MODE_BUILDING, command.targetId);
         }
       }
@@ -2054,7 +2129,13 @@ function applyPendingCommands(world: World): void {
 
           if (index < 0) continue;
           if (world.owner[index] !== command.issuer) continue;
-          if (world.unitType[index] !== TYPE_VILLAGER) continue;
+          const workerStats = UNIT_TYPES[world.unitType[index]!]!;
+          if (
+            (workerStats.classes & UNIT_CLASS_WORKER) === 0 ||
+            workerStats.culture !== CULTURE_GREEK
+          ) {
+            continue;
+          }
           assignWorkerTask(world, index, MODE_PRAYING, command.targetId);
         }
       }
@@ -2068,15 +2149,20 @@ function applyPendingCommands(world: World): void {
         world.owner[building] === command.issuer
       ) {
         const producerStats = UNIT_TYPES[world.unitType[building]!]!;
+        const trainOptions = TRAIN_OPTIONS_BY_PRODUCER[producerStats.id];
 
         if (
-          // trains >= 0 first: a forged unitType of -1 must die here, not index UNIT_TYPES[-1] below.
-          producerStats.trains >= 0 &&
-          producerStats.trains === command.unitType &&
+          trainOptions !== undefined &&
+          trainOptions.some((option) => option.type === command.unitType) &&
           world.buildProgress[building]! >= producerStats.buildTicks &&
           world.trainQueueLength[building]! < MAX_TRAIN_QUEUE &&
           !isBuildingResearching(world, building) &&
-          isTypeAvailableToPlayer(world, command.issuer, command.unitType)
+          isTypeAvailableToPlayer(
+            world,
+            command.issuer,
+            command.unitType,
+            world.unitType[building]!,
+          )
         ) {
           const unitStats = UNIT_TYPES[command.unitType]!;
           const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
@@ -2101,29 +2187,57 @@ function applyPendingCommands(world: World): void {
 
               const js = UNIT_TYPES[world.unitType[j]!]!;
 
-              if (js.footprint === 0) pop += 1;
-              // Every queued order is a promised unit; counting the whole queue stops one or
-              // several buildings from overshooting the cap in the same turn.
-              pop += world.trainQueueLength[j]!;
+              pop += js.populationCost;
+              // Every queued order is a promised unit; sum its own cost so mixed queues cannot
+              // overshoot the cap in the same turn.
+              const queueStart = j * MAX_TRAIN_QUEUE;
+              for (let queueIndex = 0; queueIndex < world.trainQueueLength[j]!; queueIndex += 1) {
+                pop += UNIT_TYPES[world.trainQueueTypes[queueStart + queueIndex]!]!.populationCost;
+              }
               if (js.footprint > 0 && world.buildProgress[j]! >= js.buildTicks) {
                 popCap += js.popBonus;
               }
             }
 
-            if (pop + 1 <= popCap) {
+            if (pop + unitStats.populationCost <= popCap) {
               world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - unitStats.costFood;
               world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - unitStats.costWood;
               world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - unitStats.costGold;
               world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - unitStats.costFavor;
 
-              if (world.trainQueueLength[building] === 0) {
-                world.trainType[building] = command.unitType;
-                world.trainRemaining[building] = unitStats.buildTicks;
-              }
-
-              world.trainQueueLength[building] = world.trainQueueLength[building]! + 1;
+              enqueueProduction(world, building, command.unitType, unitStats.buildTicks);
             }
           }
+        }
+      }
+    } else if (command.type === COMMAND_CANCEL_TRAIN) {
+      const building = resolveId(world, command.buildingId);
+
+      if (
+        building >= 0 &&
+        world.dying[building] === 0 &&
+        world.hp[building]! > 0 &&
+        world.owner[building] === command.issuer
+      ) {
+        const cancelledType = cancelProduction(
+          world,
+          building,
+          command.queueIndex,
+          (unitType) => UNIT_TYPES[unitType]!.buildTicks,
+        );
+
+        if (cancelledType !== NO_UNIT_TYPE) {
+          const stats = UNIT_TYPES[cancelledType]!;
+          const resourceStart = command.issuer * RESOURCE_COUNT;
+
+          world.stockpiles[resourceStart + FOOD] =
+            world.stockpiles[resourceStart + FOOD]! + stats.costFood;
+          world.stockpiles[resourceStart + WOOD] =
+            world.stockpiles[resourceStart + WOOD]! + stats.costWood;
+          world.stockpiles[resourceStart + GOLD] =
+            world.stockpiles[resourceStart + GOLD]! + stats.costGold;
+          world.stockpiles[resourceStart + FAVOR] =
+            world.stockpiles[resourceStart + FAVOR]! + stats.costFavor;
         }
       }
     } else if (command.type === COMMAND_ADVANCE_AGE) {
@@ -2164,7 +2278,12 @@ function applyPendingCommands(world: World): void {
       if (
         buildingStats !== undefined &&
         buildingStats.footprint > 0 &&
-        isTypeAvailableToPlayer(world, command.issuer, buildingType) &&
+        isTypeAvailableToPlayer(
+          world,
+          command.issuer,
+          buildingType,
+          workerTypeForCulture(cultureForMajorGod(world.playerMajorGod[command.issuer]!)),
+        ) &&
         isFootprintVisibleTo(
           world,
           command.issuer,

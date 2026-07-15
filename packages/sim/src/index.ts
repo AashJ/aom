@@ -14,6 +14,7 @@ export {
   CLASSICAL_AGE_ADVANCE_TICKS,
   CLASSICAL_AGE_COST_FOOD,
   getAgeAdvanceAvailability,
+  getAgeAdvanceProducerType,
   type AgeAdvanceAvailability,
   type AgeAdvanceAvailabilityState,
   type AgeAdvanceRule,
@@ -27,7 +28,9 @@ export {
   type BuildingCompletionState,
   type HasCompletedBuilding,
   type TypeAvailability,
+  type TypeAvailabilityContext,
 } from "./ecs/availability";
+export { resolveMeleeDamage } from "./ecs/combat";
 export {
   favorCapForMajorGod,
   greekFavorRateMicrosPerSecond,
@@ -37,47 +40,52 @@ export {
 export { idGeneration, idIndex, packId } from "./ecs/id";
 export { registerPlayer } from "./ecs/players";
 export {
+  activeTrainType,
+  cancelProduction,
+  clearProductionQueue,
+  copyProductionQueue,
+  enqueueProduction,
+  finishActiveProduction,
+  MAX_TRAIN_QUEUE,
+  type ProductionQueueState,
+} from "./ecs/production";
+export {
   AGE_ARCHAIC,
   AGE_CLASSICAL,
   AGE_COUNT,
   AGE_HEROIC,
   AGE_MYTHIC,
   AGE_NAMES,
+  GOD_ANUBIS,
+  GOD_APHRODITE,
+  GOD_APOLLO,
+  GOD_ARES,
+  GOD_ARTEMIS,
   GOD_ATHENA,
   GOD_BAST,
+  GOD_DIONYSUS,
   GOD_HADES,
+  GOD_HATHOR,
+  GOD_HEPHAESTUS,
   GOD_HERMES,
+  GOD_HORUS,
+  GOD_HERA,
+  GOD_ISIS,
+  GOD_NEPHTHYS,
+  GOD_OSIRIS,
   GOD_POSEIDON,
   GOD_PTAH,
   GOD_RA,
+  GOD_SEKHMET,
+  GOD_SET,
+  GOD_THOTH,
   GOD_ZEUS,
   NO_AGE,
   NO_GOD,
 } from "./ecs/progression";
-export {
-  BUILD_PER_STRIKE,
-  CARRY_CAPACITY,
-  FAVOR,
-  FOOD,
-  GATHER_COOLDOWN_TICKS,
-  GATHER_PER_STRIKE,
-  GOLD,
-  LEASH_FACTOR,
-  NODE_RETARGET_RADIUS,
-  RESOURCE_COUNT,
-  TYPE_BARRACKS,
-  TYPE_BERRY,
-  TYPE_GOLD_MINE,
-  TYPE_HOUSE,
-  TYPE_MILITIA,
-  TYPE_TOWN_CENTER,
-  TYPE_TEMPLE,
-  TYPE_TREE,
-  TYPE_VILLAGER,
-  UNIT_TYPES,
-  WOOD,
-  type UnitTypeStats,
-} from "./ecs/types";
+export * from "./ecs/types";
+export * from "./content/culture-types";
+export * from "./content/gate-a-manifest";
 export * from "./ecs/world";
 export {
   canPlaceBuilding,

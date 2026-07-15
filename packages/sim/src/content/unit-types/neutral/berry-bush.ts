@@ -1,0 +1,42 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_BERRY } from "../../unit-type-ids";
+import {
+  CULTURE_SHARED,
+  FOOD,
+  NO_ARMOR,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_RESOURCE,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_BERRY,
+  key: "berry-bush",
+  label: "Berry Bush",
+  culture: CULTURE_SHARED,
+  classes: UNIT_CLASS_RESOURCE,
+  maxHp: 100,
+  lineOfSight: 0,
+  movementSpeed: 0,
+  armor: NO_ARMOR,
+  meleeAttack: null,
+  isStatic: true,
+  resource: FOOD,
+  bodyRadius: 0.5,
+  footprint: 0,
+  costFood: 0,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 0,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

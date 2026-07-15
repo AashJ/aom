@@ -1,0 +1,527 @@
+import { relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
+import { unlinkSync } from "node:fs";
+import {
+  CULTURE_SHARED,
+  UNIT_CLASS_BUILDING,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  UNIT_CLASS_RESOURCE,
+  UNIT_CLASS_WORKER,
+  type UnitTypeStats,
+  type TypeCommandRelationship,
+} from "../packages/sim/src/content/unit-type-schema";
+import { GATE_A_MANIFEST } from "../packages/sim/src/content/gate-a-manifest";
+import { NO_GOD } from "../packages/sim/src/ecs/progression";
+import type {
+  ModelAssetDefinition,
+  UnitMediaDefinition,
+} from "../packages/engine/src/content/unit-media-schema";
+
+const root = resolve(import.meta.dir, "..");
+const simSourceRoot = resolve(root, "packages/sim/src/content/unit-types");
+const simOutputPath = resolve(root, "packages/sim/src/content/generated/unit-types.ts");
+const mediaSourceRoot = resolve(root, "packages/engine/src/content/unit-media");
+const mediaOutputPath = resolve(root, "packages/engine/src/content/generated/unit-media.ts");
+const check = process.argv.includes("--check");
+const validateOnly = process.argv.includes("--validate-only");
+const glob = new Bun.Glob("**/*.ts");
+const files = [...glob.scanSync({ cwd: simSourceRoot, onlyFiles: true })]
+  .filter((file) => !file.endsWith(".test.ts"))
+  .sort((left, right) => left.localeCompare(right));
+
+function bindingName(file: string): string {
+  return file
+    .replace(/\.ts$/, "")
+    .replaceAll(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .replaceAll(/\s+(.)/g, (_, character: string) => character.toUpperCase());
+}
+
+interface DefinitionModule {
+  readonly definition: UnitTypeStats;
+}
+
+const entries = await Promise.all(
+  files.map(async (file) => {
+    const moduleUrl = pathToFileURL(resolve(simSourceRoot, file)).href;
+    const module = (await import(moduleUrl)) as DefinitionModule;
+    return { binding: bindingName(file), definition: module.definition, file };
+  }),
+);
+entries.sort(
+  (left, right) => left.definition.id - right.definition.id || left.file.localeCompare(right.file),
+);
+
+const ids = new Set<number>();
+const keys = new Set<string>();
+const definitionsById = new Map<number, UnitTypeStats>();
+for (const entry of entries) {
+  if (
+    !Number.isInteger(entry.definition.id) ||
+    entry.definition.id < 0 ||
+    entry.definition.id > 0xffff
+  ) {
+    throw new Error(`${entry.file} has invalid 16-bit id ${entry.definition.id}.`);
+  }
+  if (ids.has(entry.definition.id)) {
+    throw new Error(`Duplicate unit type id ${entry.definition.id}.`);
+  }
+  if (keys.has(entry.definition.key)) {
+    throw new Error(`Duplicate unit content key ${entry.definition.key}.`);
+  }
+  ids.add(entry.definition.id);
+  keys.add(entry.definition.key);
+  definitionsById.set(entry.definition.id, entry.definition);
+}
+
+function relationshipSource(
+  target: UnitTypeStats,
+  relationship: TypeCommandRelationship,
+  kind: "trainedAt" | "builtBy",
+): UnitTypeStats {
+  if (!Number.isInteger(relationship.commandSlot) || relationship.commandSlot < 0) {
+    throw new Error(`${target.key} has invalid ${kind} command slot ${relationship.commandSlot}.`);
+  }
+
+  const source = definitionsById.get(relationship.type);
+  if (source === undefined) {
+    throw new Error(`${target.key} references unimplemented ${kind} type ${relationship.type}.`);
+  }
+
+  if (
+    source.culture !== CULTURE_SHARED &&
+    target.culture !== CULTURE_SHARED &&
+    source.culture !== target.culture
+  ) {
+    throw new Error(`${target.key} has a culture-incompatible ${kind} source ${source.key}.`);
+  }
+
+  const requiredClass = kind === "trainedAt" ? UNIT_CLASS_BUILDING : UNIT_CLASS_WORKER;
+  if ((source.classes & requiredClass) === 0) {
+    throw new Error(`${target.key} has invalid ${kind} source ${source.key}.`);
+  }
+
+  return source;
+}
+
+const relationshipSlots = new Map<string, UnitTypeStats[]>();
+for (const entry of entries) {
+  const definition = entry.definition;
+
+  for (const prerequisiteType of definition.prerequisiteBuildings) {
+    const prerequisite = definitionsById.get(prerequisiteType);
+    if (prerequisite === undefined) {
+      throw new Error(
+        `${definition.key} references unimplemented prerequisite ${prerequisiteType}.`,
+      );
+    }
+    if ((prerequisite.classes & UNIT_CLASS_BUILDING) === 0) {
+      throw new Error(`${definition.key} prerequisite ${prerequisite.key} is not a building.`);
+    }
+    if (
+      prerequisite.culture !== CULTURE_SHARED &&
+      definition.culture !== CULTURE_SHARED &&
+      prerequisite.culture !== definition.culture
+    ) {
+      throw new Error(
+        `${definition.key} has culture-incompatible prerequisite ${prerequisite.key}.`,
+      );
+    }
+  }
+
+  for (const kind of ["trainedAt", "builtBy"] as const) {
+    for (const relationship of definition[kind]) {
+      const source = relationshipSource(definition, relationship, kind);
+      const slotKey = `${kind}:${source.id}:${relationship.commandSlot}`;
+      const existing = relationshipSlots.get(slotKey) ?? [];
+      const collision = existing.find(
+        (candidate) =>
+          candidate.requiredGod === NO_GOD ||
+          definition.requiredGod === NO_GOD ||
+          candidate.requiredGod === definition.requiredGod,
+      );
+      if (collision !== undefined) {
+        throw new Error(
+          `${source.key} command slot ${relationship.commandSlot} is shared by ${collision.key} and ${definition.key}.`,
+        );
+      }
+      existing.push(definition);
+      relationshipSlots.set(slotKey, existing);
+    }
+  }
+
+  const isResource = (definition.classes & UNIT_CLASS_RESOURCE) !== 0;
+  const isBuilding = (definition.classes & UNIT_CLASS_BUILDING) !== 0;
+  if (
+    !isResource &&
+    !isBuilding &&
+    definition.populationCost > 0 &&
+    definition.buildTicks > 0 &&
+    definition.trainedAt.length === 0
+  ) {
+    throw new Error(`${definition.key} is trainable but declares no trainedAt source.`);
+  }
+  if (isBuilding && definition.footprint > 0 && definition.builtBy.length === 0) {
+    throw new Error(`${definition.key} is buildable but declares no builtBy source.`);
+  }
+}
+
+const manifestIds = new Set<number>();
+const manifestKeys = new Set<string>();
+for (const assignment of GATE_A_MANIFEST) {
+  if (manifestIds.has(assignment.id))
+    throw new Error(`Duplicate Gate A manifest id ${assignment.id}.`);
+  if (manifestKeys.has(assignment.key)) {
+    throw new Error(`Duplicate Gate A manifest key ${assignment.key}.`);
+  }
+  manifestIds.add(assignment.id);
+  manifestKeys.add(assignment.key);
+
+  if (
+    (assignment.status === "proof" || assignment.status === "ready") &&
+    assignment.blocker !== null
+  ) {
+    throw new Error(`${assignment.key} is eligible but declares a blocker.`);
+  }
+  if (assignment.status === "blocked" && assignment.blocker === null) {
+    throw new Error(`${assignment.key} is blocked without an exact blocker.`);
+  }
+
+  const definition = definitionsById.get(assignment.id);
+  if (definition === undefined) {
+    if (assignment.status === "proof") {
+      throw new Error(`Proof assignment ${assignment.key} has no sim definition.`);
+    }
+    continue;
+  }
+  if (
+    definition.key !== assignment.key ||
+    definition.label !== assignment.label ||
+    definition.culture !== assignment.culture ||
+    definition.requiredGod !== assignment.requiredGod
+  ) {
+    throw new Error(`${assignment.key} does not match its frozen Gate A identity assignment.`);
+  }
+  if (
+    definition.trainedAt.length !== assignment.trainedAt.length ||
+    definition.trainedAt.some(
+      (relationship, index) =>
+        relationship.type !== assignment.trainedAt[index]?.type ||
+        relationship.commandSlot !== assignment.trainedAt[index]?.commandSlot,
+    )
+  ) {
+    throw new Error(`${assignment.key} does not match its frozen producer/slot assignment.`);
+  }
+  if (
+    assignment.status !== "blocked" &&
+    ((definition.classes & (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE)) !==
+      (UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE) ||
+      definition.meleeAttack === null)
+  ) {
+    throw new Error(`${assignment.key} must satisfy the Gate A direct-hit melee contract.`);
+  }
+}
+
+const imports = entries.map(({ binding, file }) => {
+  const modulePath = `../unit-types/${file.replace(/\.ts$/, "")}`;
+  return `import { definition as ${binding} } from ${JSON.stringify(modulePath)};`;
+});
+const unformattedSimSource = `// Generated by scripts/generate-unit-catalogs.ts. Do not edit by hand.
+${imports.join("\n")}
+import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
+
+export const UNIT_TYPE_DEFINITIONS = [
+${entries.map(({ binding }) => `  ${binding},`).join("\n")}
+] as const satisfies readonly UnitTypeStats[];
+
+const unitTypes: UnitTypeStats[] = [];
+const contentKeys = new Set<string>();
+
+for (const definition of UNIT_TYPE_DEFINITIONS) {
+  if (unitTypes[definition.id] !== undefined) {
+    throw new Error(\`Duplicate unit type id \${definition.id}.\`);
+  }
+  if (contentKeys.has(definition.key)) {
+    throw new Error(\`Duplicate unit content key \${definition.key}.\`);
+  }
+
+  unitTypes[definition.id] = definition;
+  contentKeys.add(definition.key);
+}
+
+export const UNIT_TYPES: readonly UnitTypeStats[] = Object.freeze(unitTypes);
+
+const trainedSlotsByProducer: TypeCommandRelationship[][] = [];
+const builtSlotsByWorker: TypeCommandRelationship[][] = [];
+
+function addReverseRelationship(
+  catalog: TypeCommandRelationship[][],
+  sourceType: number,
+  targetType: number,
+  commandSlot: number,
+): void {
+  if (unitTypes[sourceType] === undefined) {
+    throw new Error(\`Type \${targetType} references unimplemented type \${sourceType}.\`);
+  }
+  const entries = (catalog[sourceType] ??= []);
+  entries.push({ commandSlot, type: targetType });
+}
+
+for (const definition of UNIT_TYPE_DEFINITIONS) {
+  for (const relationship of definition.trainedAt) {
+    addReverseRelationship(
+      trainedSlotsByProducer,
+      relationship.type,
+      definition.id,
+      relationship.commandSlot,
+    );
+  }
+  for (const relationship of definition.builtBy) {
+    addReverseRelationship(
+      builtSlotsByWorker,
+      relationship.type,
+      definition.id,
+      relationship.commandSlot,
+    );
+  }
+}
+
+function freezeReverseCatalog(
+  catalog: TypeCommandRelationship[][],
+): readonly (readonly TypeCommandRelationship[] | undefined)[] {
+  return Object.freeze(
+    catalog.map((entries) =>
+      entries === undefined
+        ? undefined
+        : Object.freeze(
+            entries
+              .sort((left, right) => left.commandSlot - right.commandSlot)
+              .map((entry) => Object.freeze({ ...entry })),
+          ),
+    ),
+  );
+}
+
+export const TRAIN_OPTIONS_BY_PRODUCER = freezeReverseCatalog(trainedSlotsByProducer);
+export const BUILD_OPTIONS_BY_WORKER = freezeReverseCatalog(builtSlotsByWorker);
+`;
+
+interface MediaDefinitionModule {
+  readonly definition: UnitMediaDefinition;
+}
+
+const mediaFiles = [...glob.scanSync({ cwd: mediaSourceRoot, onlyFiles: true })]
+  .filter((file) => !file.endsWith(".test.ts"))
+  .sort((left, right) => left.localeCompare(right));
+const mediaEntries = await Promise.all(
+  mediaFiles.map(async (file) => {
+    const moduleUrl = pathToFileURL(resolve(mediaSourceRoot, file)).href;
+    const module = (await import(moduleUrl)) as MediaDefinitionModule;
+    return { binding: bindingName(file), definition: module.definition, file };
+  }),
+);
+mediaEntries.sort(
+  (left, right) =>
+    left.definition.type - right.definition.type || left.file.localeCompare(right.file),
+);
+
+const mediaIds = new Set<number>();
+const mediaKeys = new Set<string>();
+const modelsByKey = new Map<string, ModelAssetDefinition>();
+for (const entry of mediaEntries) {
+  const media = entry.definition;
+  if (mediaIds.has(media.type)) throw new Error(`Duplicate media type id ${media.type}.`);
+  if (mediaKeys.has(media.key)) throw new Error(`Duplicate media content key ${media.key}.`);
+  mediaIds.add(media.type);
+  mediaKeys.add(media.key);
+
+  const sim = definitionsById.get(media.type);
+  if (sim === undefined)
+    throw new Error(`${entry.file} references unimplemented type ${media.type}.`);
+  if (sim.key !== media.key) {
+    throw new Error(`${entry.file} key ${media.key} does not match sim key ${sim.key}.`);
+  }
+
+  for (const model of media.models) {
+    if (modelsByKey.has(model.key)) throw new Error(`Duplicate model key ${model.key}.`);
+    modelsByKey.set(model.key, model);
+  }
+}
+
+for (const entry of entries) {
+  const sim = entry.definition;
+  const media = mediaEntries.find((candidate) => candidate.definition.type === sim.id)?.definition;
+  if (media === undefined && (sim.classes & UNIT_CLASS_RESOURCE) === 0) {
+    throw new Error(`${sim.key} has no media definition.`);
+  }
+}
+
+for (const entry of mediaEntries) {
+  const media = entry.definition;
+  const sim = definitionsById.get(media.type)!;
+  const localModelsByKey = new Set(media.models.map((model) => model.key));
+  if (media.presentation.kind === "model") {
+    for (const [actionName, action] of Object.entries(media.presentation.actions)) {
+      for (const modelKey of action.models) {
+        if (!localModelsByKey.has(modelKey)) {
+          throw new Error(
+            `${media.key} action ${actionName} must reference a model in the same unit pack: ${modelKey}.`,
+          );
+        }
+      }
+    }
+  }
+  for (const model of media.models) {
+    for (const attachment of model.attachments ?? []) {
+      if (!localModelsByKey.has(attachment.model)) {
+        throw new Error(
+          `${model.key} must reference an attachment model in the same unit pack: ${attachment.model}.`,
+        );
+      }
+    }
+  }
+
+  const gateAssignment = GATE_A_MANIFEST.find((assignment) => assignment.id === sim.id);
+  const isGateAMelee = gateAssignment?.status === "proof" || gateAssignment?.status === "ready";
+  if (isGateAMelee) {
+    if (media.presentation.kind !== "model") {
+      throw new Error(`${media.key} requires model presentation for Gate A.`);
+    }
+    for (const action of ["idle", "walk", "attack", "death"] as const) {
+      if (media.presentation.actions[action] === undefined) {
+        throw new Error(`${media.key} is missing required ${action} action.`);
+      }
+    }
+    if (
+      media.icon === null ||
+      media.audio.selection === undefined ||
+      media.audio.acknowledge === undefined ||
+      media.audio.attackAcknowledge === undefined
+    ) {
+      throw new Error(`${media.key} is missing required Gate A icon or voice audio.`);
+    }
+  }
+}
+
+const mediaImports = mediaEntries.map(({ binding, file }) => {
+  const modulePath = `../unit-media/${file.replace(/\.ts$/, "")}`;
+  return `import { definition as ${binding} } from ${JSON.stringify(modulePath)};`;
+});
+const unformattedMediaSource = `// Generated by scripts/generate-unit-catalogs.ts. Do not edit by hand.
+${mediaImports.join("\n")}
+import type {
+  IconConfig,
+  ModelAssetDefinition,
+  RuntimeModelActionDefinition,
+  RuntimeModelAssetDefinition,
+  RuntimeModelUnitPresentation,
+  RuntimeUnitPresentation,
+  UnitMediaAction,
+  UnitMediaDefinition,
+  UnitPresentation,
+} from "../unit-media-schema";
+
+export const UNIT_MEDIA_DEFINITIONS = [
+${mediaEntries.map(({ binding }) => `  ${binding},`).join("\n")}
+] as const satisfies readonly UnitMediaDefinition[];
+
+const unitMedia: UnitMediaDefinition[] = [];
+const authoredModelConfigs: ModelAssetDefinition[] = [];
+const modelIndex: Record<string, number> = {};
+
+for (const definition of UNIT_MEDIA_DEFINITIONS) {
+  if (unitMedia[definition.type] !== undefined) {
+    throw new Error(\`Duplicate media type id \${definition.type}.\`);
+  }
+  unitMedia[definition.type] = definition;
+
+  for (const model of definition.models) {
+    if (modelIndex[model.key] !== undefined) {
+      throw new Error(\`Duplicate model key \${model.key}.\`);
+    }
+    modelIndex[model.key] = authoredModelConfigs.length;
+    authoredModelConfigs.push(model);
+  }
+}
+
+const modelConfigs: RuntimeModelAssetDefinition[] = authoredModelConfigs.map((model) => ({
+  key: model.key,
+  url: model.url,
+  grounded: model.grounded,
+  ...(model.attachments === undefined
+    ? {}
+    : {
+        attachments: model.attachments.map((attachment) => ({
+          modelIndex: modelIndex[attachment.model]!,
+          targetNode: attachment.targetNode,
+          hotspotNode: attachment.hotspotNode,
+        })),
+      }),
+}));
+
+function compilePresentation(presentation: UnitPresentation): RuntimeUnitPresentation {
+  if (presentation.kind === "sprite") return presentation;
+
+  const actions: Partial<Record<UnitMediaAction, RuntimeModelActionDefinition>> = {};
+  for (const [name, action] of Object.entries(presentation.actions)) {
+    actions[name as UnitMediaAction] = {
+      modelIndices: action.models.map((model) => modelIndex[model]!) as [number, ...number[]],
+      animationClock: action.animationClock,
+      variant: action.variant,
+    };
+  }
+
+  return {
+    ...presentation,
+    actions: actions as RuntimeModelUnitPresentation["actions"],
+  };
+}
+
+const presentations: RuntimeUnitPresentation[] = [];
+const icons: (IconConfig | undefined)[] = [];
+for (const definition of UNIT_MEDIA_DEFINITIONS) {
+  presentations[definition.type] = compilePresentation(definition.presentation);
+  icons[definition.type] = definition.icon ?? undefined;
+}
+
+export const UNIT_MEDIA: readonly UnitMediaDefinition[] = Object.freeze(unitMedia);
+export const UNIT_PRESENTATIONS: readonly RuntimeUnitPresentation[] = Object.freeze(presentations);
+export const MODEL_CONFIGS: readonly RuntimeModelAssetDefinition[] = Object.freeze(modelConfigs);
+export const TYPE_ICONS: readonly (IconConfig | undefined)[] = Object.freeze(icons);
+`;
+
+async function formattedSource(name: string, unformatted: string): Promise<string> {
+  const temporaryPath = resolve(tmpdir(), `aom-${name}-${process.pid}.ts`);
+  await Bun.write(temporaryPath, unformatted);
+  const formatter = Bun.spawnSync([resolve(root, "node_modules/.bin/oxfmt"), temporaryPath], {
+    cwd: root,
+  });
+  if (formatter.exitCode !== 0) throw new Error(formatter.stderr.toString());
+  const source = await Bun.file(temporaryPath).text();
+  unlinkSync(temporaryPath);
+  return source;
+}
+
+async function writeOrCheck(outputPath: string, source: string): Promise<boolean> {
+  if (validateOnly) return true;
+  const current = await Bun.file(outputPath)
+    .text()
+    .catch(() => "");
+  if (check) {
+    if (current === source) return true;
+    console.error(`${relative(root, outputPath)} is stale. Run bun run generate:unit-catalogs.`);
+    return false;
+  }
+  if (current !== source) await Bun.write(outputPath, source);
+  return true;
+}
+
+const simSource = await formattedSource("unit-types", unformattedSimSource);
+const mediaSource = await formattedSource("unit-media", unformattedMediaSource);
+const results = await Promise.all([
+  writeOrCheck(simOutputPath, simSource),
+  writeOrCheck(mediaOutputPath, mediaSource),
+]);
+if (results.includes(false)) process.exit(1);

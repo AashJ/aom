@@ -1,9 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   AGE_NAMES,
+  cultureForMajorGod,
   FAVOR,
   FOOD,
   getAgeAdvanceAvailability,
+  getAgeAdvanceProducerType,
   getTypeAvailability,
   GOLD,
   GOD_ATHENA,
@@ -11,12 +13,7 @@ import {
   GOD_HERMES,
   GOD_PTAH,
   NO_AGE,
-  TYPE_BARRACKS,
-  TYPE_HOUSE,
   TYPE_ICONS,
-  TYPE_TEMPLE,
-  TYPE_TOWN_CENTER,
-  TYPE_VILLAGER,
   UNIT_TYPES,
   WOOD,
   type AgeAdvanceAvailability,
@@ -24,6 +21,7 @@ import {
   type IconConfig,
   type PlayerState,
   type SelectionSummary,
+  type TypeCommandRelationship,
   type TypeAvailability,
 } from "@aom/engine";
 import favorIconUrl from "@/assets/resource-favor.png";
@@ -65,7 +63,8 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
       !producer ||
       !producer.complete ||
       ageAdvanceAvailability?.available !== true ||
-      producer.type !== ageAdvanceAvailability.rule.producerType
+      producer.type !==
+        getAgeAdvanceProducerType(ageAdvanceAvailability.rule, playerState?.majorGod ?? -1)
     ) {
       setChoosingMinorGod(false);
     }
@@ -75,30 +74,31 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     return null;
   }
 
-  const house = UNIT_TYPES[TYPE_HOUSE]!;
-  const barracks = UNIT_TYPES[TYPE_BARRACKS]!;
-  const temple = UNIT_TYPES[TYPE_TEMPLE]!;
   const producer = selection?.producer ?? null;
-  const trained = producer ? UNIT_TYPES[producer.type]!.trains : -1;
-  const trainedStats = trained !== -1 ? UNIT_TYPES[trained]! : null;
-
-  const trainedLabel = trained === TYPE_VILLAGER ? "Villager" : "Militia";
-  const availability = (unitType: number): TypeAvailability | null =>
+  const commandOptions = producer?.complete
+    ? producer.trainOptions
+    : (selection?.buildOptions ?? []);
+  const commandSourceType = producer?.complete ? producer.type : (selection?.builderType ?? -1);
+  const availability = (unitType: number, producerType: number): TypeAvailability | null =>
     playerState
-      ? getTypeAvailability(
-          unitType,
-          playerState.age,
-          (buildingType) => playerState.completedBuildings[buildingType] === 1,
-        )
+      ? getTypeAvailability(unitType, {
+          playerAge: playerState.age,
+          playerCulture: cultureForMajorGod(playerState.majorGod),
+          producerType,
+          hasCompletedBuilding: (buildingType) =>
+            playerState.completedBuildings[buildingType] === 1,
+          hasGod: (god) => god === playerState.majorGod || playerState.minorGods.includes(god),
+        })
       : null;
-  const houseAvailability = availability(TYPE_HOUSE);
-  const barracksAvailability = availability(TYPE_BARRACKS);
-  const templeAvailability = availability(TYPE_TEMPLE);
-  const trainedAvailability = trainedStats ? availability(trained) : null;
   const ageAdvanceAvailability = ageAdvanceAvailabilityFor(playerState);
   const ageAdvanceRule =
     ageAdvanceAvailability && "rule" in ageAdvanceAvailability ? ageAdvanceAvailability.rule : null;
+  const ageAdvanceProducerType =
+    ageAdvanceRule && playerState
+      ? getAgeAdvanceProducerType(ageAdvanceRule, playerState.majorGod)
+      : undefined;
   const ageAdvanceUnavailable = ageAdvanceReason(ageAdvanceAvailability);
+  const commandCells = slottedCommandCells(commandOptions, commandSourceType, availability);
 
   return (
     <>
@@ -108,87 +108,35 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         className="fixed bottom-0 left-32 z-10 h-[9.625rem] w-48 select-none sm:left-36 sm:h-[8.375rem] sm:w-60"
       >
         <div className="relative grid grid-cols-3 content-start gap-1 px-3 pt-3 sm:grid-cols-5 sm:pt-2.5">
-          {selection && selection.villagers > 0 && (
-            <>
-              <CommandTile
-                icon={TYPE_ICONS.get(TYPE_HOUSE)}
-                label="House"
-                costFood={house.costFood}
-                costWood={house.costWood}
-                costGold={house.costGold}
-                costFavor={house.costFavor}
-                unavailableReason={availabilityReason(houseAvailability)}
-                disabled={
-                  houseAvailability?.available !== true ||
-                  (playerState?.food ?? 0) < house.costFood ||
-                  (playerState?.wood ?? 0) < house.costWood ||
-                  (playerState?.gold ?? 0) < house.costGold ||
-                  (playerState?.favor ?? 0) < house.costFavor
-                }
-                onClick={() => game.startPlacement(TYPE_HOUSE)}
-              />
-              <CommandTile
-                icon={TYPE_ICONS.get(TYPE_BARRACKS)}
-                label="Barracks"
-                costFood={barracks.costFood}
-                costWood={barracks.costWood}
-                costGold={barracks.costGold}
-                costFavor={barracks.costFavor}
-                unavailableReason={availabilityReason(barracksAvailability)}
-                disabled={
-                  barracksAvailability?.available !== true ||
-                  (playerState?.food ?? 0) < barracks.costFood ||
-                  (playerState?.wood ?? 0) < barracks.costWood ||
-                  (playerState?.gold ?? 0) < barracks.costGold ||
-                  (playerState?.favor ?? 0) < barracks.costFavor
-                }
-                onClick={() => game.startPlacement(TYPE_BARRACKS)}
-              />
-              <CommandTile
-                icon={TYPE_ICONS.get(TYPE_TEMPLE)}
-                label="Temple"
-                costFood={temple.costFood}
-                costWood={temple.costWood}
-                costGold={temple.costGold}
-                costFavor={temple.costFavor}
-                unavailableReason={availabilityReason(templeAvailability)}
-                disabled={
-                  templeAvailability?.available !== true ||
-                  (playerState?.food ?? 0) < temple.costFood ||
-                  (playerState?.wood ?? 0) < temple.costWood ||
-                  (playerState?.gold ?? 0) < temple.costGold ||
-                  (playerState?.favor ?? 0) < temple.costFavor
-                }
-                onClick={() => game.startPlacement(TYPE_TEMPLE)}
-              />
-            </>
-          )}
+          {commandCells.map((cell, commandSlot) => {
+            if (cell === null) {
+              return <div key={`empty-${commandSlot}`} aria-hidden="true" />;
+            }
 
-          {selection && producer && producer.complete && trainedStats && (
-            <CommandTile
-              icon={TYPE_ICONS.get(trained)}
-              label={trainedLabel}
-              costFood={trainedStats.costFood}
-              costWood={trainedStats.costWood}
-              costGold={trainedStats.costGold}
-              costFavor={trainedStats.costFavor}
-              unavailableReason={availabilityReason(trainedAvailability)}
-              disabled={
-                trainedAvailability?.available !== true ||
-                (playerState?.food ?? 0) < trainedStats.costFood ||
-                (playerState?.wood ?? 0) < trainedStats.costWood ||
-                (playerState?.gold ?? 0) < trainedStats.costGold ||
-                (playerState?.favor ?? 0) < trainedStats.costFavor
-              }
-              // Population cap is enforced by the sim; impossible orders die silently.
-              onClick={() => game.trainSelected(trained)}
-            />
-          )}
+            const unitType = cell.option.type;
+            const stats = UNIT_TYPES[unitType]!;
+            return (
+              <CommandTile
+                key={unitType}
+                icon={TYPE_ICONS[unitType]}
+                label={stats.label}
+                costFood={stats.costFood}
+                costWood={stats.costWood}
+                costGold={stats.costGold}
+                costFavor={stats.costFavor}
+                unavailableReason={availabilityReason(cell.availability)}
+                disabled={!canAffordAndUse(playerState, stats, cell.availability)}
+                onClick={() =>
+                  producer?.complete ? game.trainSelected(unitType) : game.startPlacement(unitType)
+                }
+              />
+            );
+          })}
 
           {producer &&
             producer.complete &&
             ageAdvanceRule &&
-            producer.type === ageAdvanceRule.producerType && (
+            producer.type === ageAdvanceProducerType && (
               <CommandTile
                 symbol={
                   AGE_SYMBOLS[ageAdvanceRule.targetAge] ?? String(ageAdvanceRule.targetAge + 1)
@@ -221,19 +169,19 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         )}
       </ClassicHudPanel>
 
-      {trainedStats && (
+      {producer && (
         <ProductionQueue
-          icon={TYPE_ICONS.get(trained)}
-          label={trainedLabel}
-          length={producer?.queueLength ?? 0}
-          progress={producer?.progress ?? 0}
+          queueTypes={producer.queueTypes}
+          progress={producer.progress}
+          onCancel={(queueIndex) => game.cancelTraining(producer.id, queueIndex)}
         />
       )}
 
       {choosingMinorGod &&
         producer &&
         ageAdvanceAvailability?.available === true &&
-        producer.type === ageAdvanceAvailability.rule.producerType && (
+        producer.type ===
+          getAgeAdvanceProducerType(ageAdvanceAvailability.rule, playerState?.majorGod ?? -1) && (
           <MinorGodChoice
             ageName={AGE_NAMES[ageAdvanceAvailability.rule.targetAge] ?? "next age"}
             minorGods={ageAdvanceAvailability.minorGods}
@@ -246,6 +194,34 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         )}
     </>
   );
+}
+
+interface SlottedCommandCell {
+  readonly option: TypeCommandRelationship;
+  readonly availability: TypeAvailability | null;
+}
+
+function slottedCommandCells(
+  options: readonly TypeCommandRelationship[],
+  sourceType: number,
+  availability: (unitType: number, sourceType: number) => TypeAvailability | null,
+): readonly (SlottedCommandCell | null)[] {
+  const visible = options.flatMap((option) => {
+    const result = availability(option.type, sourceType);
+    if (result?.available === false && (result.reason === "culture" || result.reason === "god")) {
+      return [];
+    }
+    return [{ option, availability: result }];
+  });
+  const lastSlot = visible.reduce(
+    (maximum, cell) => Math.max(maximum, cell.option.commandSlot),
+    -1,
+  );
+  const cells: (SlottedCommandCell | null)[] = Array.from({ length: lastSlot + 1 }, () => null);
+  for (const cell of visible) {
+    cells[cell.option.commandSlot] ??= cell;
+  }
+  return cells;
 }
 
 function CommandTile({
@@ -404,17 +380,15 @@ function MinorGodButton({
 }
 
 function ProductionQueue({
-  icon,
-  label,
-  length,
+  queueTypes,
   progress,
+  onCancel,
 }: {
-  icon: IconConfig | undefined;
-  label: string;
-  length: number;
+  queueTypes: readonly number[];
   progress: number;
+  onCancel(queueIndex: number): void;
 }) {
-  if (length === 0) {
+  if (queueTypes.length === 0) {
     return null;
   }
 
@@ -426,44 +400,52 @@ function ProductionQueue({
   return (
     <ClassicHudPanel
       as="section"
-      ariaLabel={`Production queue: ${length} ${label.toLowerCase()}${length === 1 ? "" : "s"}`}
+      ariaLabel={`Production queue: ${queueTypes.length} unit${queueTypes.length === 1 ? "" : "s"}`}
       className="fixed bottom-[9.625rem] left-0 z-10 h-16 w-full select-none sm:bottom-[8.375rem] lg:bottom-0 lg:left-96 lg:w-[min(42rem,calc(100vw-40rem))]"
     >
       <ol className="relative flex h-full list-none items-center gap-1 overflow-x-auto px-3 pt-2 pb-1.5">
-        {Array.from({ length }, (_, index) => (
-          <li
-            key={index}
-            className="relative size-12 shrink-0 overflow-hidden border border-[#19130d] bg-[#17130f] [box-shadow:inset_0_0_0_1px_#c9b86f,inset_0_0_0_3px_#5e4b28,inset_0_0_7px_rgb(0_0_0/90%),0_1px_0_rgb(235_226_183/45%)] sm:size-10"
-          >
-            <div
-              aria-hidden="true"
-              className="absolute inset-0.5 bg-left bg-no-repeat"
-              style={{
-                backgroundImage: icon ? `url(${icon.url})` : undefined,
-                backgroundSize: icon ? `${icon.columns * 100}% 100%` : undefined,
-              }}
-            />
+        {queueTypes.map((unitType, index) => {
+          const icon = TYPE_ICONS[unitType];
+          const label = UNIT_TYPES[unitType]?.label ?? "Unit";
+          return (
+            <li key={`${index}-${unitType}`} className="size-12 shrink-0 sm:size-10">
+              <button
+                type="button"
+                aria-label={`Cancel ${label}, queue position ${index + 1}`}
+                className="relative size-full overflow-hidden border border-[#19130d] bg-[#17130f] [box-shadow:inset_0_0_0_1px_#c9b86f,inset_0_0_0_3px_#5e4b28,inset_0_0_7px_rgb(0_0_0/90%),0_1px_0_rgb(235_226_183/45%)]"
+                onClick={() => onCancel(index)}
+              >
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0.5 bg-left bg-no-repeat"
+                  style={{
+                    backgroundImage: icon ? `url(${icon.url})` : undefined,
+                    backgroundSize: icon ? `${icon.columns * 100}% 100%` : undefined,
+                  }}
+                />
 
-            {index === 0 && (
-              <>
-                <div className="absolute top-0.5 right-1 font-serif text-base font-medium text-[#fff7cf] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13] tabular-nums sm:text-sm">
-                  {Math.round(activeProgress * 100)}%
-                </div>
-                <div className="absolute inset-x-1 bottom-1 h-1 border border-black/80 bg-[#211a12]">
-                  <div
-                    className="h-full w-(--queue-progress) bg-[#d5bb5a] shadow-[inset_0_1px_0_rgb(255_246_171/65%)]"
-                    style={progressStyle}
-                  />
-                </div>
-              </>
-            )}
+                {index === 0 && (
+                  <>
+                    <div className="absolute top-0.5 right-1 font-serif text-base font-medium text-[#fff7cf] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13] tabular-nums sm:text-sm">
+                      {Math.round(activeProgress * 100)}%
+                    </div>
+                    <div className="absolute inset-x-1 bottom-1 h-1 border border-black/80 bg-[#211a12]">
+                      <div
+                        className="h-full w-(--queue-progress) bg-[#d5bb5a] shadow-[inset_0_1px_0_rgb(255_246_171/65%)]"
+                        style={progressStyle}
+                      />
+                    </div>
+                  </>
+                )}
 
-            <span className="sr-only">
-              {label} {index + 1} of {length}
-              {index === 0 ? `, ${Math.round(activeProgress * 100)}% complete` : ""}
-            </span>
-          </li>
-        ))}
+                <span className="sr-only">
+                  {label} {index + 1} of {queueTypes.length}
+                  {index === 0 ? `, ${Math.round(activeProgress * 100)}% complete` : ""}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ol>
     </ClassicHudPanel>
   );
@@ -519,9 +501,34 @@ function availabilityReason(availability: TypeAvailability | null): string | und
       return `Requires ${AGE_NAMES[availability.requiredAge] ?? "a later age"}`;
     case "building":
       return `Requires a completed ${buildingLabel(availability.buildingType)}`;
+    case "culture":
+      return "Unavailable to this culture";
+    case "god":
+      return "Requires a different god choice";
+    case "producer":
+      return "Unavailable from this building";
     case "invalid-type":
       return "Unavailable";
   }
+}
+
+function canAffordAndUse(
+  playerState: PlayerState | null,
+  stats: {
+    readonly costFood: number;
+    readonly costWood: number;
+    readonly costGold: number;
+    readonly costFavor: number;
+  },
+  availability: TypeAvailability | null,
+): boolean {
+  return (
+    availability?.available === true &&
+    (playerState?.food ?? 0) >= stats.costFood &&
+    (playerState?.wood ?? 0) >= stats.costWood &&
+    (playerState?.gold ?? 0) >= stats.costGold &&
+    (playerState?.favor ?? 0) >= stats.costFavor
+  );
 }
 
 function ageAdvanceAvailabilityFor(playerState: PlayerState | null): AgeAdvanceAvailability | null {
@@ -577,16 +584,5 @@ function resourceLabel(resource: number): string {
 }
 
 function buildingLabel(buildingType: number): string {
-  switch (buildingType) {
-    case TYPE_TOWN_CENTER:
-      return "Town Center";
-    case TYPE_BARRACKS:
-      return "Barracks";
-    case TYPE_HOUSE:
-      return "House";
-    case TYPE_TEMPLE:
-      return "Temple";
-    default:
-      return "prerequisite building";
-  }
+  return UNIT_TYPES[buildingType]?.label ?? "prerequisite building";
 }

@@ -30,7 +30,10 @@
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "dev:web": "turbo run dev -F web",
-    "check": "oxlint && oxfmt --write",
+    "generate:unit-catalogs": "bun scripts/generate-unit-catalogs.ts",
+    "validate:unit-packs": "bun scripts/generate-unit-catalogs.ts --validate-only",
+    "check:unit-catalogs": "bun scripts/generate-unit-catalogs.ts --check",
+    "check": "bun run check:unit-catalogs && oxlint && oxfmt --write",
     "test": "turbo run test"
   },
   "dependencies": {

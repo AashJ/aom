@@ -81,7 +81,7 @@ export interface ModelPrimitiveData {
 
 export interface ModelMaterialData {
   image: ImageBitmap | null;
-  pixelTransform: "none" | "multiply-player-color";
+  pixelTransform: "none" | "multiply-player-color" | "full-player-color" | "dark-player-color";
   alpha: { mode: "opaque" } | { mode: "mask"; cutoff: number };
 }
 
@@ -216,8 +216,15 @@ function classicMaterialSemantics(
   }
 
   const transform = material.name?.toLowerCase().match(/(?:pixel|color|texture)xform\d+/)?.[0];
-  const multipliesPlayerColor = transform === "pixelxform1" || transform === "colorxform1";
-  if (transform !== undefined && !multipliesPlayerColor) {
+  const pixelTransform =
+    transform === "pixelxform1" || transform === "colorxform1"
+      ? "multiply-player-color"
+      : transform === "pixelxform2" || transform === "colorxform2"
+        ? "full-player-color"
+        : transform === "pixelxform3" || transform === "colorxform3"
+          ? "dark-player-color"
+          : "none";
+  if (transform !== undefined && pixelTransform === "none") {
     invalidClassicModel(source, `material ${materialIndex} uses unsupported ${transform}`);
   }
   const textureIndex = material.pbrMetallicRoughness?.baseColorTexture?.index;
@@ -236,7 +243,7 @@ function classicMaterialSemantics(
 
   return {
     imageIndex,
-    pixelTransform: multipliesPlayerColor ? "multiply-player-color" : "none",
+    pixelTransform,
     alpha:
       alphaMode === "MASK"
         ? { mode: "mask", cutoff: material.alphaCutoff ?? 0.5 }

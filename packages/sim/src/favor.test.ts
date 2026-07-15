@@ -7,7 +7,11 @@ import {
 } from "./ecs/favor";
 import { registerPlayer } from "./ecs/players";
 import { GOD_HADES, GOD_ZEUS } from "./ecs/progression";
-import { FAVOR, TYPE_TEMPLE, TYPE_VILLAGER } from "./ecs/types";
+import {
+  FAVOR,
+  TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
+  TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
+} from "./ecs/types";
 import {
   MODE_IDLE,
   MODE_PRAYING,

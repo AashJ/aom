@@ -6,11 +6,12 @@ import {
   FOOD,
   GOD_ATHENA,
   GOD_ZEUS,
+  MAX_TRAIN_QUEUE,
   RESOURCE_COUNT,
-  TYPE_BARRACKS,
-  TYPE_MILITIA,
-  TYPE_TOWN_CENTER,
-  TYPE_VILLAGER,
+  TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
+  TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
+  TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
+  TYPE_HOPLITE,
   UNIT_TYPES,
   createSnapshot,
 } from "@aom/sim";
@@ -32,6 +33,8 @@ function populatedSnapshot() {
   snapshot.unitType[1] = TYPE_TOWN_CENTER;
   snapshot.buildProgress[1] = UNIT_TYPES[TYPE_TOWN_CENTER]!.buildTicks;
   snapshot.trainQueueLength[1] = 2;
+  snapshot.trainQueueTypes[MAX_TRAIN_QUEUE] = TYPE_VILLAGER;
+  snapshot.trainQueueTypes[MAX_TRAIN_QUEUE + 1] = TYPE_VILLAGER;
   snapshot.completedBuildings[TYPE_TOWN_CENTER] = 1;
   snapshot.favorRateMilliPerMinute = 29_793;
   return snapshot;
@@ -112,7 +115,7 @@ describe("player state store", () => {
 
     snapshot.age = AGE_ARCHAIC;
     store.update(snapshot);
-    expect(store.availability(TYPE_MILITIA)).toEqual({
+    expect(store.availability(TYPE_HOPLITE, TYPE_BARRACKS)).toEqual({
       available: false,
       reason: "age",
       requiredAge: AGE_CLASSICAL,
@@ -120,7 +123,7 @@ describe("player state store", () => {
 
     snapshot.age = AGE_CLASSICAL;
     store.update(snapshot);
-    expect(store.availability(TYPE_MILITIA)).toEqual({
+    expect(store.availability(TYPE_HOPLITE, TYPE_BARRACKS)).toEqual({
       available: false,
       reason: "building",
       buildingType: TYPE_BARRACKS,
@@ -128,6 +131,6 @@ describe("player state store", () => {
 
     snapshot.completedBuildings[TYPE_BARRACKS] = 1;
     store.update(snapshot);
-    expect(store.availability(TYPE_MILITIA)).toEqual({ available: true });
+    expect(store.availability(TYPE_HOPLITE, TYPE_BARRACKS)).toEqual({ available: true });
   });
 });

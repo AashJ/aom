@@ -1,17 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { parseClassicModelGlb } from "./glb";
-import { MODEL_CONFIGS, MODEL_INDEX } from "./model-assets";
+import { MODEL_CONFIGS } from "./model-assets";
 
 describe("named model registry", () => {
   test("derives every GPU index and attachment target from a named model", () => {
     expect(new Set(MODEL_CONFIGS.map((config) => config.key)).size).toBe(MODEL_CONFIGS.length);
 
-    for (const [index, config] of MODEL_CONFIGS.entries()) {
-      expect(MODEL_INDEX[config.key]).toBe(index);
-      if (config.attachment) {
-        expect(MODEL_CONFIGS[MODEL_INDEX[config.attachment.model]]?.key).toBe(
-          config.attachment.model,
-        );
+    for (const config of MODEL_CONFIGS) {
+      for (const attachment of config.attachments ?? []) {
+        expect(MODEL_CONFIGS[attachment.modelIndex]).toBeDefined();
       }
     }
   });
@@ -39,6 +36,33 @@ describe("named model registry", () => {
         expect(model.duration).toBeGreaterThan(0);
         expect(decodedTextureBytes.slice(textureStart)).toHaveLength(2);
         expect(decodedTextureBytes.slice(textureStart).every((bytes) => bytes > 1_000)).toBe(true);
+      }
+    } finally {
+      globalThis.createImageBitmap = originalCreateImageBitmap;
+    }
+  });
+
+  test("parses every generated model and attachment contract", async () => {
+    const originalCreateImageBitmap = globalThis.createImageBitmap;
+    globalThis.createImageBitmap = (async () => ({}) as ImageBitmap) as typeof createImageBitmap;
+
+    try {
+      for (const [modelIndex, config] of MODEL_CONFIGS.entries()) {
+        const requiredNodes = [
+          ...(config.attachments ?? []).map((attachment) => attachment.targetNode),
+          ...MODEL_CONFIGS.flatMap((owner) =>
+            (owner.attachments ?? []).flatMap((attachment) =>
+              attachment.modelIndex === modelIndex ? [attachment.hotspotNode] : [],
+            ),
+          ),
+        ];
+        const model = await parseClassicModelGlb(
+          await Bun.file(config.url).arrayBuffer(),
+          config.key,
+          { requiredNodes },
+        );
+        expect(model.primitives.length).toBeGreaterThan(0);
+        expect(model.duration).toBeGreaterThanOrEqual(0);
       }
     } finally {
       globalThis.createImageBitmap = originalCreateImageBitmap;

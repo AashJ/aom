@@ -1,0 +1,41 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GREEK_HOUSE, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  NO_ARMOR,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_GREEK_HOUSE,
+  key: "greek-house",
+  label: "House",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 600,
+  lineOfSight: 6,
+  movementSpeed: 0,
+  armor: NO_ARMOR,
+  meleeAttack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 1.5,
+  footprint: 2,
+  costFood: 0,
+  costWood: 60,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 120,
+  populationCost: 0,
+  popBonus: 10,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_GREEK_VILLAGER, commandSlot: 0 }],
+} as const satisfies UnitTypeStats;

@@ -1,0 +1,42 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GREEK_TEMPLE, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  NO_ARMOR,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  UNIT_CLASS_TEMPLE,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_GREEK_TEMPLE,
+  key: "greek-temple",
+  label: "Temple",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_BUILDING | UNIT_CLASS_TEMPLE,
+  maxHp: 1200,
+  lineOfSight: 10,
+  movementSpeed: 0,
+  armor: NO_ARMOR,
+  meleeAttack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 3.2,
+  footprint: 5,
+  costFood: 0,
+  costWood: 150,
+  costGold: 150,
+  costFavor: 0,
+  buildTicks: 800,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_GREEK_VILLAGER, commandSlot: 2 }],
+} as const satisfies UnitTypeStats;

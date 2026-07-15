@@ -85,6 +85,18 @@ describe("Classic model GLB contract", () => {
       }),
       "fixture",
     );
+    const fullTransformAsset = await parseClassicModelGlb(
+      classicFixture((gltf) => {
+        gltf.materials[0]!.name = "Body( pixelxform2)";
+      }),
+      "fixture",
+    );
+    const darkTransformAsset = await parseClassicModelGlb(
+      classicFixture((gltf) => {
+        gltf.materials[0]!.name = "Body( pixelxform3)";
+      }),
+      "fixture",
+    );
 
     for (const asset of [pixelTransformAsset, colorTransformAsset]) {
       expect(asset.materials[0]).toEqual({
@@ -93,6 +105,8 @@ describe("Classic model GLB contract", () => {
         alpha: { mode: "mask", cutoff: 0.4 },
       });
     }
+    expect(fullTransformAsset.materials[0]?.pixelTransform).toBe("full-player-color");
+    expect(darkTransformAsset.materials[0]?.pixelTransform).toBe("dark-player-color");
   });
 
   test("rejects missing vertex attributes and attachment nodes", async () => {

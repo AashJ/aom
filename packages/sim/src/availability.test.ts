@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { COMMAND_PLACE, COMMAND_TRAIN, enqueueCommand } from "./commands";
+import { cultureForMajorGod } from "./content/culture-types";
 import { getTypeAvailability, isTypeAvailable } from "./ecs/availability";
 import {
   AGE_ARCHAIC,
@@ -14,11 +15,14 @@ import {
 import { registerPlayer } from "./ecs/players";
 import {
   FOOD,
-  TYPE_BARRACKS,
-  TYPE_HOUSE,
-  TYPE_MILITIA,
-  TYPE_TOWN_CENTER,
-  TYPE_VILLAGER,
+  GOLD,
+  TYPE_GREEK_HOUSE as TYPE_HOUSE,
+  TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
+  TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
+  TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
+  TYPE_EGYPTIAN_BARRACKS,
+  TYPE_HOPLITE,
+  TYPE_SPEARMAN,
   UNIT_TYPES,
   WOOD,
 } from "./ecs/types";
@@ -119,51 +123,78 @@ describe("player registration and progression", () => {
 });
 
 describe("content availability", () => {
+  test("culture and producer checks reject cross-tree commands authoritatively", () => {
+    const context = (majorGod: number, producerType: number) => ({
+      playerAge: AGE_CLASSICAL,
+      playerCulture: cultureForMajorGod(majorGod),
+      producerType,
+      hasCompletedBuilding: () => true,
+      hasGod: (god: number) => god === majorGod,
+    });
+
+    expect(getTypeAvailability(TYPE_SPEARMAN, context(GOD_ZEUS, TYPE_EGYPTIAN_BARRACKS))).toEqual({
+      available: false,
+      reason: "culture",
+      requiredCulture: cultureForMajorGod(GOD_RA),
+    });
+    expect(getTypeAvailability(TYPE_HOPLITE, context(GOD_ZEUS, TYPE_TOWN_CENTER))).toEqual({
+      available: false,
+      reason: "producer",
+      producerType: TYPE_TOWN_CENTER,
+    });
+    expect(getTypeAvailability(TYPE_HOPLITE, context(GOD_ZEUS, TYPE_BARRACKS))).toEqual({
+      available: true,
+    });
+    expect(getTypeAvailability(TYPE_SPEARMAN, context(GOD_RA, TYPE_EGYPTIAN_BARRACKS))).toEqual({
+      available: true,
+    });
+  });
+
   test("viewer snapshots drive the same age and prerequisite rule", () => {
     const world = flatWorld(42, [3, 8]);
     const snapshot = createSnapshot(16);
 
     spawnUnits(world, 10, [3, 8]);
 
+    const availabilityContext = (producerType?: number) => ({
+      playerAge: snapshot.age,
+      playerCulture: cultureForMajorGod(snapshot.majorGod),
+      producerType,
+      hasCompletedBuilding: (buildingType: number) =>
+        snapshot.completedBuildings[buildingType] === 1,
+      hasGod: (god: number) => god === snapshot.majorGod || snapshot.minorGods.includes(god),
+    });
     const availableFromSnapshot = (unitType: number): boolean =>
-      isTypeAvailable(
-        unitType,
-        snapshot.age,
-        (buildingType) => snapshot.completedBuildings[buildingType] === 1,
-      );
+      isTypeAvailable(unitType, availabilityContext());
 
     writeSnapshot(world, snapshot, 3);
     expect(snapshot.completedBuildings[TYPE_TOWN_CENTER]).toBe(1);
-    expect(
-      getTypeAvailability(
-        TYPE_BARRACKS,
-        snapshot.age,
-        (buildingType) => snapshot.completedBuildings[buildingType] === 1,
-      ),
-    ).toEqual({ available: false, reason: "age", requiredAge: AGE_CLASSICAL });
+    expect(getTypeAvailability(TYPE_BARRACKS, availabilityContext(TYPE_VILLAGER))).toEqual({
+      available: false,
+      reason: "age",
+      requiredAge: AGE_CLASSICAL,
+    });
     expect(availableFromSnapshot(TYPE_VILLAGER)).toBe(true);
     expect(availableFromSnapshot(TYPE_HOUSE)).toBe(true);
     expect(availableFromSnapshot(TYPE_BARRACKS)).toBe(false);
-    expect(availableFromSnapshot(TYPE_MILITIA)).toBe(false);
+    expect(availableFromSnapshot(TYPE_HOPLITE)).toBe(false);
 
     world.playerAge[8] = AGE_CLASSICAL;
     const barracks = spawnBuilding(world, 100, 100, 8, TYPE_BARRACKS, false);
 
     writeSnapshot(world, snapshot, 8);
     expect(availableFromSnapshot(TYPE_BARRACKS)).toBe(true);
-    expect(
-      getTypeAvailability(
-        TYPE_MILITIA,
-        snapshot.age,
-        (buildingType) => snapshot.completedBuildings[buildingType] === 1,
-      ),
-    ).toEqual({ available: false, reason: "building", buildingType: TYPE_BARRACKS });
-    expect(availableFromSnapshot(TYPE_MILITIA)).toBe(false);
+    expect(getTypeAvailability(TYPE_HOPLITE, availabilityContext(TYPE_BARRACKS))).toEqual({
+      available: false,
+      reason: "building",
+      buildingType: TYPE_BARRACKS,
+    });
+    expect(availableFromSnapshot(TYPE_HOPLITE)).toBe(false);
 
     world.buildProgress[resolveId(world, barracks)] = UNIT_TYPES[TYPE_BARRACKS]!.buildTicks;
     writeSnapshot(world, snapshot, 8);
     expect(snapshot.completedBuildings[TYPE_BARRACKS]).toBe(1);
-    expect(availableFromSnapshot(TYPE_MILITIA)).toBe(true);
+    expect(availableFromSnapshot(TYPE_HOPLITE)).toBe(true);
   });
 
   test("age-locked Place commands are silent no-ops until the required age", () => {
@@ -212,12 +243,13 @@ describe("content availability", () => {
 
     world.stockpiles[FOOD] = 500;
     world.stockpiles[WOOD] = 500;
+    world.stockpiles[GOLD] = 500;
     enqueueCommand(world, {
       tick: 1,
       issuer: 0,
       type: COMMAND_TRAIN,
       buildingId: barracks,
-      unitType: TYPE_MILITIA,
+      unitType: TYPE_HOPLITE,
     });
     tickWorld(world);
     tickWorld(world);
@@ -232,12 +264,12 @@ describe("content availability", () => {
       issuer: 0,
       type: COMMAND_TRAIN,
       buildingId: barracks,
-      unitType: TYPE_MILITIA,
+      unitType: TYPE_HOPLITE,
     });
     tickWorld(world);
 
     expect(world.trainQueueLength[barracksIndex]).toBe(1);
-    expect(world.stockpiles[FOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costFood);
-    expect(world.stockpiles[WOOD]).toBe(500 - UNIT_TYPES[TYPE_MILITIA]!.costWood);
+    expect(world.stockpiles[FOOD]).toBe(500 - UNIT_TYPES[TYPE_HOPLITE]!.costFood);
+    expect(world.stockpiles[WOOD]).toBe(500 - UNIT_TYPES[TYPE_HOPLITE]!.costWood);
   });
 });

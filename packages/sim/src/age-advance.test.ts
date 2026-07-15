@@ -23,7 +23,12 @@ import {
   NO_GOD,
 } from "./ecs/progression";
 import { findAgeAdvanceResearch } from "./ecs/research";
-import { FOOD, TYPE_TEMPLE, TYPE_TOWN_CENTER, TYPE_VILLAGER } from "./ecs/types";
+import {
+  FOOD,
+  TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
+  TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
+  TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
+} from "./ecs/types";
 import {
   createWorld,
   killUnit,
