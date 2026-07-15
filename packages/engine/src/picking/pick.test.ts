@@ -1,14 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AGE_ARCHAIC,
+  AGE_COUNT,
   createSnapshot,
   createWorld,
   MAP_TILES,
+  NO_GOD,
+  registerPlayer,
   RESOURCE_COUNT,
   setSelected,
   spawnBuilding,
   spawnUnit,
   TYPE_HOUSE,
   TYPE_TOWN_CENTER,
+  UNIT_TYPES,
   VERTS_PER_ROW,
   type RenderSnapshot,
   writeSnapshot,
@@ -102,6 +107,10 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     hp: new Uint16Array(xs.length),
     unitType: new Uint8Array(xs.length),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
+    age: AGE_ARCHAIC,
+    majorGod: NO_GOD,
+    minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
+    completedBuildings: new Uint8Array(UNIT_TYPES.length),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
     trainType: new Uint8Array(xs.length),
@@ -184,6 +193,7 @@ describe("pickUnit", () => {
     const camera = createCamera();
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
     const world = createWorld(42);
+    registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
     const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
@@ -218,6 +228,7 @@ describe("pickUnit", () => {
     const camera = createCamera();
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
     const world = createWorld(42);
+    registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
     const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
@@ -263,6 +274,7 @@ describe("pickUnit", () => {
     const camera = createCamera();
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
     const world = createWorld(42);
+    registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
     const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
@@ -306,6 +318,7 @@ describe("pickUnit", () => {
     const camera = createCamera();
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
     const world = createWorld(42);
+    registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
     const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;

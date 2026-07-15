@@ -13,7 +13,12 @@ import {
 } from "../commands";
 import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
-import { computeWalkable, generateHeightmap, MAP_TILES } from "../terrain";
+import {
+  computeWalkable,
+  generateHeightmap,
+  generateTerrainMaterials,
+  MAP_TILES,
+} from "../terrain";
 import {
   isEntityVisibleTo,
   isFootprintVisibleTo,
@@ -21,6 +26,9 @@ import {
   VISIBILITY_TILES,
 } from "../visibility";
 import { idGeneration, idIndex, packId } from "./id";
+import { hasCompletedBuilding, isTypeAvailable } from "./availability";
+import { registerPlayer } from "./players";
+import { AGE_COUNT, NO_GOD } from "./progression";
 import {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
@@ -103,6 +111,7 @@ export interface World {
   count: number;
   rng: Pcg32;
   heights: Float32Array;
+  terrainMaterials: Uint8Array;
   walkable: Uint8Array;
   posX: Float64Array;
   posZ: Float64Array;
@@ -123,6 +132,11 @@ export interface World {
   playerCount: number;
   visibility: Uint8Array;
   stockpiles: Uint32Array;
+  // Progression is indexed by actual player id, like stockpiles. Visibility is
+  // the exception because its map-sized rows are packed by active-player slot.
+  playerAge: Uint8Array;
+  playerMajorGod: Uint8Array;
+  playerMinorGods: Uint8Array;
   unitType: Uint8Array;
   hp: Uint16Array;
   buildProgress: Uint16Array;
@@ -175,12 +189,17 @@ export interface World {
 
 export function createWorld(seed: number): World {
   const heights = generateHeightmap(seed);
+  const terrainMaterials = generateTerrainMaterials(seed, heights);
   const walkable = computeWalkable(heights);
   const slotOf = new Int32Array(MAX_UNITS);
   const playerSlotById = new Int16Array(256);
+  const playerMajorGod = new Uint8Array(256);
+  const playerMinorGods = new Uint8Array(256 * AGE_COUNT);
 
   slotOf.fill(-1);
   playerSlotById.fill(-1);
+  playerMajorGod.fill(NO_GOD);
+  playerMinorGods.fill(NO_GOD);
 
   return {
     tick: 0,
@@ -189,6 +208,7 @@ export function createWorld(seed: number): World {
     // One seed now derives the whole world: terrain and units can never disagree
     // about which map they're on.
     heights,
+    terrainMaterials,
     walkable,
     // SoA typed arrays: cache-friendly linear iteration, zero per-tick allocation, and
     // trivially hashable for future desync detection.
@@ -207,6 +227,9 @@ export function createWorld(seed: number): World {
     playerCount: 0,
     visibility: new Uint8Array(MAX_PLAYERS * VISIBILITY_TILES),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
+    playerAge: new Uint8Array(256),
+    playerMajorGod,
+    playerMinorGods,
     unitType: new Uint8Array(MAX_UNITS),
     hp: new Uint16Array(MAX_UNITS),
     buildProgress: new Uint16Array(MAX_UNITS),
@@ -246,6 +269,20 @@ export function createWorld(seed: number): World {
     unitField: new Array(MAX_UNITS).fill(null),
     fieldCache: [],
   };
+}
+
+function isTypeAvailableToPlayer(world: World, playerId: number, unitType: number): boolean {
+  if (
+    playerId < 0 ||
+    playerId >= world.playerSlotById.length ||
+    world.playerSlotById[playerId] === -1
+  ) {
+    return false;
+  }
+
+  return isTypeAvailable(unitType, world.playerAge[playerId]!, (buildingType) =>
+    hasCompletedBuilding(world, playerId, buildingType),
+  );
 }
 
 export function setFacingToward(
@@ -318,15 +355,7 @@ export function spawnUnit(
   }
 
   if (owner !== NEUTRAL_OWNER && world.playerSlotById[owner] === -1) {
-    if (world.playerCount >= MAX_PLAYERS) {
-      throw new RangeError("World player capacity exceeded.");
-    }
-
-    const playerSlot = world.playerCount;
-
-    world.playerIds[playerSlot] = owner;
-    world.playerSlotById[owner] = playerSlot;
-    world.playerCount += 1;
+    throw new RangeError(`Player ${owner} must be registered before spawning owned entities.`);
   }
 
   const index = world.count;
@@ -511,6 +540,10 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
 
   if (ownerCount === 0) {
     return;
+  }
+
+  for (let ownerIndex = 0; ownerIndex < ownerCount; ownerIndex += 1) {
+    registerPlayer(world, ownerIds[ownerIndex]!);
   }
 
   // Placement affordability lands in M6-4; 100/100 is a balance-pass placeholder.
@@ -2006,7 +2039,8 @@ function applyPendingCommands(world: World): void {
           producerStats.trains >= 0 &&
           producerStats.trains === command.unitType &&
           world.buildProgress[building]! >= producerStats.buildTicks &&
-          world.trainQueueLength[building]! < MAX_TRAIN_QUEUE
+          world.trainQueueLength[building]! < MAX_TRAIN_QUEUE &&
+          isTypeAvailableToPlayer(world, command.issuer, command.unitType)
         ) {
           const unitStats = UNIT_TYPES[command.unitType]!;
           const foodIndex = command.issuer * RESOURCE_COUNT + FOOD;
@@ -2070,6 +2104,7 @@ function applyPendingCommands(world: World): void {
       if (
         buildingStats !== undefined &&
         buildingStats.footprint > 0 &&
+        isTypeAvailableToPlayer(world, command.issuer, buildingType) &&
         isFootprintVisibleTo(
           world,
           command.issuer,

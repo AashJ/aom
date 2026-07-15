@@ -5,6 +5,7 @@ import {
   createWorld,
   enqueueCommand,
   hashWorld,
+  registerPlayer,
   spawnUnit,
   tickWorld,
   type World,
@@ -135,6 +136,7 @@ describe("turn buffer", () => {
   test("gates on received turns, stamps execution ticks, and drains", () => {
     const buffer = createTurnBuffer();
     const world = createWorld(42);
+    registerPlayer(world, 0);
     world.walkable.fill(1);
     const id = spawnUnit(world, 10, 10, 0, 0);
 
@@ -165,6 +167,8 @@ describe("turn buffer", () => {
     const bufB = createTurnBuffer();
     const worldA = createWorld(7);
     const worldB = createWorld(7);
+    registerPlayer(worldA, 0);
+    registerPlayer(worldB, 0);
     worldA.walkable.fill(1);
     worldB.walkable.fill(1);
     const idA = spawnUnit(worldA, 10, 10, 0, 0);
@@ -229,6 +233,7 @@ describe("fake-relay lockstep integration", () => {
   // bit-identical forever.
   test("two players' interleaved commands keep two worlds hash-identical", () => {
     const spawn = (world: World): { p0: number[]; p1: number[] } => {
+      registerPlayer(world, 0);
       const p0: number[] = [];
       const p1: number[] = [];
 

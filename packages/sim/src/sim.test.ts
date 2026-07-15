@@ -10,6 +10,8 @@ import {
   enqueueCommand,
 } from "./commands";
 import { idGeneration, idIndex, packId } from "./ecs/id";
+import { registerPlayer } from "./ecs/players";
+import { AGE_CLASSICAL } from "./ecs/progression";
 import {
   CARRY_CAPACITY,
   FAVOR,
@@ -66,8 +68,13 @@ function distance(world: World, a: number, b: number): number {
 
 // Movement tests flatten walkability to isolate movement mechanics from the
 // seed's random rock placement; walkability has its own tests below.
-function flatWorld(seed: number): World {
+function flatWorld(seed: number, playerIds: readonly number[] = [0]): World {
   const world = createWorld(seed);
+
+  for (const playerId of playerIds) {
+    registerPlayer(world, playerId);
+  }
+
   world.walkable.fill(1);
   return world;
 }
@@ -435,7 +442,7 @@ describe("packed entity ids", () => {
 
 describe("ownership", () => {
   test("commands only move units the issuer owns", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     const mine = spawnUnit(world, 10, 10, 0, 0, 0);
     const theirs = spawnUnit(world, 20, 20, 0, 0, 1);
 
@@ -460,7 +467,7 @@ describe("ownership", () => {
   });
 
   test("stop obeys the same validation", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     const mine = spawnUnit(world, 10, 10, 0, 0, 0);
     const theirs = spawnUnit(world, 20, 20, 0, 0, 1);
 
@@ -542,7 +549,7 @@ describe("ownership", () => {
   });
 
   test("owner survives the death swap and reaches the snapshot", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1, 2]);
     spawnUnit(world, 10, 10, 0, 0, 0);
     spawnUnit(world, 20, 20, 0, 0, 1);
     spawnUnit(world, 30, 30, 0, 0, 2);
@@ -920,7 +927,7 @@ describe("resources and nodes", () => {
   });
 
   test("a forest cannot deny victory or force a draw", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
     spawnUnit(world, 100.5, 100, 0, 0, 1);
     spawnUnit(world, 200, 200, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
@@ -1022,7 +1029,7 @@ describe("buildings and walkability", () => {
   });
 
   test("melee reaches a building's surface despite its footprint", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     // Enemy TC and a soldier ordered to raze it: without the body-radius fix
     // the soldier stops at the unwalkable footprint edge, outside its 1.2
     // reach of the CENTER, and orbits forever.
@@ -1493,7 +1500,7 @@ describe("building placement", () => {
   });
 
   test("enemy or already-complete targets are no-ops; militia are silently skipped", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     const enemySite = spawnBuilding(world, 100, 100, 1, TYPE_HOUSE, false);
     const doneSite = spawnBuilding(world, 120, 120, 0, TYPE_HOUSE, true);
     const ownSite = spawnBuilding(world, 140, 140, 0, TYPE_HOUSE, false);
@@ -1760,6 +1767,7 @@ describe("production", () => {
     const blueprintTc = spawnBuilding(world, 140, 140, 0, TYPE_TOWN_CENTER, false);
     world.stockpiles[FOOD] = 500;
     world.stockpiles[WOOD] = 500;
+    world.playerAge[0] = AGE_CLASSICAL;
     const countBefore = world.count;
 
     // Barracks don't make villagers, houses make nothing, blueprints make nothing.
@@ -1816,7 +1824,7 @@ describe("combat", () => {
   const stats = UNIT_TYPES[0]!;
 
   test("adjacent enemies auto-acquire, trade damage, and produce a winner", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
     spawnUnit(world, 100.5, 100, 0, 0, 1);
     world.contested = true;
@@ -1839,7 +1847,7 @@ describe("combat", () => {
   });
 
   test("enemies outside aggro range ignore each other", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
     spawnUnit(world, 100 + stats.aggroRange * 3, 100, 0, 0, 1);
     world.contested = true;
@@ -1855,7 +1863,7 @@ describe("combat", () => {
   });
 
   test("a move order breaks off a fight", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     const brawlerId = spawnUnit(world, 100, 100, 0, 0, 0);
     spawnUnit(world, 100.5, 100, 0, 0, 1);
     world.contested = true;
@@ -1890,7 +1898,7 @@ describe("combat", () => {
   });
 
   test("an attack order against an unseen target is rejected", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     const hunterId = spawnUnit(world, 50, 100, 0, 0, 0);
     const preyId = spawnUnit(world, 120, 100, 0, 0, 1);
     world.contested = true;
@@ -1912,7 +1920,7 @@ describe("combat", () => {
   });
 
   test("an ordered attacker searches the last-seen position and resumes on reveal", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     const hunterId = spawnUnit(world, 50, 100, 0, 0, 0, TYPE_MILITIA);
     const targetId = spawnBuilding(world, 56, 99, 1, TYPE_HOUSE);
     const target = resolveId(world, targetId);
@@ -1952,7 +1960,7 @@ describe("combat", () => {
   });
 
   test("a symmetric duel double-KOs into a draw, not an eternal stalemate", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
     spawnUnit(world, 100.5, 100, 0, 0, 1);
     // Identical stats + engaged the same tick = synchronized cooldowns all
@@ -1972,7 +1980,7 @@ describe("combat", () => {
   });
 
   test("an auto-acquired chase leashes; an ordered one would not", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);
     const farId = spawnUnit(world, 100 + stats.aggroRange * LEASH_FACTOR + 2, 100, 0, 0, 1);
     world.contested = true;
@@ -1992,7 +2000,7 @@ describe("combat", () => {
   });
 
   test("attacking a friendly or stale target is a no-op", () => {
-    const world = flatWorld(42);
+    const world = flatWorld(42, [0, 1]);
     // Enemy parked OUTSIDE aggro range: auto-acquire must not contaminate
     // what these command-validation assertions isolate.
     const a = spawnUnit(world, 100, 100, 0, 0, 0);
@@ -2044,7 +2052,7 @@ describe("combat", () => {
     // test pins combat determinism at scale, and annihilation-with-buildings
     // has its own coverage. Standing TCs would correctly keep winner at -1.
     const build = (): World => {
-      const world = flatWorld(1337);
+      const world = flatWorld(1337, [0, 1]);
 
       for (let i = 0; i < 500; i += 1) {
         spawnUnit(world, 20 + (i % 25), 20 + Math.floor(i / 25), 0, 0, 0);
@@ -2273,6 +2281,7 @@ describe("commands and separation", () => {
     // full state hash EVERY tick so the first divergent tick names itself —
     // the same shape M4's desync detection will use.
     const script = (world: World): void => {
+      registerPlayer(world, 0);
       const ids: number[] = [];
 
       for (let i = 0; i < 100; i += 1) {

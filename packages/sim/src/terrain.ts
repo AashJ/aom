@@ -6,6 +6,28 @@
 // only through RenderSnapshot.
 export const MAP_TILES = 256;
 export const VERTS_PER_ROW = MAP_TILES + 1;
+// Blend order follows the Classic AoM subset in terrain/blends.txt: lower ids
+// are painted first and higher ids are layered over them by the renderer.
+export const TERRAIN_DIRT_A = 0;
+export const TERRAIN_CLIFF_GREEK_B = 1;
+export const TERRAIN_GRASS_DIRT_75 = 2;
+export const TERRAIN_GRASS_DIRT_50 = 3;
+export const TERRAIN_GRASS_DIRT_25 = 4;
+export const TERRAIN_GRASS_B = 5;
+export const TERRAIN_GRASS_A = 6;
+export const TERRAIN_CLIFF_GREEK_A = 7;
+export const TERRAIN_MATERIAL_IDS = [
+  TERRAIN_DIRT_A,
+  TERRAIN_CLIFF_GREEK_B,
+  TERRAIN_GRASS_DIRT_75,
+  TERRAIN_GRASS_DIRT_50,
+  TERRAIN_GRASS_DIRT_25,
+  TERRAIN_GRASS_B,
+  TERRAIN_GRASS_A,
+  TERRAIN_CLIFF_GREEK_A,
+] as const;
+export type TerrainMaterialId = (typeof TERRAIN_MATERIAL_IDS)[number];
+export const TERRAIN_MATERIAL_COUNT = TERRAIN_MATERIAL_IDS.length;
 // Max per-edge height delta per 1-unit tile, roughly where the terrain shader
 // starts blending to rock so unwalkable terrain will visually read as rocky once
 // the overlay lands.
@@ -48,6 +70,64 @@ export function generateHeightmap(seed: number): Float32Array {
   }
 
   return heights;
+}
+
+export function generateTerrainMaterials(seed: number, heights: Float32Array): Uint8Array {
+  if (heights.length !== VERTS_PER_ROW * VERTS_PER_ROW) {
+    throw new RangeError("Terrain heights must contain one value per terrain vertex.");
+  }
+
+  // Materials live on terrain vertices. Each mesh quad therefore receives four
+  // material ids, which the renderer turns into the original corner/edge masks.
+  const materials = new Uint8Array(heights.length);
+
+  for (let z = 0; z < VERTS_PER_ROW; z += 1) {
+    for (let x = 0; x < VERTS_PER_ROW; x += 1) {
+      const index = z * VERTS_PER_ROW + x;
+      const x0 = Math.max(0, x - 1);
+      const x1 = Math.min(MAP_TILES, x + 1);
+      const z0 = Math.max(0, z - 1);
+      const z1 = Math.min(MAP_TILES, z + 1);
+      const height = heights[index]!;
+      const steepestEdge = Math.max(
+        Math.abs(height - heights[z * VERTS_PER_ROW + x0]!),
+        Math.abs(height - heights[z * VERTS_PER_ROW + x1]!),
+        Math.abs(height - heights[z0 * VERTS_PER_ROW + x]!),
+        Math.abs(height - heights[z1 * VERTS_PER_ROW + x]!),
+      );
+
+      if (steepestEdge > WALKABLE_MAX_SLOPE * 1.25) {
+        materials[index] = TERRAIN_CLIFF_GREEK_A;
+        continue;
+      }
+
+      if (steepestEdge > WALKABLE_MAX_SLOPE * 0.72) {
+        materials[index] = TERRAIN_CLIFF_GREEK_B;
+        continue;
+      }
+
+      // Painted ground is independent of elevation. Two low-frequency fields
+      // produce broad authored-looking patches instead of shader-side speckle.
+      const broad = valueNoise(x / 56, z / 56, seed + 97);
+      const detail = valueNoise(x / 18, z / 18, seed + 131);
+      const dryness = broad * 0.78 + detail * 0.22;
+
+      if (dryness < 0.34) {
+        materials[index] = TERRAIN_DIRT_A;
+      } else if (dryness < 0.4) {
+        materials[index] = TERRAIN_GRASS_DIRT_75;
+      } else if (dryness < 0.46) {
+        materials[index] = TERRAIN_GRASS_DIRT_50;
+      } else if (dryness < 0.52) {
+        materials[index] = TERRAIN_GRASS_DIRT_25;
+      } else {
+        materials[index] =
+          valueNoise(x / 32, z / 32, seed + 173) < 0.5 ? TERRAIN_GRASS_B : TERRAIN_GRASS_A;
+      }
+    }
+  }
+
+  return materials;
 }
 
 export function heightAt(heights: Float32Array, x: number, z: number): number {

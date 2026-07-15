@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createWorld, hashWorld, spawnUnit, tickWorld, type World } from "@aom/sim";
+import { createWorld, hashWorld, registerPlayer, spawnUnit, tickWorld, type World } from "@aom/sim";
 import { createLoopbackSink, INPUT_DELAY_TICKS } from "./sink";
 
 // Walkability is flattened so these tests exercise sink scheduling, not the map.
 function flatWorld(seed: number): World {
   const world = createWorld(seed);
+  registerPlayer(world, 0);
   world.walkable.fill(1);
   return world;
 }

@@ -9,6 +9,7 @@ import {
   MAP_TILES,
   MAX_UNITS,
   RESOURCE_COUNT,
+  registerPlayer,
   spawnResourceNodes,
   spawnUnits,
   tickWorld,
@@ -48,6 +49,7 @@ import { createUnitsRenderer } from "./render/units";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
 import { raycastHeightfield } from "./terrain/raycast";
+import { createPlayerStateStore, type PlayerStateCallback } from "./player-state";
 
 const placementRayOrigin = vec3.create();
 const placementRayDir = vec3.create();
@@ -73,6 +75,7 @@ export interface GameHandle {
   startPlacement(buildingType: number): void;
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
+  onPlayerState(cb: PlayerStateCallback): () => void;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
   onMatchEnd(cb: (winner: number) => void): () => void;
   onStats(cb: StatsCallback): () => void;
@@ -106,14 +109,17 @@ export async function createGame(
           return;
         }
 
-        // Units renderer creation is async (sprite decode); the image itself is
-        // cached across device loss, only GPU resources are rebuilt.
-        const nextUnits = await createUnitsRenderer(
-          nextGpu.device,
-          nextGpu.format,
-          MAX_UNITS,
-          heights,
-        );
+        // Decoded images are cached across device loss; only GPU resources are rebuilt.
+        const [nextTerrain, nextUnits] = await Promise.all([
+          createTerrainRenderer(
+            nextGpu.device,
+            nextGpu.format,
+            heights,
+            world.terrainMaterials,
+            world.walkable,
+          ),
+          createUnitsRenderer(nextGpu.device, nextGpu.format, MAX_UNITS, heights),
+        ]);
 
         if (disposed) {
           nextGpu.device.destroy();
@@ -122,7 +128,7 @@ export async function createGame(
 
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
-        terrain = createTerrainRenderer(nextGpu.device, nextGpu.format, heights, world.walkable);
+        terrain = nextTerrain;
         units = nextUnits;
         minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
         marker = createMarkerRenderer(nextGpu.device, nextGpu.format, heights);
@@ -146,13 +152,18 @@ export async function createGame(
 
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
-  const world = createWorld(beginInfo ? beginInfo.seed : 1337);
-  const sink = session ? session.sink : createLoopbackSink(world);
   const selfPlayerId = beginInfo ? beginInfo.selfId : 0;
   // Init handoff: createWorld(seed) derives terrain from the same seed the sim owns,
   // so rendering receives identical heights without a per-tick channel.
-  const heights = world.heights;
   const ownerIds = beginInfo ? beginInfo.players.map((player) => player.id) : [0];
+  const world = createWorld(beginInfo ? beginInfo.seed : 1337);
+  const sink = session ? session.sink : createLoopbackSink(world);
+  const heights = world.heights;
+
+  for (let ownerIndex = 0; ownerIndex < ownerIds.length; ownerIndex += 1) {
+    registerPlayer(world, ownerIds[ownerIndex]!);
+  }
+
   spawnUnits(world, 3 * ownerIds.length, ownerIds);
 
   for (let i = 0; i < world.count; i += 1) {
@@ -167,6 +178,7 @@ export async function createGame(
   updateVisibility(world);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
+
   const markerPos = new Float32Array(2);
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
@@ -176,8 +188,18 @@ export async function createGame(
   let lastSelection: SelectionSummary = { villagers: 0, producer: null };
   writeSnapshot(world, prevSnap, selfPlayerId);
   writeSnapshot(world, currSnap, selfPlayerId);
-  let terrain = createTerrainRenderer(gpu.device, gpu.format, heights, world.walkable);
-  let units = await createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights);
+  const playerState = createPlayerStateStore(selfPlayerId);
+
+  playerState.update(currSnap);
+
+  function isViewerTypeAvailable(unitType: number): boolean {
+    return playerState.availability(unitType).available;
+  }
+
+  let [terrain, units] = await Promise.all([
+    createTerrainRenderer(gpu.device, gpu.format, heights, world.terrainMaterials, world.walkable),
+    createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, heights),
+  ]);
   let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
   let marker = createMarkerRenderer(gpu.device, gpu.format, heights);
   let fog = createFogRenderer(gpu.device);
@@ -254,6 +276,7 @@ export async function createGame(
     prevSnap = currSnap;
     currSnap = tmp;
     writeSnapshot(world, currSnap, selfPlayerId);
+    playerState.update(currSnap);
     audio.sync(
       currSnap,
       selfPlayerId,
@@ -299,7 +322,7 @@ export async function createGame(
       if (placementType >= 0) {
         const placementStats = UNIT_TYPES[placementType];
 
-        if (placementStats) {
+        if (placementStats && isViewerTypeAvailable(placementType)) {
           const ndcX = (input.state.pointerX / canvas.clientWidth) * 2 - 1;
           const ndcY = 1 - (input.state.pointerY / canvas.clientHeight) * 2;
           let hitGround = false;
@@ -570,34 +593,6 @@ export async function createGame(
     statsCollector.frameGauges.instances = unitStatistics.instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;
-    const stockpileBase = selfPlayerId * RESOURCE_COUNT;
-    statsCollector.frameGauges.food = currSnap.stockpiles[stockpileBase + FOOD] ?? 0;
-    statsCollector.frameGauges.wood = currSnap.stockpiles[stockpileBase + WOOD] ?? 0;
-    statsCollector.frameGauges.gold = currSnap.stockpiles[stockpileBase + GOLD] ?? 0;
-    statsCollector.frameGauges.favor = currSnap.stockpiles[stockpileBase + FAVOR] ?? 0;
-    let pop = 0;
-    let popCap = 0;
-
-    for (let i = 0; i < currSnap.count; i += 1) {
-      if (currSnap.owner[i] !== selfPlayerId) {
-        continue;
-      }
-
-      const unitStats = UNIT_TYPES[currSnap.unitType[i]!]!;
-
-      if (unitStats.footprint === 0) {
-        pop += 1;
-      }
-
-      pop += currSnap.trainQueueLength[i]!;
-
-      if (unitStats.footprint > 0 && currSnap.buildProgress[i]! >= unitStats.buildTicks) {
-        popCap += unitStats.popBonus;
-      }
-    }
-
-    statsCollector.frameGauges.pop = pop;
-    statsCollector.frameGauges.popCap = popCap;
     statsCollector.frameGauges.pingMs = session ? session.pingMs() : 0;
     pass.end();
     gpuTimer.afterPass(encoder);
@@ -673,6 +668,7 @@ export async function createGame(
     unobserveResize();
     input.detach();
     selectionCbs.clear();
+    playerState.clear();
     depthTexture?.destroy();
     gpu.device.destroy();
   }
@@ -688,8 +684,13 @@ export async function createGame(
       return () => matchEndCbs.delete(cb);
     },
     onStats: statsCollector.subscribe,
+    onPlayerState: playerState.subscribe,
     startPlacement(buildingType: number): void {
       // UI-driven modal — the React build bar calls this.
+      if (!isViewerTypeAvailable(buildingType)) {
+        return;
+      }
+
       audio.uiClick();
       placementType = buildingType;
       placementValid = false;
@@ -699,6 +700,10 @@ export async function createGame(
       placementValid = false;
     },
     trainSelected(unitType: number): void {
+      if (!isViewerTypeAvailable(unitType)) {
+        return;
+      }
+
       for (let i = 0; i < world.count; i += 1) {
         if (world.selected[i] !== 1 || world.owner[i] !== selfPlayerId) {
           continue;

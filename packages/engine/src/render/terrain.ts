@@ -1,8 +1,14 @@
-import { MAP_TILES, VERTS_PER_ROW } from "@aom/sim";
+import { MAP_TILES, TERRAIN_MATERIAL_COUNT, VERTS_PER_ROW } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import { aabbIntersectsFrustum, type Frustum } from "../math/frustum";
 import terrainWgsl from "../shaders/terrain.wgsl?raw";
+import {
+  TERRAIN_BLEND_MASK_CATALOG,
+  TERRAIN_BLEND_MASK_COUNT,
+  TERRAIN_TEXTURE_URLS,
+} from "../terrain/catalog";
 import { CHUNK_TILES, CHUNKS_PER_ROW } from "../terrain/heightmap";
+import { buildTerrainBlendDescriptors, TERRAIN_BLEND_PASS_COUNT } from "../terrain/materials";
 
 export interface TerrainChunkBounds {
   minX: number;
@@ -28,13 +34,58 @@ export interface TerrainRenderer {
 const LOCAL_VERTS_PER_ROW = CHUNK_TILES + 1;
 const FLOATS_PER_VERTEX = 6;
 const INDEX_COUNT = CHUNK_TILES * CHUNK_TILES * 6;
+const TERRAIN_TEXTURE_SIZE = 256;
+const TERRAIN_MIP_LEVELS = 2;
+const BLEND_MASK_SIZE = 32;
 
-export function createTerrainRenderer(
+let terrainImagesPromise: Promise<readonly (readonly ImageBitmap[])[]> | null = null;
+let blendMaskImagesPromise: Promise<readonly ImageBitmap[]> | null = null;
+
+async function loadImage(url: string): Promise<ImageBitmap> {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load terrain texture ${url}: ${response.status}`);
+  }
+
+  return createImageBitmap(await response.blob());
+}
+
+function loadTerrainImages(): Promise<readonly (readonly ImageBitmap[])[]> {
+  terrainImagesPromise ??= Promise.all(
+    TERRAIN_TEXTURE_URLS.map(async (url) => {
+      const base = await loadImage(url);
+      const half = await createImageBitmap(base, {
+        resizeWidth: TERRAIN_TEXTURE_SIZE / 2,
+        resizeHeight: TERRAIN_TEXTURE_SIZE / 2,
+        resizeQuality: "high",
+      });
+
+      return [base, half] as const;
+    }),
+  );
+
+  return terrainImagesPromise;
+}
+
+function loadBlendMaskImages(): Promise<readonly ImageBitmap[]> {
+  blendMaskImagesPromise ??= Promise.all(
+    TERRAIN_BLEND_MASK_CATALOG.map((mask) => loadImage(mask.url)),
+  );
+  return blendMaskImagesPromise;
+}
+
+export async function createTerrainRenderer(
   device: GPUDevice,
   format: GPUTextureFormat,
   heights: Float32Array,
+  terrainMaterials: Uint8Array,
   walkable: Uint8Array,
-): TerrainRenderer {
+): Promise<TerrainRenderer> {
+  const [terrainImages, blendMaskImages] = await Promise.all([
+    loadTerrainImages(),
+    loadBlendMaskImages(),
+  ]);
   const module = device.createShaderModule({ code: terrainWgsl });
   const uniformBuffer = device.createBuffer({
     size: 80,
@@ -47,10 +98,40 @@ export function createTerrainRenderer(
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
   });
   const walkData = new Uint8Array(MAP_TILES * MAP_TILES);
+  const terrainSampler = device.createSampler({
+    addressModeU: "repeat",
+    addressModeV: "repeat",
+    magFilter: "linear",
+    minFilter: "linear",
+    mipmapFilter: "linear",
+  });
   const fogSampler = device.createSampler({
     magFilter: "linear",
     minFilter: "linear",
   });
+  const terrainTexture = device.createTexture({
+    size: [TERRAIN_TEXTURE_SIZE, TERRAIN_TEXTURE_SIZE, TERRAIN_MATERIAL_COUNT],
+    mipLevelCount: TERRAIN_MIP_LEVELS,
+    format: "rgba8unorm",
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const blendMaskTexture = device.createTexture({
+    size: [BLEND_MASK_SIZE, BLEND_MASK_SIZE, TERRAIN_BLEND_MASK_COUNT],
+    format: "rgba8unorm",
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST |
+      GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const blendDescriptorTexture = device.createTexture({
+    size: [MAP_TILES, MAP_TILES, TERRAIN_BLEND_PASS_COUNT],
+    format: "rgba8uint",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  const blendDescriptors = buildTerrainBlendDescriptors(terrainMaterials);
 
   for (let i = 0; i < walkData.length; i += 1) {
     walkData[i] = walkable[i] === 1 ? 255 : 0;
@@ -64,6 +145,33 @@ export function createTerrainRenderer(
     { bytesPerRow: MAP_TILES, rowsPerImage: MAP_TILES },
     { width: MAP_TILES, height: MAP_TILES },
   );
+  device.queue.writeTexture(
+    { texture: blendDescriptorTexture },
+    blendDescriptors,
+    { bytesPerRow: MAP_TILES * 4, rowsPerImage: MAP_TILES },
+    { width: MAP_TILES, height: MAP_TILES, depthOrArrayLayers: TERRAIN_BLEND_PASS_COUNT },
+  );
+
+  for (let layer = 0; layer < terrainImages.length; layer += 1) {
+    const mips = terrainImages[layer]!;
+
+    for (let mipLevel = 0; mipLevel < mips.length; mipLevel += 1) {
+      const image = mips[mipLevel]!;
+      device.queue.copyExternalImageToTexture(
+        { source: image },
+        { texture: terrainTexture, mipLevel, origin: [0, 0, layer] },
+        { width: image.width, height: image.height },
+      );
+    }
+  }
+
+  for (let layer = 0; layer < blendMaskImages.length; layer += 1) {
+    device.queue.copyExternalImageToTexture(
+      { source: blendMaskImages[layer]! },
+      { texture: blendMaskTexture, origin: [0, 0, layer] },
+      { width: BLEND_MASK_SIZE, height: BLEND_MASK_SIZE },
+    );
+  }
   // Every chunk has the same 32x32-quad local topology, so one index buffer is shared.
   const indexData = new Uint16Array(INDEX_COUNT);
   let indexOffset = 0;
@@ -169,6 +277,18 @@ export function createTerrainRenderer(
   });
   const bindGroupLayout = pipeline.getBindGroupLayout(0);
   const walkView = walkTexture.createView();
+  const terrainView = terrainTexture.createView({
+    dimension: "2d-array",
+    arrayLayerCount: TERRAIN_MATERIAL_COUNT,
+  });
+  const blendDescriptorView = blendDescriptorTexture.createView({
+    dimension: "2d-array",
+    arrayLayerCount: TERRAIN_BLEND_PASS_COUNT,
+  });
+  const blendMaskView = blendMaskTexture.createView({
+    dimension: "2d-array",
+    arrayLayerCount: TERRAIN_BLEND_MASK_COUNT,
+  });
   let boundFogView: GPUTextureView | null = null;
   let bindGroup: GPUBindGroup | null = null;
 
@@ -181,8 +301,12 @@ export function createTerrainRenderer(
           entries: [
             { binding: 0, resource: { buffer: uniformBuffer } },
             { binding: 1, resource: walkView },
-            { binding: 2, resource: fogSampler },
+            { binding: 2, resource: terrainSampler },
             { binding: 3, resource: fogView },
+            { binding: 4, resource: terrainView },
+            { binding: 5, resource: blendDescriptorView },
+            { binding: 6, resource: blendMaskView },
+            { binding: 7, resource: fogSampler },
           ],
         });
         boundFogView = fogView;

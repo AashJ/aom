@@ -1,3 +1,5 @@
+import { AGE_ARCHAIC, AGE_CLASSICAL } from "./progression";
+
 // Per-type from day one so ranged units are a ROW, not a refactor
 // (ARCHITECTURE.md M5 open-questions commitment). Movement speed stays global
 // until a second type actually needs it.
@@ -25,6 +27,8 @@ export interface UnitTypeStats {
   // Unit type this building produces; -1 = not a producer. Single-slot, no queues in M6.
   trains: number;
   isDropsite: boolean;
+  requiredAge: number;
+  prerequisiteBuildings: readonly number[];
 }
 
 // Fixed resource ids are shared by costs, carrying, stockpiles, snapshots, and UI.
@@ -52,6 +56,8 @@ export const TYPE_HOUSE = 5;
 export const TYPE_BARRACKS = 6;
 export const TYPE_GOLD_MINE = 7;
 
+const NO_PREREQUISITE_BUILDINGS: readonly number[] = [];
+
 export const UNIT_TYPES: readonly UnitTypeStats[] = [
   {
     maxHp: 40,
@@ -74,6 +80,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 0,
     trains: -1,
     isDropsite: false,
+    requiredAge: AGE_ARCHAIC,
+    prerequisiteBuildings: [TYPE_TOWN_CENTER],
   },
   {
     // Differentiation is a future balance pass.
@@ -95,6 +103,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 0,
     trains: -1,
     isDropsite: false,
+    requiredAge: AGE_CLASSICAL,
+    prerequisiteBuildings: [TYPE_BARRACKS],
   },
   {
     // HP is the remaining stock; depletion is death, and swap-remove already handles it.
@@ -116,6 +126,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 0,
     trains: -1,
     isDropsite: false,
+    requiredAge: AGE_ARCHAIC,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   },
   {
     maxHp: 100,
@@ -136,6 +148,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 0,
     trains: -1,
     isDropsite: false,
+    requiredAge: AGE_ARCHAIC,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   },
   {
     maxHp: 2400,
@@ -156,6 +170,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 15,
     trains: TYPE_VILLAGER,
     isDropsite: true,
+    requiredAge: AGE_CLASSICAL,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   },
   {
     maxHp: 600,
@@ -176,6 +192,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 10,
     trains: -1,
     isDropsite: false,
+    requiredAge: AGE_ARCHAIC,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   },
   {
     maxHp: 1200,
@@ -196,6 +214,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 0,
     trains: TYPE_MILITIA,
     isDropsite: false,
+    requiredAge: AGE_CLASSICAL,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   },
   {
     // Standard neutral deposit; HP is remaining gold and depletion uses the
@@ -218,6 +238,8 @@ export const UNIT_TYPES: readonly UnitTypeStats[] = [
     popBonus: 0,
     trains: -1,
     isDropsite: false,
+    requiredAge: AGE_ARCHAIC,
+    prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   },
 ];
 

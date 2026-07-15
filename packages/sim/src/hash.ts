@@ -5,6 +5,7 @@
 // cellCount/cellStart/cellUnits/pushX/pushZ and flow caches unitField/fieldCache,
 // which are rebuilt or derived from hashed state (moveTargets + walkable).
 import type { World } from "./ecs/world";
+import { AGE_COUNT } from "./ecs/progression";
 import { VISIBILITY_TILES } from "./visibility";
 
 const FNV_OFFSET = 0x811c9dc5;
@@ -37,9 +38,29 @@ export function hashWorld(world: World): number {
   h = Math.imul(h, FNV_PRIME);
 
   for (let i = 0; i < world.playerCount; i += 1) {
-    word = world.playerIds[i]!;
+    const playerId = world.playerIds[i]!;
+
+    word = playerId;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    // Progression is owner-id-indexed rather than visibility-slot-indexed. It
+    // affects future command legality, so every choice is authoritative state.
+    word = world.playerAge[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.playerMajorGod[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    const minorGodStart = playerId * AGE_COUNT;
+
+    for (let age = 0; age < AGE_COUNT; age += 1) {
+      word = world.playerMinorGods[minorGodStart + age]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
   }
 
   const visibilityLength = world.playerCount * VISIBILITY_TILES;

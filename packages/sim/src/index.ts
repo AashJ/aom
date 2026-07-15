@@ -2,7 +2,30 @@
 // are bugs even when they work. See ARCHITECTURE.md determinism rules before editing sim.
 export * from "./commands";
 export { COMMAND_GATHER, COMMAND_PLACE, COMMAND_TRAIN } from "./commands";
+export {
+  getTypeAvailability,
+  hasCompletedBuilding,
+  isCompletedOwnedBuilding,
+  isTypeAvailable,
+  type BuildingCompletionState,
+  type HasCompletedBuilding,
+  type TypeAvailability,
+} from "./ecs/availability";
 export { idGeneration, idIndex, packId } from "./ecs/id";
+export { registerPlayer } from "./ecs/players";
+export {
+  AGE_ARCHAIC,
+  AGE_CLASSICAL,
+  AGE_COUNT,
+  AGE_HEROIC,
+  AGE_MYTHIC,
+  AGE_NAMES,
+  GOD_ATHENA,
+  GOD_HADES,
+  GOD_POSEIDON,
+  GOD_ZEUS,
+  NO_GOD,
+} from "./ecs/progression";
 export {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
@@ -54,8 +77,20 @@ export * from "./visibility";
 export * from "./math/prng";
 export {
   MAP_TILES,
+  TERRAIN_CLIFF_GREEK_A,
+  TERRAIN_CLIFF_GREEK_B,
+  TERRAIN_DIRT_A,
+  TERRAIN_GRASS_A,
+  TERRAIN_GRASS_B,
+  TERRAIN_GRASS_DIRT_25,
+  TERRAIN_GRASS_DIRT_50,
+  TERRAIN_GRASS_DIRT_75,
+  TERRAIN_MATERIAL_COUNT,
+  TERRAIN_MATERIAL_IDS,
+  type TerrainMaterialId,
   VERTS_PER_ROW,
   generateHeightmap,
+  generateTerrainMaterials,
   heightAt,
   WALKABLE_MAX_SLOPE,
   computeWalkable,

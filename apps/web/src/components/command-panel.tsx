@@ -1,13 +1,18 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import {
+  AGE_NAMES,
+  getTypeAvailability,
   TYPE_BARRACKS,
   TYPE_HOUSE,
   TYPE_ICONS,
+  TYPE_TOWN_CENTER,
   TYPE_VILLAGER,
   UNIT_TYPES,
   type GameHandle,
   type IconConfig,
+  type PlayerState,
   type SelectionSummary,
+  type TypeAvailability,
 } from "@aom/engine";
 import favorIconUrl from "@/assets/resource-favor.png";
 import foodIconUrl from "@/assets/resource-food.png";
@@ -17,7 +22,7 @@ import { ClassicHudPanel } from "./classic-hud-panel";
 
 export function CommandPanel({ game }: { game: GameHandle | null }) {
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
-  const [resources, setResources] = useState({ food: 0, wood: 0, gold: 0, favor: 0 });
+  const [playerState, setPlayerState] = useState<PlayerState | null>(null);
 
   useEffect(() => {
     if (!game) {
@@ -25,13 +30,11 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     }
 
     const unsubscribeSelection = game.onSelection(setSelection);
-    const unsubscribeStats = game.onStats((stats) => {
-      setResources({ food: stats.food, wood: stats.wood, gold: stats.gold, favor: stats.favor });
-    });
+    const unsubscribePlayerState = game.onPlayerState(setPlayerState);
 
     return () => {
       unsubscribeSelection();
-      unsubscribeStats();
+      unsubscribePlayerState();
     };
   }, [game]);
 
@@ -46,6 +49,17 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
   const trainedStats = trained !== -1 ? UNIT_TYPES[trained]! : null;
 
   const trainedLabel = trained === TYPE_VILLAGER ? "Villager" : "Militia";
+  const availability = (unitType: number): TypeAvailability | null =>
+    playerState
+      ? getTypeAvailability(
+          unitType,
+          playerState.age,
+          (buildingType) => playerState.completedBuildings[buildingType] === 1,
+        )
+      : null;
+  const houseAvailability = availability(TYPE_HOUSE);
+  const barracksAvailability = availability(TYPE_BARRACKS);
+  const trainedAvailability = trainedStats ? availability(trained) : null;
 
   return (
     <>
@@ -64,11 +78,13 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 costWood={house.costWood}
                 costGold={house.costGold}
                 costFavor={house.costFavor}
+                unavailableReason={availabilityReason(houseAvailability)}
                 disabled={
-                  resources.food < house.costFood ||
-                  resources.wood < house.costWood ||
-                  resources.gold < house.costGold ||
-                  resources.favor < house.costFavor
+                  houseAvailability?.available !== true ||
+                  (playerState?.food ?? 0) < house.costFood ||
+                  (playerState?.wood ?? 0) < house.costWood ||
+                  (playerState?.gold ?? 0) < house.costGold ||
+                  (playerState?.favor ?? 0) < house.costFavor
                 }
                 onClick={() => game.startPlacement(TYPE_HOUSE)}
               />
@@ -79,11 +95,13 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 costWood={barracks.costWood}
                 costGold={barracks.costGold}
                 costFavor={barracks.costFavor}
+                unavailableReason={availabilityReason(barracksAvailability)}
                 disabled={
-                  resources.food < barracks.costFood ||
-                  resources.wood < barracks.costWood ||
-                  resources.gold < barracks.costGold ||
-                  resources.favor < barracks.costFavor
+                  barracksAvailability?.available !== true ||
+                  (playerState?.food ?? 0) < barracks.costFood ||
+                  (playerState?.wood ?? 0) < barracks.costWood ||
+                  (playerState?.gold ?? 0) < barracks.costGold ||
+                  (playerState?.favor ?? 0) < barracks.costFavor
                 }
                 onClick={() => game.startPlacement(TYPE_BARRACKS)}
               />
@@ -98,11 +116,13 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
               costWood={trainedStats.costWood}
               costGold={trainedStats.costGold}
               costFavor={trainedStats.costFavor}
+              unavailableReason={availabilityReason(trainedAvailability)}
               disabled={
-                resources.food < trainedStats.costFood ||
-                resources.wood < trainedStats.costWood ||
-                resources.gold < trainedStats.costGold ||
-                resources.favor < trainedStats.costFavor
+                trainedAvailability?.available !== true ||
+                (playerState?.food ?? 0) < trainedStats.costFood ||
+                (playerState?.wood ?? 0) < trainedStats.costWood ||
+                (playerState?.gold ?? 0) < trainedStats.costGold ||
+                (playerState?.favor ?? 0) < trainedStats.costFavor
               }
               // Population cap is enforced by the sim; impossible orders die silently.
               onClick={() => game.trainSelected(trained)}
@@ -136,6 +156,7 @@ function CommandTile({
   costWood,
   costGold,
   costFavor,
+  unavailableReason,
   disabled,
   onClick,
 }: {
@@ -145,6 +166,7 @@ function CommandTile({
   costWood: number;
   costGold: number;
   costFavor: number;
+  unavailableReason?: string;
   disabled: boolean;
   onClick(): void;
 }) {
@@ -155,7 +177,7 @@ function CommandTile({
     { label: "Favor", value: costFavor, iconUrl: favorIconUrl },
   ].filter((cost) => cost.value > 0);
   const costLabel = costs.map((cost) => `${cost.value} ${cost.label.toLowerCase()}`).join(", ");
-  const accessibleLabel = costLabel ? `${label} — ${costLabel}` : label;
+  const accessibleLabel = [label, unavailableReason, costLabel].filter(Boolean).join(" — ");
 
   return (
     <div className="group relative size-12 sm:size-10">
@@ -183,7 +205,7 @@ function CommandTile({
           }}
         />
       </button>
-      <RolloverHelp label={label} costs={costs} />
+      <RolloverHelp label={label} costs={costs} unavailableReason={unavailableReason} />
     </div>
   );
 }
@@ -257,9 +279,11 @@ function ProductionQueue({
 function RolloverHelp({
   label,
   costs,
+  unavailableReason,
 }: {
   label: string;
   costs: { label: string; value: number; iconUrl: string }[];
+  unavailableReason?: string;
 }) {
   return (
     <div
@@ -270,6 +294,11 @@ function RolloverHelp({
       <div className="text-base font-semibold [text-shadow:0_1px_1px_rgb(0_0_0/85%)] sm:text-sm">
         {label}
       </div>
+      {unavailableReason && (
+        <div className="pt-1 text-base font-semibold text-[#f4db78] [text-shadow:0_1px_1px_rgb(0_0_0/85%)] sm:text-sm">
+          {unavailableReason}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 pt-2 text-base tabular-nums sm:text-sm">
         {costs.map((cost) => (
           <div key={cost.label} className="flex items-center gap-1">
@@ -285,4 +314,32 @@ function RolloverHelp({
       </div>
     </div>
   );
+}
+
+function availabilityReason(availability: TypeAvailability | null): string | undefined {
+  if (availability === null || availability.available) {
+    return undefined;
+  }
+
+  switch (availability.reason) {
+    case "age":
+      return `Requires ${AGE_NAMES[availability.requiredAge] ?? "a later age"}`;
+    case "building":
+      return `Requires a completed ${buildingLabel(availability.buildingType)}`;
+    case "invalid-type":
+      return "Unavailable";
+  }
+}
+
+function buildingLabel(buildingType: number): string {
+  switch (buildingType) {
+    case TYPE_TOWN_CENTER:
+      return "Town Center";
+    case TYPE_BARRACKS:
+      return "Barracks";
+    case TYPE_HOUSE:
+      return "House";
+    default:
+      return "prerequisite building";
+  }
 }

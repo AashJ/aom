@@ -1,6 +1,8 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
-import { RESOURCE_COUNT } from "./ecs/types";
+import { RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
+import { isCompletedOwnedBuilding } from "./ecs/availability";
 import { resolveId, unitIdAt, type World } from "./ecs/world";
+import { AGE_ARCHAIC, AGE_COUNT, NO_GOD } from "./ecs/progression";
 import { isEntityVisibleTo, VISIBILITY_TILES } from "./visibility";
 
 export interface RenderSnapshot {
@@ -27,6 +29,10 @@ export interface RenderSnapshot {
   trainQueueLength: Uint8Array;
   carried: Uint16Array;
   stockpiles: Uint32Array;
+  age: number;
+  majorGod: number;
+  minorGods: Uint8Array;
+  completedBuildings: Uint8Array;
   winner: number;
 }
 
@@ -55,6 +61,10 @@ export function createSnapshot(capacity: number): RenderSnapshot {
     trainQueueLength: new Uint8Array(capacity),
     carried: new Uint16Array(capacity),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
+    age: AGE_ARCHAIC,
+    majorGod: NO_GOD,
+    minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
+    completedBuildings: new Uint8Array(UNIT_TYPES.length),
     winner: -1,
   };
 }
@@ -66,12 +76,20 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.winner = world.winner;
   // Full copy each write: 4 KB at 20 Hz is negligible.
   out.stockpiles.set(world.stockpiles);
+  out.completedBuildings.fill(0);
   const viewerSlot = world.playerSlotById[viewerId]!;
 
   if (viewerSlot >= 0) {
+    out.age = world.playerAge[viewerId]!;
+    out.majorGod = world.playerMajorGod[viewerId]!;
+    const minorGodStart = viewerId * AGE_COUNT;
+    out.minorGods.set(world.playerMinorGods.subarray(minorGodStart, minorGodStart + AGE_COUNT));
     const start = viewerSlot * VISIBILITY_TILES;
     out.fog.set(world.visibility.subarray(start, start + VISIBILITY_TILES));
   } else {
+    out.age = AGE_ARCHAIC;
+    out.majorGod = NO_GOD;
+    out.minorGods.fill(NO_GOD);
     out.fog.fill(0);
   }
 
@@ -99,6 +117,10 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.unitType[i] = world.unitType[i]!;
     out.hp[i] = world.hp[i]!;
     out.buildProgress[i] = world.buildProgress[i]!;
+    if (viewerSlot >= 0 && isCompletedOwnedBuilding(world, i, viewerId)) {
+      out.completedBuildings[world.unitType[i]!] = 1;
+    }
+
     // Production progress for the build-bar UI.
     out.trainType[i] = world.trainType[i]!;
     out.trainRemaining[i] = world.trainRemaining[i]!;
