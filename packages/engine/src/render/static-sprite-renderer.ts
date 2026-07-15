@@ -3,7 +3,9 @@ import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import {
+  resolveStaticSpriteGhostPresentation,
   resolveStaticSpritePresentation,
+  resolveStaticSpriteUnitPresentation,
   staticSpriteColumns,
   UNIT_PRESENTATIONS,
   type StaticSpritePresentation,
@@ -242,7 +244,7 @@ export async function createStaticSpriteRenderer(
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
         const type = curr.unitType[i]!;
-        if (UNIT_PRESENTATIONS[type]?.kind === "sprite") counts[type] = counts[type]! + 1;
+        if (resolveStaticSpriteUnitPresentation(curr, i)) counts[type] = counts[type]! + 1;
       }
 
       let totalInstances = 0;
@@ -255,8 +257,8 @@ export async function createStaticSpriteRenderer(
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
         const type = curr.unitType[i]!;
-        const presentation = UNIT_PRESENTATIONS[type]!;
-        if (presentation.kind !== "sprite") continue;
+        const presentation = resolveStaticSpriteUnitPresentation(curr, i);
+        if (!presentation) continue;
         const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
         const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
         const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
@@ -289,7 +291,7 @@ export async function createStaticSpriteRenderer(
       }
 
       let ghostFirstInstance = -1;
-      if (ghostType >= 0 && UNIT_PRESENTATIONS[ghostType]?.kind === "sprite") {
+      if (ghostType >= 0 && resolveStaticSpriteGhostPresentation(curr, ghostType)) {
         ghostFirstInstance = totalInstances;
         stage(
           ghostFirstInstance,

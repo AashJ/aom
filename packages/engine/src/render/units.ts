@@ -56,7 +56,19 @@ export async function createUnitsRenderer(
       resetRendererStatistics(statistics);
       addRendererStatistics(
         statistics,
-        models.draw(pass, queue, viewProj, prev, curr, alpha, terrainHeights),
+        models.draw(
+          pass,
+          queue,
+          viewProj,
+          prev,
+          curr,
+          alpha,
+          terrainHeights,
+          ghostType,
+          ghostX,
+          ghostZ,
+          ghostValid,
+        ),
       );
       addRendererStatistics(
         statistics,

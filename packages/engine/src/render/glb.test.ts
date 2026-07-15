@@ -76,15 +76,23 @@ function classicFixture(mutate?: (gltf: FixtureGltf) => void): ArrayBuffer {
 
 describe("Classic model GLB contract", () => {
   test("normalizes the supported Classic material semantics", async () => {
-    const asset = await parseClassicModelGlb(classicFixture(), "fixture", {
+    const pixelTransformAsset = await parseClassicModelGlb(classicFixture(), "fixture", {
       requiredNodes: ["dummy_HAND"],
     });
+    const colorTransformAsset = await parseClassicModelGlb(
+      classicFixture((gltf) => {
+        gltf.materials[0]!.name = "Scaffolding( colorxform1)";
+      }),
+      "fixture",
+    );
 
-    expect(asset.materials[0]).toEqual({
-      image: null,
-      pixelTransform: "multiply-player-color",
-      alpha: { mode: "mask", cutoff: 0.4 },
-    });
+    for (const asset of [pixelTransformAsset, colorTransformAsset]) {
+      expect(asset.materials[0]).toEqual({
+        image: null,
+        pixelTransform: "multiply-player-color",
+        alpha: { mode: "mask", cutoff: 0.4 },
+      });
+    }
   });
 
   test("rejects missing vertex attributes and attachment nodes", async () => {

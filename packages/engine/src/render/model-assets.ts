@@ -1,5 +1,14 @@
 import axeHatchetUrl from "../assets/models/attachments-a-axe-hatchet.glb?url";
 import basketUrl from "../assets/models/attachments-a-basket.glb?url";
+import greekBarracksUrl from "../assets/models/greek-barracks-age1.glb?url";
+import greekHouseAUrl from "../assets/models/greek-house-a-age0.glb?url";
+import greekHouseBUrl from "../assets/models/greek-house-b-age0.glb?url";
+import greekHouseCUrl from "../assets/models/greek-house-c-age0.glb?url";
+import greekHouseConstructionAUrl from "../assets/models/greek-house-construction-a.glb?url";
+import greekHouseConstructionBUrl from "../assets/models/greek-house-construction-b.glb?url";
+import greekHouseConstructionCUrl from "../assets/models/greek-house-construction-c.glb?url";
+import greekTempleUrl from "../assets/models/greek-temple-age0.glb?url";
+import greekTownCenterUrl from "../assets/models/greek-town-center-age0.glb?url";
 import militiaIdleUrl from "../assets/models/infantry-g-militia-idle.glb?url";
 import militiaWalkUrl from "../assets/models/infantry-g-militia-walk.glb?url";
 import hammerUrl from "../assets/models/tool-hammer.glb?url";
@@ -36,6 +45,15 @@ function defineModelRegistry<
 }
 
 const MODEL_DEFINITIONS = defineModelRegistry({
+  greekBarracks: { url: greekBarracksUrl, grounded: true },
+  greekHouseA: { url: greekHouseAUrl, grounded: true },
+  greekHouseB: { url: greekHouseBUrl, grounded: true },
+  greekHouseC: { url: greekHouseCUrl, grounded: true },
+  greekHouseConstructionA: { url: greekHouseConstructionAUrl, grounded: true },
+  greekHouseConstructionB: { url: greekHouseConstructionBUrl, grounded: true },
+  greekHouseConstructionC: { url: greekHouseConstructionCUrl, grounded: true },
+  greekTemple: { url: greekTempleUrl, grounded: true },
+  greekTownCenter: { url: greekTownCenterUrl, grounded: true },
   villagerMaleIdle: { url: villagerIdleUrl, grounded: true },
   villagerMaleWalk: { url: villagerWalkUrl, grounded: true },
   villagerMaleMine: {

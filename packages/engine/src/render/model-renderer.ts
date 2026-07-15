@@ -18,7 +18,11 @@ import {
   modelIndexUploadData,
 } from "./model-gpu-layout";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
-import { modelAnimationTime, resolveModelPresentation } from "./unit-presentation";
+import {
+  modelAnimationTime,
+  resolveModelGhostPresentation,
+  resolveModelPresentation,
+} from "./unit-presentation";
 
 const VERTEX_FLOATS = 8;
 const VERTEX_STRIDE = VERTEX_FLOATS * 4;
@@ -50,6 +54,10 @@ export interface ModelRenderer {
     curr: RenderSnapshot,
     alpha: number,
     heights: Float32Array,
+    ghostType: number,
+    ghostX: number,
+    ghostZ: number,
+    ghostValid: boolean,
   ): RendererStatistics;
 }
 
@@ -275,7 +283,7 @@ export async function createModelRenderer(
     }
   }
 
-  const instanceCapacity = maxInstances * 2;
+  const instanceCapacity = maxInstances * 2 + 1;
   const instanceBuffer = device.createBuffer({
     size: instanceCapacity * MODEL_INSTANCE_STRIDE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -296,7 +304,19 @@ export async function createModelRenderer(
   const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
 
   return {
-    draw(pass, queue, viewProj, prev, curr, alpha, heights): RendererStatistics {
+    draw(
+      pass,
+      queue,
+      viewProj,
+      prev,
+      curr,
+      alpha,
+      heights,
+      ghostType,
+      ghostX,
+      ghostZ,
+      ghostValid,
+    ): RendererStatistics {
       resetRendererStatistics(statistics);
       counts.fill(0);
 
@@ -321,6 +341,14 @@ export async function createModelRenderer(
           const attachmentIndex = MODEL_INDEX[attachment.model];
           counts[attachmentIndex] = counts[attachmentIndex]! + 1;
         }
+      }
+
+      const ghostPresentation =
+        ghostType >= 0 ? resolveModelGhostPresentation(curr, ghostType) : null;
+
+      if (ghostPresentation) {
+        const ghostModelIndex = MODEL_INDEX[ghostPresentation.model];
+        counts[ghostModelIndex] = counts[ghostModelIndex]! + 1;
       }
 
       let totalInstances = 0;
@@ -423,6 +451,29 @@ export async function createModelRenderer(
           attachmentOffset + MODEL_INSTANCE_MATRIX_OFFSET,
         );
         staging.set(attachmentMatrix, attachmentOffset + MODEL_INSTANCE_MATRIX_OFFSET);
+      }
+
+      if (ghostPresentation) {
+        const modelIndex = MODEL_INDEX[ghostPresentation.model];
+        const model = models[modelIndex]!;
+        const modelConfig = MODEL_CONFIGS[modelIndex]!;
+        const instanceIndex = writeOffsets[modelIndex]!;
+        const offset = instanceIndex * MODEL_INSTANCE_FLOATS;
+
+        writeOffsets[modelIndex] = instanceIndex + 1;
+        sampleModelAnimation(model.asset, 0, -1, animationState);
+        staging[offset] = ghostX;
+        staging[offset + 1] =
+          heightAt(heights, ghostX, ghostZ) + (modelConfig.grounded ? model.asset.groundOffset : 0);
+        staging[offset + 2] = ghostZ;
+        staging[offset + 3] = 0;
+        staging[offset + 4] = 1;
+        staging[offset + 5] = 0;
+        staging[offset + 6] = 0;
+        staging[offset + 7] = 1;
+        staging[offset + 8] = ghostValid ? 1 : 2;
+        staging.set(animationState.weights, offset + MODEL_INSTANCE_MORPH_OFFSET);
+        staging.set(animationState.nodeMatrix, offset + MODEL_INSTANCE_MATRIX_OFFSET);
       }
 
       if (totalInstances === 0) return statistics;

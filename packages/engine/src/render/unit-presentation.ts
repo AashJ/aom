@@ -3,11 +3,16 @@ import {
   idIndex,
   MODE_BUILDING,
   MODE_GATHERING,
+  TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
+  TYPE_HOUSE,
   TYPE_MILITIA,
+  TYPE_TEMPLE,
+  TYPE_TOWN_CENTER,
   TYPE_TREE,
   TYPE_VILLAGER,
+  UNIT_TYPES,
   type RenderSnapshot,
 } from "@aom/sim";
 import barracksSpriteUrl from "../assets/barracks.png";
@@ -197,6 +202,20 @@ const MILITIA_PRESENTATIONS = {
   walk: looping("militiaWalk"),
 };
 
+const GREEK_BARRACKS_PRESENTATION = looping("greekBarracks");
+const GREEK_HOUSE_PRESENTATIONS = [
+  looping("greekHouseA"),
+  looping("greekHouseB"),
+  looping("greekHouseC"),
+] as const;
+const GREEK_HOUSE_CONSTRUCTION_PRESENTATIONS = [
+  looping("greekHouseConstructionA"),
+  looping("greekHouseConstructionB"),
+  looping("greekHouseConstructionC"),
+] as const;
+const GREEK_TEMPLE_PRESENTATION = looping("greekTemple");
+const GREEK_TOWN_CENTER_PRESENTATION = looping("greekTownCenter");
+
 function villagerAction(snapshot: RenderSnapshot, index: number, moved: boolean): VillagerAction {
   if (snapshot.moving[index] === 0) {
     if (snapshot.mode[index] === MODE_BUILDING) return "build";
@@ -221,8 +240,53 @@ export function resolveModelPresentation(
     return VILLAGER_PRESENTATIONS[sex][villagerAction(snapshot, index, moved)];
   }
 
+  if (type === TYPE_TOWN_CENTER) return GREEK_TOWN_CENTER_PRESENTATION;
+  if (type === TYPE_HOUSE) {
+    const buildTicks = UNIT_TYPES[TYPE_HOUSE]!.buildTicks;
+    const buildProgress = snapshot.buildProgress[index]!;
+    if (buildProgress < buildTicks) {
+      const buildFrac = buildProgress / buildTicks;
+      const stage = buildFrac < 0.33 ? 0 : buildFrac < 0.66 ? 1 : 2;
+      return GREEK_HOUSE_CONSTRUCTION_PRESENTATIONS[stage];
+    }
+    return GREEK_HOUSE_PRESENTATIONS[
+      idIndex(snapshot.ids[index]!) % GREEK_HOUSE_PRESENTATIONS.length
+    ]!;
+  }
+  if (type === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
+  if (type === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
+
   if (type === TYPE_MILITIA) return moved ? MILITIA_PRESENTATIONS.walk : MILITIA_PRESENTATIONS.idle;
   return null;
+}
+
+export function resolveModelGhostPresentation(
+  _snapshot: RenderSnapshot,
+  unitType: number,
+): ResolvedModelPresentation | null {
+  if (unitType === TYPE_TOWN_CENTER) return GREEK_TOWN_CENTER_PRESENTATION;
+  if (unitType === TYPE_HOUSE) return GREEK_HOUSE_PRESENTATIONS[0];
+  if (unitType === TYPE_BARRACKS) return GREEK_BARRACKS_PRESENTATION;
+  if (unitType === TYPE_TEMPLE) return GREEK_TEMPLE_PRESENTATION;
+  return null;
+}
+
+export function resolveStaticSpriteUnitPresentation(
+  snapshot: RenderSnapshot,
+  index: number,
+): StaticSpritePresentation | null {
+  if (resolveModelPresentation(snapshot, index, false) !== null) return null;
+  const presentation = UNIT_PRESENTATIONS[snapshot.unitType[index]!];
+  return presentation?.kind === "sprite" ? presentation : null;
+}
+
+export function resolveStaticSpriteGhostPresentation(
+  snapshot: RenderSnapshot,
+  unitType: number,
+): StaticSpritePresentation | null {
+  if (resolveModelGhostPresentation(snapshot, unitType) !== null) return null;
+  const presentation = UNIT_PRESENTATIONS[unitType];
+  return presentation?.kind === "sprite" ? presentation : null;
 }
 
 const SIM_TICK_HZ = 20;

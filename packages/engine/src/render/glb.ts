@@ -216,7 +216,8 @@ function classicMaterialSemantics(
   }
 
   const transform = material.name?.toLowerCase().match(/(?:pixel|color|texture)xform\d+/)?.[0];
-  if (transform !== undefined && transform !== "pixelxform1") {
+  const multipliesPlayerColor = transform === "pixelxform1" || transform === "colorxform1";
+  if (transform !== undefined && !multipliesPlayerColor) {
     invalidClassicModel(source, `material ${materialIndex} uses unsupported ${transform}`);
   }
   const textureIndex = material.pbrMetallicRoughness?.baseColorTexture?.index;
@@ -235,7 +236,7 @@ function classicMaterialSemantics(
 
   return {
     imageIndex,
-    pixelTransform: transform === "pixelxform1" ? "multiply-player-color" : "none",
+    pixelTransform: multipliesPlayerColor ? "multiply-player-color" : "none",
     alpha:
       alphaMode === "MASK"
         ? { mode: "mask", cutoff: material.alphaCutoff ?? 0.5 }

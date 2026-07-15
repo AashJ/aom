@@ -2,20 +2,27 @@ import {
   GATHER_COOLDOWN_TICKS,
   MODE_BUILDING,
   MODE_GATHERING,
+  TYPE_BARRACKS,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
   TYPE_HOUSE,
   TYPE_MILITIA,
+  TYPE_TEMPLE,
+  TYPE_TOWN_CENTER,
   TYPE_TREE,
   TYPE_VILLAGER,
+  UNIT_TYPES,
   createSnapshot,
   packId,
 } from "@aom/sim";
 import { describe, expect, test } from "bun:test";
 import {
   modelAnimationTime,
+  resolveModelGhostPresentation,
   resolveModelPresentation,
+  resolveStaticSpriteGhostPresentation,
   resolveStaticSpritePresentation,
+  resolveStaticSpriteUnitPresentation,
   UNIT_PRESENTATIONS,
 } from "./unit-presentation";
 
@@ -46,7 +53,7 @@ describe("unit presentation", () => {
     expect(resolveModelPresentation(snapshot, 0, true)?.model).toBe("militiaWalk");
   });
 
-  test("distinguishes model units from actual static sprites", () => {
+  test("keeps the per-type static sprite fallback metadata", () => {
     expect(UNIT_PRESENTATIONS[TYPE_VILLAGER]?.kind).toBe("model");
     expect(UNIT_PRESENTATIONS[TYPE_MILITIA]?.kind).toBe("model");
     expect(UNIT_PRESENTATIONS[TYPE_TREE]?.kind).toBe("sprite");
@@ -94,6 +101,59 @@ describe("unit presentation", () => {
     expect(resolveStaticSpritePresentation(house, 4, 1, 0.66).frame).toBe(5);
     expect(resolveStaticSpritePresentation(house, 4, 1, 0.999).frame).toBe(5);
     expect(resolveStaticSpritePresentation(house, 4, 1, 1)).toEqual({ frame: 1, buildFrac: 1 });
+  });
+
+  test("selects original Greek building models and stable house variations", () => {
+    const snapshot = createSnapshot(6);
+    snapshot.count = 6;
+    snapshot.owner.fill(0);
+    snapshot.unitType[0] = TYPE_TOWN_CENTER;
+    snapshot.unitType[1] = TYPE_HOUSE;
+    snapshot.unitType[2] = TYPE_HOUSE;
+    snapshot.unitType[3] = TYPE_HOUSE;
+    snapshot.unitType[4] = TYPE_BARRACKS;
+    snapshot.unitType[5] = TYPE_TEMPLE;
+    snapshot.ids[1] = packId(0, 1);
+    snapshot.ids[2] = packId(1, 1);
+    snapshot.ids[3] = packId(2, 1);
+    snapshot.buildProgress.fill(UNIT_TYPES[TYPE_HOUSE]!.buildTicks);
+
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekTownCenter");
+    expect(resolveModelPresentation(snapshot, 1, false)?.model).toBe("greekHouseA");
+    expect(resolveModelPresentation(snapshot, 2, false)?.model).toBe("greekHouseB");
+    expect(resolveModelPresentation(snapshot, 3, false)?.model).toBe("greekHouseC");
+    expect(resolveModelPresentation(snapshot, 4, false)?.model).toBe("greekBarracks");
+    expect(resolveModelPresentation(snapshot, 5, false)?.model).toBe("greekTemple");
+
+    for (let index = 0; index < snapshot.count; index += 1) {
+      expect(resolveStaticSpriteUnitPresentation(snapshot, index)).toBeNull();
+    }
+
+    expect(resolveModelGhostPresentation(snapshot, TYPE_TOWN_CENTER)?.model).toBe(
+      "greekTownCenter",
+    );
+    expect(resolveModelGhostPresentation(snapshot, TYPE_HOUSE)?.model).toBe("greekHouseA");
+    expect(resolveModelGhostPresentation(snapshot, TYPE_BARRACKS)?.model).toBe("greekBarracks");
+    expect(resolveModelGhostPresentation(snapshot, TYPE_TEMPLE)?.model).toBe("greekTemple");
+    expect(resolveStaticSpriteGhostPresentation(snapshot, TYPE_HOUSE)).toBeNull();
+  });
+
+  test("uses original-scale Greek construction models across house build progress", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.owner[0] = 0;
+    snapshot.unitType[0] = TYPE_HOUSE;
+    snapshot.ids[0] = packId(0, 1);
+    const buildTicks = UNIT_TYPES[TYPE_HOUSE]!.buildTicks;
+
+    snapshot.buildProgress[0] = 0;
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekHouseConstructionA");
+    snapshot.buildProgress[0] = Math.ceil(buildTicks * 0.33);
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekHouseConstructionB");
+    snapshot.buildProgress[0] = Math.ceil(buildTicks * 0.66);
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekHouseConstructionC");
+    snapshot.buildProgress[0] = buildTicks;
+    expect(resolveModelPresentation(snapshot, 0, false)?.model).toBe("greekHouseA");
   });
 
   test("drives gather animations from the action cooldown", () => {
