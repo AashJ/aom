@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { UnitReferenceSpec } from "../../packages/sim/src/content/unit-reference-schema";
-import type { UnitRosterEntry } from "../../packages/sim/src/content/unit-roster";
+import { gateLabel, type UnitRosterEntry } from "../../packages/sim/src/content/unit-roster";
 
 function normalizeRepositoryPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "");
@@ -30,9 +30,9 @@ export function laneBrief(lane: UnitRosterEntry, reference: UnitReferenceSpec | 
   const lines = [
     `Lane: ${lane.lane}`,
     `Unit: ${lane.label} (${lane.key}, id ${lane.id})`,
-    `Family: ${lane.family} / Gate ${lane.gate}`,
+    `Family: ${lane.family} / ${gateLabel(lane.gates)}`,
     `Status: ${lane.status}`,
-    `Foundation owner: ${lane.foundationLane}`,
+    `Foundation owners: ${lane.foundationLanes.join("; ")}`,
     `Required god id: ${lane.requiredGod}`,
     `Trained at: ${
       lane.trainedAt === null

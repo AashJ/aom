@@ -54,7 +54,7 @@ describe("unit lane ownership", () => {
   test("emits a self-contained task brief", () => {
     const brief = laneBrief(hoplite, unitReferenceEntry(hoplite.key));
     expect(brief).toContain("Lane: greek-hoplite");
-    expect(brief).toContain("Foundation owner: serial-direct-hit-melee-foundation");
+    expect(brief).toContain("Foundation owners: serial-direct-hit-melee-foundation");
     expect(brief).toContain("type 22 / command slot 0");
     expect(brief).toContain('"maxHp": 115');
     expect(brief).toContain("packages/engine/src/assets/units/greek/hoplite/**");

@@ -1,5 +1,6 @@
 import {
   UNIT_ROSTER,
+  gateLabel,
   unitRosterEntry,
   type UnitRosterEntry,
 } from "../packages/sim/src/content/unit-roster";
@@ -58,7 +59,7 @@ if (command === "list") {
     status === undefined ? UNIT_ROSTER : UNIT_ROSTER.filter((entry) => entry.status === status);
   for (const entry of entries) {
     console.log(
-      `${entry.lane.padEnd(29)} ${entry.status.padEnd(11)} Gate ${entry.gate}  ${entry.family}${entry.blocker === null ? "" : ` — ${entry.blocker}`}`,
+      `${entry.lane.padEnd(29)} ${entry.status.padEnd(11)} ${gateLabel(entry.gates).padEnd(13)} ${entry.family}${entry.blocker === null ? "" : ` — ${entry.blocker}`}`,
     );
   }
 } else if (command === "brief") {

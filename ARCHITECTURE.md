@@ -847,7 +847,7 @@ Projectile simulation; hero limits/revival; myth-unit favor/lifecycle rules; spe
 - `scripts/unit-lane.ts` — lane listing, self-contained briefs, worktree creation, and ownership/focused validation.
 - `scripts/lib/xmb.ts` plus `scripts/verify-unit-sources.ts` — local verification of hashed Trial proto and asset-inventory provenance.
 
-The first infrastructure slice registers every existing Gate A assignment plus the ordinary Greek/Egyptian projectile candidates. Implemented melee packs receive frozen references immediately; projectile candidates remain blocked on Gate B and unfrozen producer assignments. Expanding `UNIT_ROSTER` across every reserved hero, myth, siege, trade, naval, and exceptional-lifecycle identity is integration work before those family foundations open.
+The first infrastructure slice registered every existing Gate A assignment plus the ordinary Greek/Egyptian projectile candidates. C0 now expands the same canonical roster across every reserved hero, myth, siege, trade, naval, and exceptional-lifecycle identity before those family foundations open. Blocked entries may record source-derived producer relationships, but only the family audit and candidate-reference transition freezes them for fan-out.
 
 ### Workcell lifecycle
 
@@ -938,9 +938,58 @@ The first infrastructure slice registers every existing Gate A assignment plus t
 
 ---
 
+## Milestone 14 — Complete roster graph and Gate C eligibility
+
+**Scope:** register the complete reserved Greek/Egyptian unit task graph before implementing another gameplay family, then define the smallest faithful hero vertical slice that can open the next parallel wave. C0 changes orchestration and architecture only: every newly registered lane remains blocked until its complete family substrate and independently owned candidate reference exist.
+
+### Decisions
+
+| Question                   | Decision                                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Compound prerequisites     | A lane owns ordered `gates` and `foundationLanes` arrays. Ranged heroes are B+C, special ranged myth units are B+C+D, flying or aquatic myth units include E, and naval projectile siege can be B+D+E. Gate A remains exclusive because it describes only the already-proven ordinary direct-hit family.                             |
+| Complete identity boundary | `RESERVED_ROSTER_UNIT_TYPE_IDS` enumerates every independently authored Greek/Egyptian unit pack while excluding shared workers, buildings, and resource nodes. Module initialization and focused tests require `UNIT_ROSTER` to cover that reservation exactly once.                                                                |
+| Source of task state       | `UNIT_ROSTER` remains the only machine-readable status, assignment, dependency, and ownership queue. [The full roster manifest](docs/UNIT_ROSTER_MANIFEST.md) is deterministic generated output and check mode rejects drift; it is not a second task source.                                                                        |
+| Blocked assignments        | C0 records the Classic producer relationships and command positions available from the local proto audit so dependency planning is concrete. They are not launch authority: the family audit must re-verify them in a candidate reference before changing a lane to `ready`.                                                         |
+| First hero slice           | Jason is the serial C1 proof. He exercises Greek major-god/age availability, per-type uniqueness across live and queued state, retraining after death, hero-vs-myth damage, relic pickup/drop state, production, hashing/snapshots, and generic media without also requiring projectiles or a charged special attack.                |
+| First parallel hero wave   | After Jason integrates, the ordinary Greek heroes whose behavior is fully represented by C1 may receive candidate references and isolated lanes. Odysseus, Hippolyta, and Chiron additionally consume the proven B projectile foundation. Bellerophon, Polyphemus, and Perseus remain blocked on their exact Gate D special actions. |
+
+### C0 — roster registration
+
+1. Replace the scalar gate/foundation fields with ordered compound prerequisites and teach briefs, list output, validation, and ownership tests to expose them.
+2. Register all `76` reserved workcells with stable identity, culture, family, gods, source-derived producer relationships when applicable, exact blockers, and disjoint owned paths.
+3. Split culture-specific future-roster data away from the family-neutral schema/facade so adding identities cannot grow one central conditional file.
+4. Generate `docs/UNIT_ROSTER_MANIFEST.md` from the canonical roster and include drift checking in unit-pack and repository checks.
+5. Keep all `61` new lanes blocked. C0 does not create placeholder definitions, media, references, or generated catalog entries for unimplemented units.
+
+### C1 — serial Jason hero foundation
+
+1. Add explicit immutable hero traits and counter relationships rather than inferring hero behavior from names or type IDs.
+2. Enforce one live-or-queued Greek hero of a given identity per player, release that limit deterministically on death, and allow faithful retraining through the Greek Town Center and Fortress.
+3. Implement relic pickup, carrying, dropping, death release, snapshot, and hash state as shared hero infrastructure; Jason may not silently omit his shipped `PickUp`/`DropOff` actions.
+4. Prove hero damage against myth units through the shared class/bonus contract, including armor and deterministic direct-hit combat.
+5. Add Jason’s separately owned final-ruleset reference, original media, producer commands, availability/UI integration, focused two-world tests, and final review commit.
+6. Before any Greek age-three hero lane opens, replace the earlier compact Fortress slot `2` assignment for Myrmidon, Hetairoi, and Gastraphetes with Classic Fortress column `6`, update their reviewed definitions/references, and prove that hero columns `0–3`, siege columns `4–5`, and major-god unique column `6` do not collide.
+
+### C2 — hero fan-out release
+
+- Audit every Greek hero against the C1 contract and B projectile contract, publish complete candidate references, and mark only fully represented lanes `ready`.
+- A contributor still owns only its definition/test, media definition, and asset directory. Hero limits, relics, projectile mechanics, roster state, references, and catalogs remain integration-owned.
+- Egyptian Pharaoh, Priest, and Son of Osiris remain blocked until their automatic lifecycle, healing, empowerment, conversion, transformation, and chain-attack foundations exist.
+- Myth units remain blocked until a separate serial myth slice establishes favor cost, hero counters, special-action/recharge state, and one representative end-to-end pack.
+
+### Exit criteria
+
+- Every reserved Greek/Egyptian unit identity is registered exactly once and every unimplemented lane names all required gates and foundation owners.
+- Compound prerequisites survive task listing, self-contained briefs, validation, generated documentation, and future family additions without a unit-specific condition.
+- No blocked lane can launch, no blocked definition leaks into generated runtime catalogs, and no reference spec is required before a family contract can express its complete expected state.
+- Jason is identified as the sole C1 serial proof; the exact ordinary Greek hero fan-out set is decided only after its implementation and reference review.
+- Unit-pack validation, generated-manifest drift checks, complete tests, types, lint, formatting, and deterministic catalog checks remain green.
+
+---
+
 ## Later milestones (direction, not commitments)
 
-Agentic roster workcells → deterministic projectiles and the ranged roster → first hero/myth behavior slice → god powers → naval/air/transport → gates/walls → AI → deterministic physics kernel.
+Complete compound roster graph → serial Jason hero foundation → ordinary Greek hero fan-out → first myth behavior slice → god powers → naval/air/transport → gates/walls → AI → deterministic physics kernel.
 
 ## Open questions (parked, on purpose)
 

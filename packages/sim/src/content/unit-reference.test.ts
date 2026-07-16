@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { UNIT_TYPES } from "./generated/unit-types";
-import { UNIT_ROSTER, validateUnitRoster, type UnitRosterEntry } from "./unit-roster";
+import {
+  UNIT_ROSTER,
+  validateRosterReservations,
+  validateUnitRoster,
+  type UnitRosterEntry,
+} from "./unit-roster";
+import { RESERVED_ROSTER_UNIT_TYPE_IDS } from "./unit-type-ids";
 import {
   validateDefinitionAgainstReference,
   validateUnitReferences,
@@ -20,6 +26,29 @@ function asCandidateReference(reference: UnitReferenceSpec): UnitReferenceSpec {
 describe("agentic unit references", () => {
   test("keeps the roster structurally valid and uniquely owned", () => {
     expect(() => validateUnitRoster(UNIT_ROSTER)).not.toThrow();
+  });
+
+  test("registers every reserved Greek and Egyptian unit workcell exactly once", () => {
+    expect(UNIT_ROSTER).toHaveLength(RESERVED_ROSTER_UNIT_TYPE_IDS.length);
+    expect(UNIT_ROSTER.map((entry) => entry.id)).toEqual([...RESERVED_ROSTER_UNIT_TYPE_IDS]);
+    expect(() =>
+      validateRosterReservations(UNIT_ROSTER, RESERVED_ROSTER_UNIT_TYPE_IDS),
+    ).not.toThrow();
+  });
+
+  test("models compound family prerequisites without collapsing them to one gate", () => {
+    const centaur = UNIT_ROSTER.find((entry) => entry.key === "greek-centaur")!;
+    expect(centaur.gates).toEqual(["B", "C", "D"]);
+    expect(centaur.foundationLanes).toEqual([
+      "serial-projectile-foundation",
+      "serial-myth-unit-lifecycle",
+      "serial-special-actions",
+    ]);
+    expect(centaur.blocker).toStartWith("Gates B+C+D:");
+
+    expect(() => validateUnitRoster([{ ...centaur, gates: ["C", "B", "D"] }])).toThrow(
+      "gates must be unique and ordered",
+    );
   });
 
   test("pins every implemented lane to an integration-owned fidelity spec", () => {
