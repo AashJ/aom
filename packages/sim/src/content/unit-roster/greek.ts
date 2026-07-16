@@ -294,7 +294,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 1,
     gates: ["B", "C"],
     foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_HERACLES,
@@ -305,7 +305,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 2,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_BELLEROPHON,
@@ -331,7 +331,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 0,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_HIPPOLYTA,
@@ -342,7 +342,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 1,
     gates: ["B", "C"],
     foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_ATALANTA,
@@ -353,7 +353,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 2,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_POLYPHEMUS,
@@ -379,7 +379,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 0,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_CHIRON,
@@ -390,7 +390,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 1,
     gates: ["B", "C"],
     foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_ACHILLES,

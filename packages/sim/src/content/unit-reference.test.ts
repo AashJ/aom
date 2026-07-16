@@ -88,9 +88,8 @@ describe("agentic unit references", () => {
     ]).toEqual([6, 6, 6]);
   });
 
-  test("opens only ordinary Greek heroes with complete candidate references", () => {
-    const ready = UNIT_ROSTER.filter((entry) => entry.status === "ready");
-    expect(ready.map((entry) => entry.key)).toEqual([
+  test("closes every released ordinary Greek hero lane with a final reference", () => {
+    const releasedHeroKeys = [
       "greek-odysseus",
       "greek-heracles",
       "greek-theseus",
@@ -98,11 +97,14 @@ describe("agentic unit references", () => {
       "greek-atalanta",
       "greek-ajax",
       "greek-chiron",
-    ]);
-    for (const lane of ready) {
-      const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key);
+    ];
+    expect(UNIT_ROSTER.filter((entry) => entry.status === "ready")).toEqual([]);
+    for (const key of releasedHeroKeys) {
+      const lane = UNIT_ROSTER.find((entry) => entry.key === key);
+      const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === key);
+      expect(lane?.status).toBe("implemented");
       expect(reference?.family).toBe("hero");
-      expect(reference?.source.stage).toBe("candidate");
+      expect(reference?.source.stage).toBe("final");
     }
   });
 

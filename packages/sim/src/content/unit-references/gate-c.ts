@@ -79,16 +79,50 @@ function candidateProjectileHeroSource(
   } as const;
 }
 
-function finalHeroSource(unitId: number, trialName: string, label: string, rootAnimation: string) {
-  const candidate = candidateHeroSource(unitId, trialName, label, rootAnimation);
+interface FinalHeroReview {
+  readonly commit: string;
+  readonly scope: string;
+}
+
+function finalHeroSource(
+  unitId: number,
+  trialName: string,
+  label: string,
+  rootAnimation: string,
+  review: FinalHeroReview,
+  trialDeltas: readonly TrialFidelityDelta[] = [],
+) {
+  const candidate = candidateHeroSource(unitId, trialName, label, rootAnimation, trialDeltas);
   return {
     ...candidate,
     stage: "final",
-    finalRulesetReview: {
-      commit: "8a0d41d72aed100520c8ee9fc403cb6f723b5bc3",
-      scope:
-        "Complete Jason hero pack and Gate C lifecycle foundation, including uniqueness, retraining, myth counter damage, relic containment, production, deterministic state, and original media.",
-    },
+    finalRulesetReview: review,
+  } as const;
+}
+
+function finalProjectileHeroSource(
+  unitId: number,
+  trialName: string,
+  label: string,
+  rootAnimation: string,
+  animationSha256: string,
+  releaseFraction: number,
+  review: FinalHeroReview,
+  trialDeltas: readonly TrialFidelityDelta[] = [],
+) {
+  const candidate = candidateProjectileHeroSource(
+    unitId,
+    trialName,
+    label,
+    rootAnimation,
+    animationSha256,
+    releaseFraction,
+    trialDeltas,
+  );
+  return {
+    ...candidate,
+    stage: "final",
+    finalRulesetReview: review,
   } as const;
 }
 
@@ -167,7 +201,11 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "melee",
     id: 96,
     key: "greek-jason",
-    source: finalHeroSource(478, "Hero Greek Jason", "Jason", "hero greek jason_anim.txt"),
+    source: finalHeroSource(478, "Hero Greek Jason", "Jason", "hero greek jason_anim.txt", {
+      commit: "8a0d41d72aed100520c8ee9fc403cb6f723b5bc3",
+      scope:
+        "Complete Jason hero pack and Gate C lifecycle foundation, including uniqueness, retraining, myth counter damage, relic containment, production, deterministic state, and original media.",
+    }),
     expected: greekHeroExpected({
       label: "Jason",
       maxHp: 250,
@@ -191,13 +229,18 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "projectile",
     id: 97,
     key: "greek-odysseus",
-    source: candidateProjectileHeroSource(
+    source: finalProjectileHeroSource(
       436,
       "Hero Greek Odysseus",
       "Odysseus",
       "hero greek odysseus_anim.txt",
       "4cbb53ba559a2e49543217f442b6d9b7065ae14d664cb034fe1175efca86a4e8",
       0.4,
+      {
+        commit: "208e85b4cb8b694f7e397438a0b61159a0780f88",
+        scope:
+          "Complete Odysseus projectile-hero pack with exact Classic release timing, hero lifecycle behavior, original model, attachments, portrait, and voice media.",
+      },
     ),
     expected: greekHeroExpected({
       label: "Odysseus",
@@ -229,11 +272,16 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "melee",
     id: 98,
     key: "greek-heracles",
-    source: candidateHeroSource(
+    source: finalHeroSource(
       477,
       "Hero Greek Heracles",
       "Heracles",
       "hero greek heracles_anim.txt",
+      {
+        commit: "e8375e580840e2dd2731026624052e453302caea",
+        scope:
+          "Complete Heracles melee-hero pack with the Classic attack cycle, hero lifecycle behavior, original model, portrait, and mapped voice media.",
+      },
     ),
     expected: greekHeroExpected({
       label: "Heracles",
@@ -258,12 +306,11 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "melee",
     id: 100,
     key: "greek-theseus",
-    source: candidateHeroSource(
-      487,
-      "Hero Greek Theseus",
-      "Theseus",
-      "hero greek theseus_anim.txt",
-    ),
+    source: finalHeroSource(487, "Hero Greek Theseus", "Theseus", "hero greek theseus_anim.txt", {
+      commit: "0afa742e254bf4f57b2593eb2fff8b6c99e8d9be",
+      scope:
+        "Complete Theseus melee-hero pack with the Classic attack cycle, hero lifecycle behavior, original model, portrait, and voice media.",
+    }),
     expected: greekHeroExpected({
       label: "Theseus",
       maxHp: 240,
@@ -287,13 +334,18 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "projectile",
     id: 101,
     key: "greek-hippolyta",
-    source: candidateProjectileHeroSource(
+    source: finalProjectileHeroSource(
       486,
       "Hero Greek Hippolyta",
       "Hippolyta",
       "hero greek hippolyta_anim.txt",
       "be31989d114178e2fa1485cc5a0115fc3084e518a0ab27b32dff3913810072cf",
       0.6,
+      {
+        commit: "40f10792b283fa3ba7a8d92de7302e86778eb3fe",
+        scope:
+          "Complete Hippolyta projectile-hero pack with final Classic sight values, exact release timing, hero lifecycle behavior, original model, portrait, and voice media.",
+      },
       [
         {
           field: "lineOfSight",
@@ -334,11 +386,16 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "melee",
     id: 102,
     key: "greek-atalanta",
-    source: candidateHeroSource(
+    source: finalHeroSource(
       490,
       "Hero Greek Atalanta",
       "Atalanta",
       "hero greek atalanta_anim.txt",
+      {
+        commit: "024bfed1afdbd6fb065d6472fe50cde7af2af887",
+        scope:
+          "Complete Atalanta melee-hero pack with the Classic attack cycle, hero lifecycle behavior, original model, portrait, and voice media.",
+      },
     ),
     expected: greekHeroExpected({
       label: "Atalanta",
@@ -363,7 +420,11 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "melee",
     id: 104,
     key: "greek-ajax",
-    source: candidateHeroSource(489, "Hero Greek Ajax", "Ajax", "hero greek ajax_anim.txt"),
+    source: finalHeroSource(489, "Hero Greek Ajax", "Ajax", "hero greek ajax_anim.txt", {
+      commit: "d9682b9ebb13e121df5991058130c9c5755e17ef",
+      scope:
+        "Complete Ajax melee-hero pack with the Classic attack cycle, hero lifecycle behavior, original media, and renderer-safe death animation preserving the source clock.",
+    }),
     expected: greekHeroExpected({
       label: "Ajax",
       maxHp: 240,
@@ -387,13 +448,18 @@ export const GATE_C_UNIT_REFERENCES = [
     attackKind: "projectile",
     id: 105,
     key: "greek-chiron",
-    source: candidateProjectileHeroSource(
+    source: finalProjectileHeroSource(
       437,
       "Hero Greek Chiron",
       "Chiron",
       "hero greek chiron_anim.txt",
       "b48dd1ef83c1b0631c0d039cb75d7187f4b4269f5a792441f908a9a7dea8d1b2",
       0.6,
+      {
+        commit: "bfadfa1fd17fff9f443481572a1ade40b3fc6df0",
+        scope:
+          "Complete Chiron projectile-hero pack with both Classic attack variants, exact release timing, hero lifecycle behavior, original model, portrait, and voice media.",
+      },
     ),
     expected: greekHeroExpected({
       label: "Chiron",

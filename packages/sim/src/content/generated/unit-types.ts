@@ -32,6 +32,13 @@ import { definition as greekPeltast } from "../unit-types/greek/peltast";
 import { definition as greekGastraphetes } from "../unit-types/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-types/greek/hetairoi";
 import { definition as greekJason } from "../unit-types/greek/jason";
+import { definition as greekOdysseus } from "../unit-types/greek/odysseus";
+import { definition as greekHeracles } from "../unit-types/greek/heracles";
+import { definition as greekTheseus } from "../unit-types/greek/theseus";
+import { definition as greekHippolyta } from "../unit-types/greek/hippolyta";
+import { definition as greekAtalanta } from "../unit-types/greek/atalanta";
+import { definition as greekAjax } from "../unit-types/greek/ajax";
+import { definition as greekChiron } from "../unit-types/greek/chiron";
 import { definition as egyptianSlinger } from "../unit-types/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-types/egyptian/chariot-archer";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
@@ -70,6 +77,13 @@ export const UNIT_TYPE_DEFINITIONS = [
   greekGastraphetes,
   greekHetairoi,
   greekJason,
+  greekOdysseus,
+  greekHeracles,
+  greekTheseus,
+  greekHippolyta,
+  greekAtalanta,
+  greekAjax,
+  greekChiron,
   egyptianSlinger,
   egyptianChariotArcher,
 ] as const satisfies readonly UnitTypeStats[];

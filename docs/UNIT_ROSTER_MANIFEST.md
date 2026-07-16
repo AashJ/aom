@@ -11,8 +11,8 @@ is not launchable until its family audit freezes a complete candidate reference 
 ## Summary
 
 - Total reserved unit workcells: **76**
-- Implemented: **16**
-- Ready for fan-out: **7**
+- Implemented: **23**
+- Ready for fan-out: **0**
 - Blocked on shared foundations: **53**
 
 ## ordinary-melee (10)
@@ -101,12 +101,12 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle
 
-- `greek-odysseus` — id `97`; Greek; Gates B+C; ready.
+- `greek-odysseus` — id `97`; Greek; Gates B+C; implemented.
   - Assignment: Greek Town Center slot 2; Fortress slot 1
   - Required god: Zeus.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
 
-- `greek-heracles` — id `98`; Greek; Gate C; ready.
+- `greek-heracles` — id `98`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 3; Fortress slot 2
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle
@@ -118,17 +118,17 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Blocker: Gates C+D: His deterministic jump attack needs Gate D command, state, hash, and
     presentation support.
 
-- `greek-theseus` — id `100`; Greek; Gate C; ready.
+- `greek-theseus` — id `100`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle
 
-- `greek-hippolyta` — id `101`; Greek; Gates B+C; ready.
+- `greek-hippolyta` — id `101`; Greek; Gates B+C; implemented.
   - Assignment: Greek Town Center slot 2; Fortress slot 1
   - Required god: Poseidon.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
 
-- `greek-atalanta` — id `102`; Greek; Gate C; ready.
+- `greek-atalanta` — id `102`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 3; Fortress slot 2
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle
@@ -140,12 +140,12 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Blocker: Gates C+D: His deterministic gore attack needs Gate D special-action state, hashing,
     and presentation.
 
-- `greek-ajax` — id `104`; Greek; Gate C; ready.
+- `greek-ajax` — id `104`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
   - Required god: Hades.
   - Foundation owners: serial-greek-hero-lifecycle
 
-- `greek-chiron` — id `105`; Greek; Gates B+C; ready.
+- `greek-chiron` — id `105`; Greek; Gates B+C; implemented.
   - Assignment: Greek Town Center slot 2; Fortress slot 1
   - Required god: Hades.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
