@@ -973,6 +973,7 @@ The first infrastructure slice registered every existing Gate A assignment plus 
 ### C2 — hero fan-out release
 
 - Audit every Greek hero against the C1 contract and B projectile contract, publish complete candidate references, and mark only fully represented lanes `ready`.
+- **Audit result:** Odysseus, Heracles, Theseus, Hippolyta, Atalanta, Ajax, and Chiron fit the shared C1/B contracts and may fan out. Achilles remains blocked: his Classic root action selects three mounted attack clips with unequal durations, so a fixed `cooldownTicks`/damage pair cannot reproduce both its per-cycle timing and DPS-scaled hit damage. A shared deterministic variable-cycle contract must own selection, damage scaling, hashing, and presentation before that lane opens.
 - A contributor still owns only its definition/test, media definition, and asset directory. Hero limits, relics, projectile mechanics, roster state, references, and catalogs remain integration-owned.
 - Egyptian Pharaoh, Priest, and Son of Osiris remain blocked until their automatic lifecycle, healing, empowerment, conversion, transformation, and chain-attack foundations exist.
 - Myth units remain blocked until a separate serial myth slice establishes favor cost, hero counters, special-action/recharge state, and one representative end-to-end pack.

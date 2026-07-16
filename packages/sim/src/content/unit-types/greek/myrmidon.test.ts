@@ -67,7 +67,7 @@ describe("Greek Myrmidon unit pack", () => {
       prerequisiteBuildings: [TYPE_GREEK_FORTRESS],
       trainedAt: [
         { type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 2 },
-        { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
+        { type: TYPE_GREEK_FORTRESS, commandSlot: 6 },
       ],
       builtBy: NO_TYPE_RELATIONSHIPS,
     });

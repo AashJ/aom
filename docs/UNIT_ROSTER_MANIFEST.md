@@ -11,9 +11,9 @@ is not launchable until its family audit freezes a complete candidate reference 
 ## Summary
 
 - Total reserved unit workcells: **76**
-- Implemented: **15**
-- Ready for fan-out: **1**
-- Blocked on shared foundations: **60**
+- Implemented: **16**
+- Ready for fan-out: **7**
+- Blocked on shared foundations: **53**
 
 ## ordinary-melee (10)
 
@@ -38,7 +38,7 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Foundation owners: serial-direct-hit-melee-foundation
 
 - `greek-myrmidon` — id `68`; Greek; Gate A; implemented.
-  - Assignment: Military Academy slot 2; Fortress slot 2
+  - Assignment: Military Academy slot 2; Fortress slot 6
   - Required god: Zeus.
   - Foundation owners: serial-direct-hit-melee-foundation
 
@@ -63,7 +63,7 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Foundation owners: serial-direct-hit-melee-foundation
 
 - `greek-hetairoi` — id `84`; Greek; Gate A; implemented.
-  - Assignment: Stable slot 2; Fortress slot 2
+  - Assignment: Stable slot 2; Fortress slot 6
   - Required god: Poseidon.
   - Foundation owners: serial-direct-hit-melee-foundation
 
@@ -80,7 +80,7 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Foundation owners: serial-projectile-foundation
 
 - `greek-gastraphetes` — id `83`; Greek; Gate B; implemented.
-  - Assignment: Fortress slot 2
+  - Assignment: Fortress slot 6
   - Required god: Hades.
   - Foundation owners: serial-projectile-foundation
 
@@ -96,93 +96,74 @@ is not launchable until its family audit freezes a complete candidate reference 
 
 ## hero (15)
 
-- `greek-jason` — id `96`; Greek; Gate C; ready.
+- `greek-jason` — id `96`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle
 
-- `greek-odysseus` — id `97`; Greek; Gates B+C; blocked.
+- `greek-odysseus` — id `97`; Greek; Gates B+C; ready.
   - Assignment: Greek Town Center slot 2; Fortress slot 1
   - Required god: Zeus.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
-  - Blocker: Gates B+C: Greek hero uniqueness and retraining, myth-unit counter damage, relic
-    carrying,lifecycle hashing, and the representative hero vertical slice. His ranged hero attack
-    must use the projectile contract.
 
-- `greek-heracles` — id `98`; Greek; Gate C; blocked.
+- `greek-heracles` — id `98`; Greek; Gate C; ready.
   - Assignment: Greek Town Center slot 3; Fortress slot 2
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle
-  - Blocker: Gate C: Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying,
-    lifecyclehashing, and the representative hero vertical slice.
 
 - `greek-bellerophon` — id `99`; Greek; Gates C+D; blocked.
   - Assignment: Greek Town Center slot 4; Fortress slot 3
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle; serial-special-actions
-  - Blocker: Gates C+D: Greek hero uniqueness and retraining, myth-unit counter damage, relic
-    carrying,lifecycle hashing, and the representative hero vertical slice. His deterministic jump
-    attack needs command, state, hash, and presentation support.
+  - Blocker: Gates C+D: His deterministic jump attack needs Gate D command, state, hash, and
+    presentation support.
 
-- `greek-theseus` — id `100`; Greek; Gate C; blocked.
+- `greek-theseus` — id `100`; Greek; Gate C; ready.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle
-  - Blocker: Gate C: Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying,
-    lifecyclehashing, and the representative hero vertical slice.
 
-- `greek-hippolyta` — id `101`; Greek; Gates B+C; blocked.
+- `greek-hippolyta` — id `101`; Greek; Gates B+C; ready.
   - Assignment: Greek Town Center slot 2; Fortress slot 1
   - Required god: Poseidon.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
-  - Blocker: Gates B+C: Greek hero uniqueness and retraining, myth-unit counter damage, relic
-    carrying,lifecycle hashing, and the representative hero vertical slice. Her ranged hero attack
-    must use the projectile contract.
 
-- `greek-atalanta` — id `102`; Greek; Gate C; blocked.
+- `greek-atalanta` — id `102`; Greek; Gate C; ready.
   - Assignment: Greek Town Center slot 3; Fortress slot 2
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle
-  - Blocker: Gate C: Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying,
-    lifecyclehashing, and the representative hero vertical slice.
 
 - `greek-polyphemus` — id `103`; Greek; Gates C+D; blocked.
   - Assignment: Greek Town Center slot 4; Fortress slot 3
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle; serial-special-actions
-  - Blocker: Gates C+D: Greek hero uniqueness and retraining, myth-unit counter damage, relic
-    carrying,lifecycle hashing, and the representative hero vertical slice. His deterministic gore
-    attack needs special-action state and presentation.
+  - Blocker: Gates C+D: His deterministic gore attack needs Gate D special-action state, hashing,
+    and presentation.
 
-- `greek-ajax` — id `104`; Greek; Gate C; blocked.
+- `greek-ajax` — id `104`; Greek; Gate C; ready.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
   - Required god: Hades.
   - Foundation owners: serial-greek-hero-lifecycle
-  - Blocker: Gate C: Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying,
-    lifecyclehashing, and the representative hero vertical slice.
 
-- `greek-chiron` — id `105`; Greek; Gates B+C; blocked.
+- `greek-chiron` — id `105`; Greek; Gates B+C; ready.
   - Assignment: Greek Town Center slot 2; Fortress slot 1
   - Required god: Hades.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
-  - Blocker: Gates B+C: Greek hero uniqueness and retraining, myth-unit counter damage, relic
-    carrying,lifecycle hashing, and the representative hero vertical slice. His ranged hero attack
-    must use the projectile contract.
 
-- `greek-achilles` — id `106`; Greek; Gate C; blocked.
+- `greek-achilles` — id `106`; Greek; Gates C+D; blocked.
   - Assignment: Greek Town Center slot 3; Fortress slot 2
   - Required god: Hades.
-  - Foundation owners: serial-greek-hero-lifecycle
-  - Blocker: Gate C: Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying,
-    lifecyclehashing, and the representative hero vertical slice.
+  - Foundation owners: serial-greek-hero-lifecycle; serial-variable-attack-cycles
+  - Blocker: Gates C+D: Classic Achilles cycles among three unequally timed mounted attacks;
+    deterministic cycle selection, duration-scaled hit damage, hashing, and matching presentation
+    need a shared Gate D contract.
 
 - `greek-perseus` — id `107`; Greek; Gates C+D; blocked.
   - Assignment: Greek Town Center slot 4; Fortress slot 3
   - Required god: Hades.
   - Foundation owners: serial-greek-hero-lifecycle; serial-special-actions
-  - Blocker: Gates C+D: Greek hero uniqueness and retraining, myth-unit counter damage, relic
-    carrying,lifecycle hashing, and the representative hero vertical slice. His instant-kill
-    petrification needs faithful target rules, state, and presentation.
+  - Blocker: Gates C+D: His instant-kill petrification needs Gate D target rules, state, hashing,
+    and presentation.
 
 - `egyptian-pharaoh` — id `140`; Egyptian; Gates B+C+D; blocked.
   - Assignment: not normally trainable

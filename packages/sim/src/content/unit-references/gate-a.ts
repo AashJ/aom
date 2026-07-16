@@ -213,7 +213,7 @@ export const GATE_A_UNIT_REFERENCES = [
       prerequisiteBuildings: [26],
       trainedAt: [
         { type: 22, commandSlot: 2 },
-        { type: 26, commandSlot: 2 },
+        { type: 26, commandSlot: 6 },
       ],
     }),
   },
@@ -247,7 +247,7 @@ export const GATE_A_UNIT_REFERENCES = [
       prerequisiteBuildings: [26],
       trainedAt: [
         { type: 25, commandSlot: 2 },
-        { type: 26, commandSlot: 2 },
+        { type: 26, commandSlot: 6 },
       ],
     }),
   },

@@ -236,7 +236,7 @@ export const GATE_B_UNIT_REFERENCES = [
       requiredAge: 3,
       requiredGod: 2,
       prerequisiteBuildings: [26],
-      trainedAt: [{ type: 26, commandSlot: 2 }],
+      trainedAt: [{ type: 26, commandSlot: 6 }],
     }),
   },
   {

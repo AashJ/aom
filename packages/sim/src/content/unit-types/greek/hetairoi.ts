@@ -48,7 +48,7 @@ export const definition = {
   prerequisiteBuildings: [TYPE_GREEK_FORTRESS],
   trainedAt: [
     { type: TYPE_GREEK_STABLE, commandSlot: 2 },
-    { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
+    { type: TYPE_GREEK_FORTRESS, commandSlot: 6 },
   ],
   builtBy: NO_TYPE_RELATIONSHIPS,
 } as const satisfies UnitTypeStats;

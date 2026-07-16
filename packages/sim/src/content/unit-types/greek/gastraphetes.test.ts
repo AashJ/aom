@@ -67,7 +67,7 @@ describe("Greek Gastraphetes unit pack", () => {
       requiredAge: AGE_MYTHIC,
       requiredGod: GOD_HADES,
       prerequisiteBuildings: [TYPE_GREEK_FORTRESS],
-      trainedAt: [{ type: TYPE_GREEK_FORTRESS, commandSlot: 2 }],
+      trainedAt: [{ type: TYPE_GREEK_FORTRESS, commandSlot: 6 }],
       builtBy: NO_TYPE_RELATIONSHIPS,
     });
   });

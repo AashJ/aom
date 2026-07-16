@@ -125,7 +125,7 @@ const implementedMeleeEntries = [
     GOD_ZEUS,
     [
       { type: TYPE_GREEK_MILITARY_ACADEMY, commandSlot: 2 },
-      { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
+      { type: TYPE_GREEK_FORTRESS, commandSlot: 6 },
     ],
   ),
   implementedOrdinaryUnit(
@@ -137,7 +137,7 @@ const implementedMeleeEntries = [
     GOD_POSEIDON,
     [
       { type: TYPE_GREEK_STABLE, commandSlot: 2 },
-      { type: TYPE_GREEK_FORTRESS, commandSlot: 2 },
+      { type: TYPE_GREEK_FORTRESS, commandSlot: 6 },
     ],
   ),
   implementedOrdinaryUnit(
@@ -204,7 +204,7 @@ const implementedProjectileEntries = [
     CULTURE_GREEK,
     "ordinary-projectile",
     GOD_HADES,
-    [{ type: TYPE_GREEK_FORTRESS, commandSlot: 2 }],
+    [{ type: TYPE_GREEK_FORTRESS, commandSlot: 6 }],
   ),
   implementedOrdinaryUnit(
     TYPE_SLINGER,

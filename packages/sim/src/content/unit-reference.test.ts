@@ -6,7 +6,7 @@ import {
   validateUnitRoster,
   type UnitRosterEntry,
 } from "./unit-roster";
-import { RESERVED_ROSTER_UNIT_TYPE_IDS } from "./unit-type-ids";
+import { RESERVED_ROSTER_UNIT_TYPE_IDS, TYPE_GREEK_FORTRESS } from "./unit-type-ids";
 import {
   validateDefinitionAgainstReference,
   trialComparableExpected,
@@ -50,6 +50,60 @@ describe("agentic unit references", () => {
     expect(() => validateUnitRoster([{ ...centaur, gates: ["C", "B", "D"] }])).toThrow(
       "gates must be unique and ordered",
     );
+  });
+
+  test("keeps Classic Greek Fortress columns disjoint before hero fan-out", () => {
+    const fortressSlot = (key: string): number => {
+      const lane = UNIT_ROSTER.find((entry) => entry.key === key);
+      const relationship = lane?.trainedAt?.find(
+        (candidate) => candidate.type === TYPE_GREEK_FORTRESS,
+      );
+      if (relationship === undefined) throw new Error(`${key} has no Greek Fortress assignment.`);
+      return relationship.commandSlot;
+    };
+
+    expect([
+      fortressSlot("greek-jason"),
+      fortressSlot("greek-odysseus"),
+      fortressSlot("greek-heracles"),
+      fortressSlot("greek-bellerophon"),
+    ]).toEqual([0, 1, 2, 3]);
+    expect([
+      fortressSlot("greek-theseus"),
+      fortressSlot("greek-hippolyta"),
+      fortressSlot("greek-atalanta"),
+      fortressSlot("greek-polyphemus"),
+    ]).toEqual([0, 1, 2, 3]);
+    expect([
+      fortressSlot("greek-ajax"),
+      fortressSlot("greek-chiron"),
+      fortressSlot("greek-achilles"),
+      fortressSlot("greek-perseus"),
+    ]).toEqual([0, 1, 2, 3]);
+    expect([fortressSlot("greek-petrobolos"), fortressSlot("greek-helepolis")]).toEqual([4, 5]);
+    expect([
+      fortressSlot("greek-myrmidon"),
+      fortressSlot("greek-hetairoi"),
+      fortressSlot("greek-gastraphetes"),
+    ]).toEqual([6, 6, 6]);
+  });
+
+  test("opens only ordinary Greek heroes with complete candidate references", () => {
+    const ready = UNIT_ROSTER.filter((entry) => entry.status === "ready");
+    expect(ready.map((entry) => entry.key)).toEqual([
+      "greek-odysseus",
+      "greek-heracles",
+      "greek-theseus",
+      "greek-hippolyta",
+      "greek-atalanta",
+      "greek-ajax",
+      "greek-chiron",
+    ]);
+    for (const lane of ready) {
+      const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key);
+      expect(reference?.family).toBe("hero");
+      expect(reference?.source.stage).toBe("candidate");
+    }
   });
 
   test("pins every implemented lane to an integration-owned fidelity spec", () => {
@@ -171,8 +225,15 @@ describe("agentic unit references", () => {
       ...UNIT_TYPES[lane.id]!,
       attack: projectile.expected.attack,
     };
+    if (lane.trainedAt === null) throw new Error("Jason assignment is not frozen.");
+    const readyLane: UnitRosterEntry = {
+      ...lane,
+      status: "ready",
+      blocker: null,
+      trainedAt: lane.trainedAt,
+    };
 
-    expect(() => validateUnitReferences([lane], [rangedHero])).not.toThrow();
+    expect(() => validateUnitReferences([readyLane], [rangedHero])).not.toThrow();
     expect(() => validateDefinitionAgainstReference(rangedDefinition, rangedHero)).not.toThrow();
     expect(trialComparableExpected(rangedHero)["attack.accuracy"]).toBe(
       projectile.expected.attack.accuracy,

@@ -85,7 +85,7 @@ interface GreekHeroLaneOptions {
   readonly gates: readonly UnitGate[];
   readonly foundationLanes: readonly string[];
   readonly state:
-    | { readonly status: "ready" }
+    | { readonly status: "ready" | "implemented" }
     | { readonly status: "blocked"; readonly blocker: string };
 }
 
@@ -115,9 +115,9 @@ function greekHero(options: GreekHeroLaneOptions): UnitRosterEntry {
       { type: TYPE_GREEK_FORTRESS, commandSlot: fortressSlot },
     ],
   } as const;
-  return state.status === "ready"
-    ? defineUnitLane({ ...entry, status: "ready", blocker: null })
-    : blockedUnitLane({ ...entry, blocker: state.blocker });
+  return state.status === "blocked"
+    ? blockedUnitLane({ ...entry, blocker: state.blocker })
+    : defineUnitLane({ ...entry, status: state.status, blocker: null });
 }
 
 function greekTempleMyth(
@@ -143,9 +143,6 @@ function greekTempleMyth(
     blocker,
   });
 }
-
-const heroBlocker =
-  "Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying, lifecycle hashing, and the representative hero vertical slice.";
 
 export const GREEK_FUTURE_ROSTER = [
   blockedUnitLane({
@@ -286,7 +283,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 0,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "ready" },
+    state: { status: "implemented" },
   }),
   greekHero({
     id: TYPE_ODYSSEUS,
@@ -297,10 +294,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 1,
     gates: ["B", "C"],
     foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    state: {
-      status: "blocked",
-      blocker: `${heroBlocker} His ranged hero attack must use the projectile contract.`,
-    },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_HERACLES,
@@ -311,7 +305,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 2,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "blocked", blocker: heroBlocker },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_BELLEROPHON,
@@ -324,7 +318,8 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
     state: {
       status: "blocked",
-      blocker: `${heroBlocker} His deterministic jump attack needs command, state, hash, and presentation support.`,
+      blocker:
+        "His deterministic jump attack needs Gate D command, state, hash, and presentation support.",
     },
   }),
   greekHero({
@@ -336,7 +331,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 0,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "blocked", blocker: heroBlocker },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_HIPPOLYTA,
@@ -347,10 +342,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 1,
     gates: ["B", "C"],
     foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    state: {
-      status: "blocked",
-      blocker: `${heroBlocker} Her ranged hero attack must use the projectile contract.`,
-    },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_ATALANTA,
@@ -361,7 +353,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 2,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "blocked", blocker: heroBlocker },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_POLYPHEMUS,
@@ -374,7 +366,8 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
     state: {
       status: "blocked",
-      blocker: `${heroBlocker} His deterministic gore attack needs special-action state and presentation.`,
+      blocker:
+        "His deterministic gore attack needs Gate D special-action state, hashing, and presentation.",
     },
   }),
   greekHero({
@@ -386,7 +379,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 0,
     gates: ["C"],
     foundationLanes: [HERO_FOUNDATION],
-    state: { status: "blocked", blocker: heroBlocker },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_CHIRON,
@@ -397,10 +390,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 1,
     gates: ["B", "C"],
     foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    state: {
-      status: "blocked",
-      blocker: `${heroBlocker} His ranged hero attack must use the projectile contract.`,
-    },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_ACHILLES,
@@ -409,9 +399,13 @@ export const GREEK_FUTURE_ROSTER = [
     requiredGod: GOD_HADES,
     townCenterSlot: 3,
     fortressSlot: 2,
-    gates: ["C"],
-    foundationLanes: [HERO_FOUNDATION],
-    state: { status: "blocked", blocker: heroBlocker },
+    gates: ["C", "D"],
+    foundationLanes: [HERO_FOUNDATION, "serial-variable-attack-cycles"],
+    state: {
+      status: "blocked",
+      blocker:
+        "Classic Achilles cycles among three unequally timed mounted attacks; deterministic cycle selection, duration-scaled hit damage, hashing, and matching presentation need a shared Gate D contract.",
+    },
   }),
   greekHero({
     id: TYPE_PERSEUS,
@@ -424,7 +418,8 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
     state: {
       status: "blocked",
-      blocker: `${heroBlocker} His instant-kill petrification needs faithful target rules, state, and presentation.`,
+      blocker:
+        "His instant-kill petrification needs Gate D target rules, state, hashing, and presentation.",
     },
   }),
 

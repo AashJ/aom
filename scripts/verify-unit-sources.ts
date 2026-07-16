@@ -344,7 +344,7 @@ for (const reference of UNIT_REFERENCE_SPECS) {
       `${reference.key} cannot find root animation ${reference.source.assetInventory.rootAnimation} in its source inventory.`,
     );
   }
-  if (reference.family === "ordinary-projectile") {
+  if (reference.expected.attack.kind === "projectile") {
     const release = reference.source.assetInventory.attackRelease;
     const animationPath = resolve(
       animationRoots[reference.source.culture],
