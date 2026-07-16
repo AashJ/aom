@@ -391,7 +391,7 @@ function ProductionQueue({
     <ClassicHudPanel
       as="section"
       ariaLabel={`Production queue: ${queueTypes.length} unit${queueTypes.length === 1 ? "" : "s"}`}
-      className="fixed bottom-[9.625rem] left-0 z-10 h-16 w-full select-none sm:bottom-[8.375rem] lg:bottom-0 lg:left-96 lg:w-[min(42rem,calc(100vw-40rem))]"
+      className="fixed bottom-[9.625rem] left-0 z-10 h-16 w-full select-none sm:bottom-[8.375rem] lg:bottom-0 lg:left-[35rem] lg:w-[min(32rem,calc(100vw-51rem))]"
     >
       <ol className="relative flex h-full list-none items-center gap-1 overflow-x-auto px-3 pt-2 pb-1.5">
         {queueTypes.map((unitType, index) => {

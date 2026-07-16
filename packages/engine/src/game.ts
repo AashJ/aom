@@ -95,6 +95,16 @@ function cheatFromChat(code: string): CheatId | null {
 }
 
 export interface SelectionSummary {
+  // FIRST selected entity, regardless of owner. The classic stats panel shows
+  // one representative entity when a group is selected.
+  primary: {
+    id: number;
+    type: number;
+    owner: number;
+    hitPoints: number;
+    buildProgress: number;
+  } | null;
+  selectedCount: number;
   // Selected OWN villagers - the build menu gate.
   villagers: number;
   prayingVillagers: number;
@@ -278,6 +288,8 @@ export async function createGame(
   const placementTile = new Int32Array(2);
   let placementValid = false;
   let lastSelection: SelectionSummary = {
+    primary: null,
+    selectedCount: 0,
     villagers: 0,
     prayingVillagers: 0,
     builderType: -1,
@@ -587,6 +599,8 @@ export async function createGame(
         input.state.escapePending = false;
       }
     }
+    let primary: SelectionSummary["primary"] = null;
+    let selectedCount = 0;
     let villagers = 0;
     let prayingVillagers = 0;
     let builderType = -1;
@@ -594,12 +608,25 @@ export async function createGame(
     let producer: SelectionSummary["producer"] = null;
 
     for (let i = 0; i < world.count; i += 1) {
-      if (world.selected[i] !== 1 || world.owner[i] !== selfPlayerId) {
+      if (world.selected[i] !== 1) {
         continue;
       }
 
       const unitType = world.unitType[i]!;
       const unitStats = UNIT_TYPES[unitType]!;
+
+      selectedCount += 1;
+      primary ??= {
+        id: unitIdAt(world, i),
+        type: unitType,
+        owner: world.owner[i]!,
+        hitPoints: world.hp[i]!,
+        buildProgress: world.buildProgress[i]!,
+      };
+
+      if (world.owner[i] !== selfPlayerId) {
+        continue;
+      }
 
       if ((unitStats.classes & UNIT_CLASS_WORKER) !== 0) {
         villagers += 1;
@@ -636,7 +663,14 @@ export async function createGame(
     }
 
     const lastProducer = lastSelection.producer;
+    const lastPrimary = lastSelection.primary;
     if (
+      primary?.id !== lastPrimary?.id ||
+      primary?.type !== lastPrimary?.type ||
+      primary?.owner !== lastPrimary?.owner ||
+      primary?.hitPoints !== lastPrimary?.hitPoints ||
+      primary?.buildProgress !== lastPrimary?.buildProgress ||
+      selectedCount !== lastSelection.selectedCount ||
       villagers !== lastSelection.villagers ||
       prayingVillagers !== lastSelection.prayingVillagers ||
       builderType !== lastSelection.builderType ||
@@ -651,7 +685,15 @@ export async function createGame(
       !typeListsEqual(producer?.queueTypes ?? NO_TYPES, lastProducer?.queueTypes ?? NO_TYPES) ||
       producer?.progress !== lastProducer?.progress
     ) {
-      lastSelection = { villagers, prayingVillagers, builderType, buildOptions, producer };
+      lastSelection = {
+        primary,
+        selectedCount,
+        villagers,
+        prayingVillagers,
+        builderType,
+        buildOptions,
+        producer,
+      };
 
       for (const cb of selectionCbs) {
         cb(lastSelection);

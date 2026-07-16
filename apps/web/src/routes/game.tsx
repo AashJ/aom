@@ -19,6 +19,7 @@ import { ChatBox } from "@/components/chat-box";
 import { CommandPanel } from "@/components/command-panel";
 import { PerfHud } from "@/components/perf-hud";
 import { ResourceBar } from "@/components/resource-bar";
+import { StatsPanel } from "@/components/stats-panel";
 
 const RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:3002/ws"; // Dev default; production config arrives with deployment.
 
@@ -258,13 +259,14 @@ function GameComponent() {
   }
 
   return (
-    <div className="relative h-dvh w-screen">
+    <div className="relative isolate h-dvh w-screen antialiased">
       <canvas ref={canvasRef} className="block h-full w-full" />
       <AgeAdvancementBar game={game} />
       <ChatBox game={game} />
       <ResourceBar game={game} />
       <PerfHud game={game} />
       <CommandPanel game={game} />
+      <StatsPanel game={game} />
       {net.desyncTick !== null && (
         <StatusPill text={`Desync detected at tick ${net.desyncTick} — match halted`} />
       )}
