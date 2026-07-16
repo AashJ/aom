@@ -3,6 +3,7 @@ import { definition as greekMilitia } from "../unit-media/greek/militia";
 import { definition as neutralTree } from "../unit-media/neutral/tree";
 import { definition as neutralBerryBush } from "../unit-media/neutral/berry-bush";
 import { definition as neutralGoldMine } from "../unit-media/neutral/gold-mine";
+import { definition as neutralRelic } from "../unit-media/neutral/relic";
 import { definition as greekVillager } from "../unit-media/greek/villager";
 import { definition as egyptianLaborer } from "../unit-media/egyptian/laborer";
 import { definition as greekTownCenter } from "../unit-media/greek/town-center";
@@ -30,6 +31,7 @@ import { definition as greekToxotes } from "../unit-media/greek/toxotes";
 import { definition as greekPeltast } from "../unit-media/greek/peltast";
 import { definition as greekGastraphetes } from "../unit-media/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-media/greek/hetairoi";
+import { definition as greekJason } from "../unit-media/greek/jason";
 import { definition as egyptianSlinger } from "../unit-media/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-media/egyptian/chariot-archer";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
@@ -51,6 +53,7 @@ export const UNIT_MEDIA_DEFINITIONS = [
   neutralTree,
   neutralBerryBush,
   neutralGoldMine,
+  neutralRelic,
   greekVillager,
   egyptianLaborer,
   greekTownCenter,
@@ -78,6 +81,7 @@ export const UNIT_MEDIA_DEFINITIONS = [
   greekPeltast,
   greekGastraphetes,
   greekHetairoi,
+  greekJason,
   egyptianSlinger,
   egyptianChariotArcher,
 ] as const satisfies readonly UnitMediaDefinition[];

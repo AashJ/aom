@@ -27,6 +27,7 @@ export interface PlayerState {
   pop: number;
   popCap: number;
   completedBuildings: Uint8Array;
+  ownedOrQueuedUnitCounts: Uint32Array;
   ageAdvancement: AgeAdvancementState | null;
 }
 
@@ -48,7 +49,22 @@ export interface PlayerStateStore {
   clear(): void;
 }
 
-function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+export function typeAvailabilityForPlayerState(
+  state: PlayerState,
+  unitType: number,
+  producerType?: number,
+): TypeAvailability {
+  return getTypeAvailability(unitType, {
+    playerAge: state.age,
+    playerCulture: cultureForMajorGod(state.majorGod),
+    producerType,
+    hasCompletedBuilding: (buildingType) => state.completedBuildings[buildingType] === 1,
+    hasGod: (god) => god === state.majorGod || state.minorGods.includes(god),
+    ownedOrQueuedUnitCount: (type) => state.ownedOrQueuedUnitCounts[type] ?? 0,
+  });
+}
+
+function arraysEqual(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
   if (a.length !== b.length) {
     return false;
   }
@@ -75,6 +91,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     pop: 0,
     popCap: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    ownedOrQueuedUnitCounts: new Uint32Array(UNIT_TYPES.length),
     ageAdvancement: null,
   };
   const callbacks = new Set<PlayerStateCallback>();
@@ -91,6 +108,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     const favorPerMinute = snapshot.favorRateMilliPerMinute / 1_000;
     let pop = 0;
     let popCap = 0;
+    const ownedOrQueuedUnitCounts = new Uint32Array(UNIT_TYPES.length);
     const ageAdvancement =
       snapshot.ageAdvanceTarget === NO_AGE
         ? null
@@ -110,11 +128,15 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
 
       const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
 
+      ownedOrQueuedUnitCounts[stats.id] = ownedOrQueuedUnitCounts[stats.id]! + 1;
       pop += stats.populationCost;
 
       const queueStart = index * MAX_TRAIN_QUEUE;
       for (let queueIndex = 0; queueIndex < snapshot.trainQueueLength[index]!; queueIndex += 1) {
-        pop += UNIT_TYPES[snapshot.trainQueueTypes[queueStart + queueIndex]!]!.populationCost;
+        const queuedType = snapshot.trainQueueTypes[queueStart + queueIndex]!;
+        const queuedStats = UNIT_TYPES[queuedType]!;
+        ownedOrQueuedUnitCounts[queuedType] = ownedOrQueuedUnitCounts[queuedType]! + 1;
+        pop += queuedStats.populationCost;
       }
 
       if (stats.footprint > 0 && snapshot.buildProgress[index]! >= stats.buildTicks) {
@@ -138,7 +160,8 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       ageAdvancement?.remainingTicks === state.ageAdvancement?.remainingTicks &&
       ageAdvancement?.totalTicks === state.ageAdvancement?.totalTicks &&
       ageAdvancement?.buildingId === state.ageAdvancement?.buildingId &&
-      arraysEqual(state.completedBuildings, snapshot.completedBuildings)
+      arraysEqual(state.completedBuildings, snapshot.completedBuildings) &&
+      arraysEqual(state.ownedOrQueuedUnitCounts, ownedOrQueuedUnitCounts)
     ) {
       return;
     }
@@ -155,6 +178,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       pop,
       popCap,
       completedBuildings: snapshot.completedBuildings.slice(),
+      ownedOrQueuedUnitCounts,
       ageAdvancement,
     };
 
@@ -164,13 +188,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
   }
 
   function availability(unitType: number, producerType?: number): TypeAvailability {
-    return getTypeAvailability(unitType, {
-      playerAge: state.age,
-      playerCulture: cultureForMajorGod(state.majorGod),
-      producerType,
-      hasCompletedBuilding: (buildingType) => state.completedBuildings[buildingType] === 1,
-      hasGod: (god) => god === state.majorGod || state.minorGods.includes(god),
-    });
+    return typeAvailabilityForPlayerState(state, unitType, producerType);
   }
 
   function subscribe(callback: PlayerStateCallback): () => void {

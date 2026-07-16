@@ -14,6 +14,8 @@ export const COMMAND_ADVANCE_AGE = 7;
 export const COMMAND_CHEAT = 8;
 export const COMMAND_PRAY = 9;
 export const COMMAND_CANCEL_TRAIN = 10;
+export const COMMAND_PICK_UP_RELIC = 11;
+export const COMMAND_DROP_OFF_RELIC = 12;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -119,6 +121,22 @@ export interface CancelTrainCommand {
   queueIndex: number;
 }
 
+export interface PickUpRelicCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_PICK_UP_RELIC;
+  unitIds: number[];
+  targetId: number;
+}
+
+export interface DropOffRelicCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_DROP_OFF_RELIC;
+  unitIds: number[];
+  targetId: number;
+}
+
 export interface AdvanceAgeCommand {
   tick: number;
   issuer: number;
@@ -146,6 +164,8 @@ export type Command =
   | BuildCommand
   | TrainCommand
   | CancelTrainCommand
+  | PickUpRelicCommand
+  | DropOffRelicCommand
   | AdvanceAgeCommand
   | CheatCommand;
 

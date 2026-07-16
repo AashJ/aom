@@ -14,6 +14,8 @@ import {
   COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
+  COMMAND_DROP_OFF_RELIC,
+  COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
   COMMAND_PRAY,
   COMMAND_STOP,
@@ -93,6 +95,22 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_PRAY, unitIds, targetId }],
+      });
+    },
+
+    submitPickUpRelic(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_PICK_UP_RELIC, unitIds, targetId }],
+      });
+    },
+
+    submitDropOffRelic(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_DROP_OFF_RELIC, unitIds, targetId }],
       });
     },
 

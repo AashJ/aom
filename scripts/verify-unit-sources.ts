@@ -22,6 +22,7 @@ import {
   UNIT_CLASS_INFANTRY,
   UNIT_CLASS_MELEE,
   UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
   UNIT_CLASS_NON_GREEK_UNIT,
   UNIT_CLASS_SIEGE,
   type DamageBonus,
@@ -102,6 +103,7 @@ function trialClasses(unit: XmbNode): number {
   if (types.has("AbstractInfantry")) classes |= UNIT_CLASS_INFANTRY;
   if (types.has("AbstractCavalry")) classes |= UNIT_CLASS_CAVALRY;
   if (types.has("Military")) classes |= UNIT_CLASS_MILITARY;
+  if (types.has("Hero")) classes |= UNIT_CLASS_HERO;
   if (types.has("AbstractArcher")) classes |= UNIT_CLASS_ARCHER;
   if (childValues(unit, "action").some((action) => action.attributes.name === "HandAttack")) {
     classes |= UNIT_CLASS_MELEE;
@@ -142,6 +144,8 @@ function damageBonus(type: string, multiplier: number): DamageBonus {
       };
     case "Siege":
       return { target: { kind: "classes", classes: UNIT_CLASS_SIEGE }, multiplier };
+    case "MythUnit":
+      return { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier };
     default:
       throw new Error(`Unsupported Trial damage bonus type ${type}.`);
   }
@@ -219,7 +223,7 @@ function trialComparableValues(
     requiredAge: numberValue(unit, "allowedage") - 1,
   };
 
-  if (reference.family === "ordinary-melee") {
+  if (reference.expected.attack.kind === "melee") {
     const attack = trialAttack(unit, "HandAttack");
     return {
       ...common,

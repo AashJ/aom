@@ -12,8 +12,8 @@ is not launchable until its family audit freezes a complete candidate reference 
 
 - Total reserved unit workcells: **76**
 - Implemented: **15**
-- Ready for fan-out: **0**
-- Blocked on shared foundations: **61**
+- Ready for fan-out: **1**
+- Blocked on shared foundations: **60**
 
 ## ordinary-melee (10)
 
@@ -96,12 +96,10 @@ is not launchable until its family audit freezes a complete candidate reference 
 
 ## hero (15)
 
-- `greek-jason` — id `96`; Greek; Gate C; blocked.
+- `greek-jason` — id `96`; Greek; Gate C; ready.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle
-  - Blocker: Gate C: Greek hero uniqueness and retraining, myth-unit counter damage, relic carrying,
-    lifecyclehashing, and the representative hero vertical slice.
 
 - `greek-odysseus` — id `97`; Greek; Gates B+C; blocked.
   - Assignment: Greek Town Center slot 2; Fortress slot 1

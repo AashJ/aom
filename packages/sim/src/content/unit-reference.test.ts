@@ -9,6 +9,7 @@ import {
 import { RESERVED_ROSTER_UNIT_TYPE_IDS } from "./unit-type-ids";
 import {
   validateDefinitionAgainstReference,
+  trialComparableExpected,
   validateUnitReferences,
   type UnitReferenceSpec,
 } from "./unit-reference-schema";
@@ -141,6 +142,40 @@ describe("agentic unit references", () => {
     };
     expect(() => validateUnitReferences([lane], [driftedReference])).toThrow(
       "does not match its canonical roster lane",
+    );
+  });
+
+  test("models projectile delivery independently from hero identity", () => {
+    const lane = UNIT_ROSTER.find((entry) => entry.key === "greek-jason")!;
+    const hero = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key)!;
+    const projectile = UNIT_REFERENCE_SPECS.find(
+      (entry) => entry.family === "ordinary-projectile" && entry.source.culture === "greek",
+    );
+    if (hero.family !== "hero" || projectile?.family !== "ordinary-projectile") {
+      throw new Error("Projectile hero contract fixtures are unavailable.");
+    }
+    const {
+      stage: _stage,
+      finalRulesetReview: _review,
+      ...projectileSourceFields
+    } = projectile.source;
+    const projectileSource = { ...projectileSourceFields, stage: "candidate" as const };
+
+    const rangedHero = {
+      ...hero,
+      attackKind: "projectile" as const,
+      source: projectileSource,
+      expected: { ...hero.expected, attack: projectile.expected.attack },
+    };
+    const rangedDefinition = {
+      ...UNIT_TYPES[lane.id]!,
+      attack: projectile.expected.attack,
+    };
+
+    expect(() => validateUnitReferences([lane], [rangedHero])).not.toThrow();
+    expect(() => validateDefinitionAgainstReference(rangedDefinition, rangedHero)).not.toThrow();
+    expect(trialComparableExpected(rangedHero)["attack.accuracy"]).toBe(
+      projectile.expected.attack.accuracy,
     );
   });
 });

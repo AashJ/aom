@@ -1,6 +1,6 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
 import { FAVOR, NO_UNIT_TYPE, RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
-import type { UnitTypeStats } from "./content/unit-type-schema";
+import { UNIT_CLASS_RELIC, type UnitTypeStats } from "./content/unit-type-schema";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
 import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
@@ -33,6 +33,7 @@ export interface RenderSnapshot {
   selected: Uint8Array;
   owner: Uint8Array;
   unitType: Uint16Array;
+  carriedRelicCount: Uint8Array;
   projectileCount: number;
   projectileIds: Uint32Array;
   projectileTypes: Uint8Array;
@@ -94,6 +95,7 @@ export function createSnapshot(
     selected: new Uint8Array(capacity),
     owner: new Uint8Array(capacity),
     unitType: new Uint16Array(capacity),
+    carriedRelicCount: new Uint8Array(capacity),
     projectileCount: 0,
     projectileIds: new Uint32Array(projectileCapacity),
     projectileTypes: new Uint8Array(projectileCapacity),
@@ -188,6 +190,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.stockpiles.set(world.stockpiles);
   out.playerMajorGods.set(world.playerMajorGod);
   out.completedBuildings.fill(0);
+  out.carriedRelicCount.fill(0);
   const viewerSlot = world.playerSlotById[viewerId]!;
   out.ageAdvanceTarget = NO_AGE;
   out.ageAdvanceGod = NO_GOD;
@@ -265,7 +268,8 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;
     out.actionCooldown[i] = world.attackCooldown[i]!;
-    out.visible[i] = isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
+    out.visible[i] =
+      world.containedBy[i] === NO_TARGET && isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
     // Copies selected, not selectable; selectable only means the unit may be selected.
     out.selected[i] = world.selected[i]!;
     // Renderer tints by owner in the next chunk.
@@ -287,5 +291,12 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
       queueStart,
     );
     out.carried[i] = world.carried[i]!;
+
+    if ((UNIT_TYPES[world.unitType[i]!]!.classes & UNIT_CLASS_RELIC) !== 0) {
+      const container = resolveId(world, world.containedBy[i]!);
+      if (container >= 0) {
+        out.carriedRelicCount[container] = Math.min(0xff, out.carriedRelicCount[container]! + 1);
+      }
+    }
   }
 }

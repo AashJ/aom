@@ -9,6 +9,7 @@ import {
   GOD_ZEUS,
   MAP_TILES,
   MAX_TRAIN_QUEUE,
+  NEUTRAL_OWNER,
   NO_GOD,
   NO_AGE,
   NO_TARGET,
@@ -23,10 +24,13 @@ import {
   TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
   TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
+  TYPE_JASON,
   TYPE_MILITIA,
+  TYPE_RELIC,
   UNIT_TYPES,
   VERTS_PER_ROW,
   type RenderSnapshot,
+  tickWorld,
   writeSnapshot,
 } from "@aom/sim";
 import { createCamera, updateMatrices } from "../camera/camera";
@@ -92,6 +96,14 @@ function recordingSink(): CommandSink & { calls: string[]; targetIds: number[] }
       calls.push("pray");
       targetIds.push(targetId);
     },
+    submitPickUpRelic: (_ids, targetId) => {
+      calls.push("pick-up-relic");
+      targetIds.push(targetId);
+    },
+    submitDropOffRelic: (_ids, targetId) => {
+      calls.push("drop-off-relic");
+      targetIds.push(targetId);
+    },
     submitBuild: (_ids, targetId) => {
       calls.push("build");
       targetIds.push(targetId);
@@ -124,6 +136,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     owner: new Uint8Array(xs.length),
     hp: new Float32Array(xs.length),
     unitType: new Uint16Array(xs.length).fill(TYPE_VILLAGER),
+    carriedRelicCount: new Uint8Array(xs.length),
     projectileCount: 0,
     projectileIds: new Uint32Array(0),
     projectileTypes: new Uint8Array(0),
@@ -297,7 +310,6 @@ describe("pickUnit", () => {
 
     const issued = consumeCommandInput(
       commandInput(800, 450),
-      world,
       sink,
       0,
       camera,
@@ -341,7 +353,6 @@ describe("pickUnit", () => {
 
     const issued = consumeCommandInput(
       commandInput(800, 450),
-      world,
       sink,
       0,
       camera,
@@ -388,7 +399,6 @@ describe("pickUnit", () => {
 
     const issued = consumeCommandInput(
       commandInput(800, 450),
-      world,
       sink,
       0,
       camera,
@@ -432,7 +442,6 @@ describe("pickUnit", () => {
 
     const issued = consumeCommandInput(
       commandInput(800, 450),
-      world,
       sink,
       0,
       camera,
@@ -447,6 +456,107 @@ describe("pickUnit", () => {
     // A finished building is not a Build target; the click is a plain ground order.
     expect(issued).toBe(1);
     expect(sink.calls).toEqual(["move"]);
+  });
+
+  test("right-click on a ground relic routes a selected relic-capable hero to PickUp", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0, GOD_ZEUS);
+    world.walkable.fill(1);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+
+    const heroId = spawnUnit(world, camera.target[0]! - 8, camera.target[2]!, 0, 0, 0, TYPE_JASON);
+    const relicId = spawnUnit(
+      world,
+      camera.target[0]!,
+      camera.target[2]!,
+      0,
+      0,
+      NEUTRAL_OWNER,
+      TYPE_RELIC,
+    );
+    setSelected(world, 0, true);
+    tickWorld(world);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["pick-up-relic"]);
+    expect(sink.targetIds).toEqual([relicId]);
+    expect(heroId).toBe(0);
+  });
+
+  test("right-click on an own Temple routes a carrying hero to DropOff before prayer", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0, GOD_ZEUS);
+    world.walkable.fill(1);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+
+    const templeId = spawnBuilding(
+      world,
+      Math.round(camera.target[0]!) - 2,
+      Math.round(camera.target[2]!) - 2,
+      0,
+      TYPE_TEMPLE,
+      true,
+    );
+    const heroId = spawnUnit(world, camera.target[0]! - 8, camera.target[2]!, 0, 0, 0, TYPE_JASON);
+    const relicId = spawnUnit(
+      world,
+      camera.target[0]! - 8,
+      camera.target[2]!,
+      0,
+      0,
+      NEUTRAL_OWNER,
+      TYPE_RELIC,
+    );
+    world.containedBy[2] = heroId;
+    world.selectable[2] = 0;
+    setSelected(world, 1, true);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["drop-off-relic"]);
+    expect(sink.targetIds).toEqual([templeId]);
+    expect(relicId).toBe(2);
   });
 
   test("marquee replaces selection when it hits nothing", () => {

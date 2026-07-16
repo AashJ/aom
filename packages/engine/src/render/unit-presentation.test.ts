@@ -17,6 +17,7 @@ import {
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
   TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
   TYPE_HOPLITE,
+  TYPE_JASON,
   TYPE_MILITIA,
   TYPE_SPEARMAN,
   TYPE_TOXOTES,
@@ -252,6 +253,22 @@ describe("unit presentation", () => {
     );
     expect(UNIT_MEDIA[TYPE_HOPLITE]!.presentation).toMatchObject({ kind: "model" });
     expect(UNIT_MEDIA[TYPE_SPEARMAN]!.presentation).toMatchObject({ kind: "model" });
+  });
+
+  test("uses Jason's original carry actions while a relic is contained", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.unitType[0] = TYPE_JASON;
+    snapshot.carriedRelicCount[0] = 1;
+
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekJasonCarryIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe("greekJasonCarryWalk");
+
+    snapshot.actionCooldown[0] = UNIT_TYPES[TYPE_JASON]!.attack!.cooldownTicks;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekJasonAttack");
+    expect(modelKey(resolveModelDeathPresentation(TYPE_JASON, packId(0, 0)))).toBe(
+      "greekJasonDeath",
+    );
   });
 
   test("binds the Toxotes attack clip to the authored projectile release tag", () => {

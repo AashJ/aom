@@ -4,29 +4,27 @@ import { isGreekMajorGod } from "./favor";
 import { assignFieldGoal, setFacingToward } from "./navigation";
 import { CULTURE_GREEK, UNIT_CLASS_TEMPLE, UNIT_TYPES } from "./types";
 import { cellOf } from "../flow";
-import { clearAttackOrder } from "./attack-state";
-import { NO_TARGET } from "./id";
+import {
+  assignUnitTask,
+  clearUnitTask,
+  MODE_BUILDING,
+  MODE_GATHERING,
+  MODE_PRAYING,
+} from "./unit-tasks";
 
-export { NO_TARGET } from "./id";
-
-export const MODE_IDLE = 0;
-export const MODE_GATHERING = 1;
-export const MODE_RETURNING = 2;
-export const MODE_BUILDING = 3;
-export const MODE_PRAYING = 4;
+export {
+  MODE_BUILDING,
+  MODE_GATHERING,
+  MODE_IDLE,
+  MODE_PRAYING,
+  MODE_RETURNING,
+  NO_TARGET,
+} from "./unit-tasks";
 
 export type AssignedWorkerTaskMode =
   | typeof MODE_GATHERING
   | typeof MODE_BUILDING
   | typeof MODE_PRAYING;
-
-export function clearWorkerTask(world: World, index: number): void {
-  world.mode[index] = MODE_IDLE;
-  world.taskTarget[index] = NO_TARGET;
-  world.gatherPosX[index] = 0;
-  world.gatherPosZ[index] = 0;
-  clearAttackOrder(world, index);
-}
 
 export function assignWorkerTask(
   world: World,
@@ -34,9 +32,7 @@ export function assignWorkerTask(
   mode: AssignedWorkerTaskMode,
   targetId: number,
 ): void {
-  clearWorkerTask(world, index);
-  world.mode[index] = mode;
-  world.taskTarget[index] = targetId;
+  assignUnitTask(world, index, mode, targetId);
 }
 
 export function assignGatherTask(
@@ -74,7 +70,7 @@ export function tickPrayerTask(
   const owner = world.owner[index]!;
 
   if (!isValidPrayerTarget(world, target, owner)) {
-    clearWorkerTask(world, index);
+    clearUnitTask(world, index);
     return;
   }
 

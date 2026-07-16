@@ -9,9 +9,11 @@ import {
   MAX_TRAIN_QUEUE,
   RESOURCE_COUNT,
   TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
+  TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
   TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
   TYPE_HOPLITE,
+  TYPE_JASON,
   UNIT_TYPES,
   createSnapshot,
 } from "@aom/sim";
@@ -132,5 +134,23 @@ describe("player state store", () => {
     snapshot.completedBuildings[TYPE_BARRACKS] = 1;
     store.update(snapshot);
     expect(store.availability(TYPE_HOPLITE, TYPE_BARRACKS)).toEqual({ available: true });
+  });
+
+  test("projects live and queued heroes into command availability", () => {
+    const store = createPlayerStateStore(PLAYER_ID);
+    const snapshot = populatedSnapshot();
+
+    snapshot.completedBuildings[TYPE_TEMPLE] = 1;
+    store.update(snapshot);
+    expect(store.availability(TYPE_JASON, TYPE_TOWN_CENTER)).toEqual({ available: true });
+
+    snapshot.trainQueueLength[1] = 3;
+    snapshot.trainQueueTypes[MAX_TRAIN_QUEUE + 2] = TYPE_JASON;
+    store.update(snapshot);
+    expect(store.availability(TYPE_JASON, TYPE_TOWN_CENTER)).toEqual({
+      available: false,
+      reason: "train-limit",
+      limit: 1,
+    });
   });
 });

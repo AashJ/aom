@@ -93,6 +93,8 @@ function actionFor(
   ) {
     return "construction";
   }
+  const carriesRelic = snapshot.carriedRelicCount[index]! > 0;
+  if (moved && carriesRelic && actions.carryWalk) return "carryWalk";
   if (moved && actions.walk) return "walk";
   if (snapshot.mode[index] === MODE_PRAYING && actions.pray) return "pray";
   if (snapshot.mode[index] === MODE_BUILDING && actions.build) return "build";
@@ -103,6 +105,7 @@ function actionFor(
     if (targetType === TYPE_TREE && actions.gatherWood) return "gatherWood";
   }
   if (snapshot.actionCooldown[index]! > 0 && actions.attack) return "attack";
+  if (carriesRelic && actions.carryIdle) return "carryIdle";
   return "idle";
 }
 

@@ -162,6 +162,14 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // Relic containment changes targeting, presentation, and future release
+  // positions, so the stable container relationship is authoritative state.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.containedBy[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // Handle wiring determines which commands resolve — clients must agree on it exactly.
   for (let i = 0; i < world.count; i += 1) {
     word = world.handleOf[i]!;

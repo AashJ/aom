@@ -4,6 +4,10 @@ export interface UnitTypeStats {
   readonly label: string;
   readonly culture: number;
   readonly classes: number;
+  // Hero behavior is authored content, never inferred from a display name or id.
+  // Only hero definitions carry this profile; catalog validation keeps the
+  // profile and UNIT_CLASS_HERO membership in lockstep.
+  readonly hero?: HeroTraits;
   readonly maxHp: number;
   readonly lineOfSight: number;
   readonly movementSpeed: number;
@@ -36,6 +40,14 @@ export interface UnitTypeStats {
   readonly prerequisiteBuildings: readonly number[];
   readonly trainedAt: readonly TypeCommandRelationship[];
   readonly builtBy: readonly TypeCommandRelationship[];
+}
+
+export interface HeroTraits {
+  // Greek heroes use one live-or-queued copy of each identity per player.
+  readonly trainLimit: number;
+  readonly relicCapacity: number;
+  readonly relicPickupRange: number;
+  readonly relicDropOffRange: number;
 }
 
 export type DamageProfile = readonly [hack: number, pierce: number, crush: number];
@@ -123,6 +135,8 @@ export const UNIT_CLASS_HERO = 1 << 11;
 // Mirrors Classic's curated LogicalTypeNonGreekUnit membership. This is not
 // derivable from culture: counter-infantry and civilian exceptions exist.
 export const UNIT_CLASS_NON_GREEK_UNIT = 1 << 12;
+export const UNIT_CLASS_MYTH = 1 << 13;
+export const UNIT_CLASS_RELIC = 1 << 14;
 
 export const DAMAGE_HACK = 0;
 export const DAMAGE_PIERCE = 1;

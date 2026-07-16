@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { NO_TARGET } from "./id";
 import {
   GRID_CELLS,
   GRID_DIM,
@@ -23,6 +24,7 @@ describe("deterministic unit spatial grid", () => {
       cellCount: new Uint32Array(GRID_CELLS),
       cellStart: new Uint32Array(GRID_CELLS + 1),
       cellUnits: new Uint32Array(5),
+      containedBy: new Uint32Array(5).fill(NO_TARGET),
     };
 
     rebuildUnitSpatialGrid(state);
@@ -42,5 +44,14 @@ describe("deterministic unit spatial grid", () => {
       output.push(unitIndex),
     );
     expect(candidates).toEqual([1, 3, 0, 2]);
+
+    state.containedBy[2] = 123;
+    rebuildUnitSpatialGrid(state);
+    expect(
+      Array.from(
+        state.cellUnits.slice(state.cellStart[sharedCell], state.cellStart[sharedCell + 1]),
+      ),
+    ).toEqual([0]);
+    expect(state.cellStart[GRID_CELLS]).toBe(state.count - 1);
   });
 });

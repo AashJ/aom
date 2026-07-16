@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   COMMAND_CANCEL_TRAIN,
+  COMMAND_DROP_OFF_RELIC,
+  COMMAND_PICK_UP_RELIC,
   createWorld,
   hashWorld,
   registerPlayer,
@@ -19,6 +21,31 @@ function flatWorld(seed: number): World {
 }
 
 describe("loopback command sink", () => {
+  test("stamps relic pickup and drop-off through the delayed command seam", () => {
+    const world = flatWorld(42);
+    const sink = createLoopbackSink(world);
+
+    sink.submitPickUpRelic([3], 17);
+    sink.submitDropOffRelic([3], 21);
+
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PICK_UP_RELIC,
+        unitIds: [3],
+        targetId: 17,
+      },
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_DROP_OFF_RELIC,
+        unitIds: [3],
+        targetId: 21,
+      },
+    ]);
+  });
+
   test("stamps queue cancellation through the same delayed command seam", () => {
     const world = flatWorld(42);
     const sink = createLoopbackSink(world);

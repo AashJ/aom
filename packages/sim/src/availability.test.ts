@@ -130,6 +130,7 @@ describe("content availability", () => {
       producerType,
       hasCompletedBuilding: () => true,
       hasGod: (god: number) => god === majorGod,
+      ownedOrQueuedUnitCount: () => 0,
     });
 
     expect(getTypeAvailability(TYPE_SPEARMAN, context(GOD_ZEUS, TYPE_EGYPTIAN_BARRACKS))).toEqual({
@@ -163,6 +164,7 @@ describe("content availability", () => {
       hasCompletedBuilding: (buildingType: number) =>
         snapshot.completedBuildings[buildingType] === 1,
       hasGod: (god: number) => god === snapshot.majorGod || snapshot.minorGods.includes(god),
+      ownedOrQueuedUnitCount: () => 0,
     });
     const availableFromSnapshot = (unitType: number): boolean =>
       isTypeAvailable(unitType, availabilityContext());

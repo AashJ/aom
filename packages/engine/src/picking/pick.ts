@@ -8,8 +8,8 @@ import {
   setSelected,
   SIM_MAP_SIZE,
   UNIT_CLASS_TEMPLE,
+  UNIT_CLASS_RELIC,
   UNIT_CLASS_WORKER,
-  unitIdAt,
   UNIT_TYPES,
   type RenderSnapshot,
   type World,
@@ -31,27 +31,36 @@ const commandTarget = vec3.create();
 interface SelectedCommandUnits {
   ids: number[];
   hasGreekWorker: boolean;
+  hasRelicHero: boolean;
+  hasRelicCarrier: boolean;
 }
 
-type TargetCommand = "attack" | "build" | "gather" | "pray";
+type TargetCommand = "attack" | "build" | "drop-off-relic" | "gather" | "pick-up-relic" | "pray";
 
-function collectSelectedCommandUnits(world: World, selfPlayerId: number): SelectedCommandUnits {
+function collectSelectedCommandUnits(
+  snapshot: RenderSnapshot,
+  selfPlayerId: number,
+): SelectedCommandUnits {
   const ids: number[] = [];
   let hasGreekWorker = false;
+  let hasRelicHero = false;
+  let hasRelicCarrier = false;
 
   // Allocation is fine at click/key rate; commands are serializable plain data.
-  for (let index = 0; index < world.count; index += 1) {
+  for (let index = 0; index < snapshot.count; index += 1) {
     // Keep commands lean, while the sim remains the validation authority.
-    if (world.selected[index] !== 1 || world.owner[index] !== selfPlayerId) {
+    if (snapshot.selected[index] !== 1 || snapshot.owner[index] !== selfPlayerId) {
       continue;
     }
 
-    ids.push(unitIdAt(world, index));
-    const stats = UNIT_TYPES[world.unitType[index]!]!;
+    ids.push(snapshot.ids[index]!);
+    const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
     hasGreekWorker ||= (stats.classes & UNIT_CLASS_WORKER) !== 0 && stats.culture === CULTURE_GREEK;
+    hasRelicHero ||= (stats.hero?.relicCapacity ?? 0) > 0;
+    hasRelicCarrier ||= stats.hero !== undefined && snapshot.carriedRelicCount[index]! > 0;
   }
 
-  return { ids, hasGreekWorker };
+  return { ids, hasGreekWorker, hasRelicHero, hasRelicCarrier };
 }
 
 function classifyTargetCommand(
@@ -59,6 +68,8 @@ function classifyTargetCommand(
   hit: number,
   selfPlayerId: number,
   canPray: boolean,
+  canPickUpRelic: boolean,
+  canDropOffRelic: boolean,
 ): TargetCommand | null {
   if (hit < 0) {
     return null;
@@ -67,9 +78,23 @@ function classifyTargetCommand(
   const type = snapshot.unitType[hit]!;
   const stats = UNIT_TYPES[type]!;
 
+  if ((stats.classes & UNIT_CLASS_RELIC) !== 0) {
+    return canPickUpRelic ? "pick-up-relic" : null;
+  }
+
   // Resource routing comes before enemy routing: nodes are neutral.
   if (stats.resource >= 0) {
     return "gather";
+  }
+
+  if (
+    canDropOffRelic &&
+    snapshot.owner[hit] === selfPlayerId &&
+    (stats.classes & UNIT_CLASS_TEMPLE) !== 0 &&
+    stats.culture === CULTURE_GREEK &&
+    snapshot.buildProgress[hit]! >= stats.buildTicks
+  ) {
+    return "drop-off-relic";
   }
 
   if (
@@ -226,11 +251,9 @@ export function consumeSelectionInput(
   }
 }
 
-// World stays here for reading selection only. After this chunk, nothing in the engine writes
-// gameplay state except through a sink — the M4 invariant.
+// Command construction reads immutable snapshots only. Gameplay writes cross the sink.
 export function consumeCommandInput(
   input: InputState,
-  world: World,
   sink: CommandSink,
   selfPlayerId: number,
   camera: Camera,
@@ -243,7 +266,7 @@ export function consumeCommandInput(
 ): 0 | 1 | 2 | 3 | 4 {
   if (input.stopPending) {
     input.stopPending = false;
-    const unitIds = collectSelectedCommandUnits(world, selfPlayerId).ids;
+    const unitIds = collectSelectedCommandUnits(curr, selfPlayerId).ids;
 
     if (unitIds.length > 0) {
       sink.submitStop(unitIds);
@@ -259,12 +282,14 @@ export function consumeCommandInput(
   const ndcX = (input.commandX / canvas.clientWidth) * 2 - 1;
   const ndcY = 1 - (input.commandY / canvas.clientHeight) * 2;
   const hit = pickUnit(camera, ndcX, ndcY, prev, curr, alpha, heights);
-  const selected = collectSelectedCommandUnits(world, selfPlayerId);
+  const selected = collectSelectedCommandUnits(curr, selfPlayerId);
   const targetCommand = classifyTargetCommand(
     curr,
     hit,
     selfPlayerId,
     selected.hasGreekWorker && isGreekMajorGod(curr.majorGod),
+    selected.hasRelicHero,
+    selected.hasRelicCarrier,
   );
 
   if (targetCommand && selected.ids.length > 0) {
@@ -286,6 +311,14 @@ export function consumeCommandInput(
         break;
       case "pray":
         sink.submitPray(selected.ids, targetId);
+        issued = 1;
+        break;
+      case "pick-up-relic":
+        sink.submitPickUpRelic(selected.ids, targetId);
+        issued = 1;
+        break;
+      case "drop-off-relic":
+        sink.submitDropOffRelic(selected.ids, targetId);
         issued = 1;
         break;
     }

@@ -20,7 +20,12 @@ export {
   type GameOptions,
   type SelectionSummary,
 } from "./game";
-export type { AgeAdvancementState, PlayerState, PlayerStateCallback } from "./player-state";
+export {
+  typeAvailabilityForPlayerState,
+  type AgeAdvancementState,
+  type PlayerState,
+  type PlayerStateCallback,
+} from "./player-state";
 export { TYPE_ICONS, type IconConfig } from "./assets/icons";
 export { connectToRelay } from "./net/relay";
 export type { BeginInfo, NetEvent, NetSession } from "./net/relay";

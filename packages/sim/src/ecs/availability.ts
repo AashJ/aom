@@ -12,12 +12,14 @@ export interface BuildingCompletionState {
 
 export type HasCompletedBuilding = (buildingType: number) => boolean;
 export type HasGod = (god: number) => boolean;
+export type OwnedOrQueuedUnitCount = (unitType: number) => number;
 
 export interface TypeAvailabilityContext {
   readonly playerAge: number;
   readonly playerCulture: number;
   readonly hasCompletedBuilding: HasCompletedBuilding;
   readonly hasGod: HasGod;
+  readonly ownedOrQueuedUnitCount: OwnedOrQueuedUnitCount;
   readonly producerType?: number;
 }
 
@@ -28,7 +30,8 @@ export type TypeAvailability =
   | { available: false; reason: "age"; requiredAge: number }
   | { available: false; reason: "god"; requiredGod: number }
   | { available: false; reason: "producer"; producerType: number }
-  | { available: false; reason: "building"; buildingType: number };
+  | { available: false; reason: "building"; buildingType: number }
+  | { available: false; reason: "train-limit"; limit: number };
 
 export function isCompletedOwnedBuilding(
   state: BuildingCompletionState,
@@ -119,6 +122,11 @@ export function getTypeAvailability(
         buildingType: stats.prerequisiteBuildings[i]!,
       };
     }
+  }
+
+  const trainLimit = stats.hero?.trainLimit;
+  if (trainLimit !== undefined && context.ownedOrQueuedUnitCount(unitType) >= trainLimit) {
+    return { available: false, reason: "train-limit", limit: trainLimit };
   }
 
   return { available: true };

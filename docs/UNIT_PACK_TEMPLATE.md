@@ -34,6 +34,8 @@ pack's data has a meaningful predicate such as a counter bonus or release bounda
 The media definition owns the icon, model assets, attachments, idle/walk/attack/death actions, and
 selection/acknowledgement/attack audio. Every action and attachment must reference a model declared
 inside the same media pack. The generator compiles those authored keys to numeric runtime indexes.
+Converted vertex-frame clips above the renderer's 20-target budget must be resampled without changing
+their animation clock via `bun scripts/resample-classic-morphs.ts <clip.glb>` before handoff.
 
 ## Files the lane does not own
 

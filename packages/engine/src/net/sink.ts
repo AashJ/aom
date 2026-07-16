@@ -12,6 +12,8 @@ import {
   COMMAND_CHEAT,
   COMMAND_GATHER,
   COMMAND_MOVE,
+  COMMAND_DROP_OFF_RELIC,
+  COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
   COMMAND_PRAY,
   COMMAND_STOP,
@@ -32,6 +34,8 @@ export interface CommandSink {
   submitAttack(unitIds: number[], targetId: number): void;
   submitGather(unitIds: number[], targetId: number): void;
   submitPray(unitIds: number[], targetId: number): void;
+  submitPickUpRelic(unitIds: number[], targetId: number): void;
+  submitDropOffRelic(unitIds: number[], targetId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
   submitCancelTrain(buildingId: number, queueIndex: number): void;
@@ -87,6 +91,24 @@ export function createLoopbackSink(world: World): CommandSink {
         tick: world.tick + INPUT_DELAY_TICKS,
         issuer: 0,
         type: COMMAND_PRAY,
+        unitIds,
+        targetId,
+      });
+    },
+    submitPickUpRelic(unitIds: number[], targetId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PICK_UP_RELIC,
+        unitIds,
+        targetId,
+      });
+    },
+    submitDropOffRelic(unitIds: number[], targetId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_DROP_OFF_RELIC,
         unitIds,
         targetId,
       });

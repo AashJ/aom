@@ -1,12 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   AGE_NAMES,
-  cultureForMajorGod,
   FAVOR,
   FOOD,
   getAgeAdvanceAvailability,
   getAgeAdvanceProducerType,
-  getTypeAvailability,
   GOLD,
   GOD_ATHENA,
   GOD_BAST,
@@ -14,6 +12,7 @@ import {
   GOD_PTAH,
   NO_AGE,
   TYPE_ICONS,
+  typeAvailabilityForPlayerState,
   UNIT_TYPES,
   WOOD,
   type AgeAdvanceAvailability,
@@ -80,16 +79,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     : (selection?.buildOptions ?? []);
   const commandSourceType = producer?.complete ? producer.type : (selection?.builderType ?? -1);
   const availability = (unitType: number, producerType: number): TypeAvailability | null =>
-    playerState
-      ? getTypeAvailability(unitType, {
-          playerAge: playerState.age,
-          playerCulture: cultureForMajorGod(playerState.majorGod),
-          producerType,
-          hasCompletedBuilding: (buildingType) =>
-            playerState.completedBuildings[buildingType] === 1,
-          hasGod: (god) => god === playerState.majorGod || playerState.minorGods.includes(god),
-        })
-      : null;
+    playerState ? typeAvailabilityForPlayerState(playerState, unitType, producerType) : null;
   const ageAdvanceAvailability = ageAdvanceAvailabilityFor(playerState);
   const ageAdvanceRule =
     ageAdvanceAvailability && "rule" in ageAdvanceAvailability ? ageAdvanceAvailability.rule : null;
@@ -507,6 +497,8 @@ function availabilityReason(availability: TypeAvailability | null): string | und
       return "Requires a different god choice";
     case "producer":
       return "Unavailable from this building";
+    case "train-limit":
+      return `Limited to ${availability.limit}`;
     case "invalid-type":
       return "Unavailable";
   }

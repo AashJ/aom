@@ -5,6 +5,7 @@ import {
   type Attack,
   type ArmorProfile,
   type DamageBonus,
+  type HeroTraits,
   type MeleeAttack,
   type ProjectileAttack,
   type TypeCommandRelationship,
@@ -101,6 +102,7 @@ interface UnitReferenceCommonExpected {
   readonly label: string;
   readonly culture: number;
   readonly classes: number;
+  readonly hero: HeroTraits | null;
   readonly maxHp: number;
   readonly lineOfSight: number;
   readonly movementSpeed: number;
@@ -132,9 +134,16 @@ export interface OrdinaryUnitReferenceExpected<
 
 export type MeleeUnitReferenceExpected = OrdinaryUnitReferenceExpected<MeleeAttack>;
 export type ProjectileUnitReferenceExpected = OrdinaryUnitReferenceExpected<ProjectileAttack>;
+export type HeroUnitReferenceExpected<A extends Attack = Attack> = Omit<
+  OrdinaryUnitReferenceExpected<A>,
+  "hero"
+> & {
+  readonly hero: HeroTraits;
+};
 
 type OrdinaryExpectedInput<A extends Attack> = Omit<
   OrdinaryUnitReferenceExpected<A>,
+  | "hero"
   | "workRange"
   | "isStatic"
   | "resource"
@@ -149,6 +158,37 @@ type OrdinaryExpectedInput<A extends Attack> = Omit<
 export function ordinaryUnitExpected<A extends Attack>(
   expected: OrdinaryExpectedInput<A>,
 ): OrdinaryUnitReferenceExpected<A> {
+  return {
+    ...expected,
+    hero: null,
+    workRange: null,
+    isStatic: false,
+    resource: -1,
+    collidesWithProjectiles: true,
+    footprint: 0,
+    popBonus: 0,
+    trainExitOffset: 0,
+    isDropsite: false,
+    builtBy: [],
+  };
+}
+
+type HeroExpectedInput<A extends Attack> = Omit<
+  HeroUnitReferenceExpected<A>,
+  | "workRange"
+  | "isStatic"
+  | "resource"
+  | "collidesWithProjectiles"
+  | "footprint"
+  | "popBonus"
+  | "trainExitOffset"
+  | "isDropsite"
+  | "builtBy"
+> & { readonly hero: HeroTraits };
+
+export function heroUnitExpected<A extends Attack>(
+  expected: HeroExpectedInput<A>,
+): HeroUnitReferenceExpected<A> {
   return {
     ...expected,
     workRange: null,
@@ -179,7 +219,30 @@ export interface ProjectileUnitReferenceSpec {
   readonly expected: ProjectileUnitReferenceExpected;
 }
 
-export type UnitReferenceSpec = MeleeUnitReferenceSpec | ProjectileUnitReferenceSpec;
+interface HeroUnitReferenceSpecBase {
+  readonly family: "hero";
+  readonly id: number;
+  readonly key: string;
+}
+
+export interface MeleeHeroUnitReferenceSpec extends HeroUnitReferenceSpecBase {
+  readonly attackKind: "melee";
+  readonly source: UnitReferenceSource;
+  readonly expected: HeroUnitReferenceExpected<MeleeAttack>;
+}
+
+export interface ProjectileHeroUnitReferenceSpec extends HeroUnitReferenceSpecBase {
+  readonly attackKind: "projectile";
+  readonly source: ProjectileUnitReferenceSource;
+  readonly expected: HeroUnitReferenceExpected<ProjectileAttack>;
+}
+
+export type HeroUnitReferenceSpec = MeleeHeroUnitReferenceSpec | ProjectileHeroUnitReferenceSpec;
+
+export type UnitReferenceSpec =
+  | MeleeUnitReferenceSpec
+  | ProjectileUnitReferenceSpec
+  | HeroUnitReferenceSpec;
 
 export function structurallyEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
@@ -234,7 +297,7 @@ export function trialComparableExpected(
     "attack.bonuses": attack.bonuses,
   };
 
-  if (reference.family === "ordinary-melee") return attackFields;
+  if (reference.expected.attack.kind === "melee") return attackFields;
   return {
     ...attackFields,
     "attack.accuracy": reference.expected.attack.accuracy,
@@ -289,7 +352,10 @@ export function validateUnitReferences(
       }
       deltaFields.add(delta.field);
     }
-    if (reference.family === "ordinary-projectile") {
+    if (
+      reference.family === "ordinary-projectile" ||
+      (reference.family === "hero" && reference.attackKind === "projectile")
+    ) {
       const release = reference.source.assetInventory.attackRelease;
       if (
         !/^[0-9a-f]{64}$/.test(release.sha256) ||
@@ -346,6 +412,7 @@ function definitionSnapshot(definition: UnitTypeStats): OrdinaryUnitReferenceExp
     label: definition.label,
     culture: definition.culture,
     classes: definition.classes,
+    hero: definition.hero ?? null,
     maxHp: definition.maxHp,
     lineOfSight: definition.lineOfSight,
     movementSpeed: definition.movementSpeed,
@@ -389,6 +456,12 @@ export function validateDefinitionAgainstReference(
     case "ordinary-melee": {
       if (definition.attack?.kind !== "melee") {
         throw new Error(`${definition.key} reference requires a melee attack.`);
+      }
+      break;
+    }
+    case "hero": {
+      if (definition.attack?.kind !== reference.attackKind || definition.hero === undefined) {
+        throw new Error(`${definition.key} reference requires a ${reference.attackKind} hero.`);
       }
       break;
     }

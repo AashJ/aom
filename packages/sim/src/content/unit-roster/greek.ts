@@ -13,7 +13,12 @@ import {
   GOD_ZEUS,
   NO_GOD,
 } from "../../ecs/progression";
-import { blockedUnitLane, type UnitGate, type UnitRosterEntry } from "../unit-roster-schema";
+import {
+  blockedUnitLane,
+  defineUnitLane,
+  type UnitGate,
+  type UnitRosterEntry,
+} from "../unit-roster-schema";
 import {
   TYPE_ACHILLES,
   TYPE_AJAX,
@@ -70,18 +75,33 @@ const NAVAL_COMBAT_FOUNDATION = "serial-naval-combat";
 const TRANSPORT_FOUNDATION = "serial-transport";
 const FLIGHT_FOUNDATION = "serial-air-navigation";
 
-function greekHero(
-  id: number,
-  key: string,
-  label: string,
-  requiredGod: number,
-  townCenterSlot: number,
-  fortressSlot: number,
-  gates: readonly UnitGate[],
-  foundationLanes: readonly string[],
-  blocker: string,
-): UnitRosterEntry {
-  return blockedUnitLane({
+interface GreekHeroLaneOptions {
+  readonly id: number;
+  readonly key: string;
+  readonly label: string;
+  readonly requiredGod: number;
+  readonly townCenterSlot: number;
+  readonly fortressSlot: number;
+  readonly gates: readonly UnitGate[];
+  readonly foundationLanes: readonly string[];
+  readonly state:
+    | { readonly status: "ready" }
+    | { readonly status: "blocked"; readonly blocker: string };
+}
+
+function greekHero(options: GreekHeroLaneOptions): UnitRosterEntry {
+  const {
+    id,
+    key,
+    label,
+    requiredGod,
+    townCenterSlot,
+    fortressSlot,
+    gates,
+    foundationLanes,
+    state,
+  } = options;
+  const entry = {
     id,
     key,
     label,
@@ -94,8 +114,10 @@ function greekHero(
       { type: TYPE_GREEK_TOWN_CENTER, commandSlot: townCenterSlot },
       { type: TYPE_GREEK_FORTRESS, commandSlot: fortressSlot },
     ],
-    blocker,
-  });
+  } as const;
+  return state.status === "ready"
+    ? defineUnitLane({ ...entry, status: "ready", blocker: null })
+    : blockedUnitLane({ ...entry, blocker: state.blocker });
 }
 
 function greekTempleMyth(
@@ -255,138 +277,156 @@ export const GREEK_FUTURE_ROSTER = [
       "Water navigation plus naval projectile-siege area, range, collision, and targeting rules.",
   }),
 
-  greekHero(
-    TYPE_JASON,
-    "greek-jason",
-    "Jason",
-    GOD_ZEUS,
-    1,
-    0,
-    ["C"],
-    [HERO_FOUNDATION],
-    heroBlocker,
-  ),
-  greekHero(
-    TYPE_ODYSSEUS,
-    "greek-odysseus",
-    "Odysseus",
-    GOD_ZEUS,
-    2,
-    1,
-    ["B", "C"],
-    [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    `${heroBlocker} His ranged hero attack must use the projectile contract.`,
-  ),
-  greekHero(
-    TYPE_HERACLES,
-    "greek-heracles",
-    "Heracles",
-    GOD_ZEUS,
-    3,
-    2,
-    ["C"],
-    [HERO_FOUNDATION],
-    heroBlocker,
-  ),
-  greekHero(
-    TYPE_BELLEROPHON,
-    "greek-bellerophon",
-    "Bellerophon",
-    GOD_ZEUS,
-    4,
-    3,
-    ["C", "D"],
-    [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    `${heroBlocker} His deterministic jump attack needs command, state, hash, and presentation support.`,
-  ),
-  greekHero(
-    TYPE_THESEUS,
-    "greek-theseus",
-    "Theseus",
-    GOD_POSEIDON,
-    1,
-    0,
-    ["C"],
-    [HERO_FOUNDATION],
-    heroBlocker,
-  ),
-  greekHero(
-    TYPE_HIPPOLYTA,
-    "greek-hippolyta",
-    "Hippolyta",
-    GOD_POSEIDON,
-    2,
-    1,
-    ["B", "C"],
-    [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    `${heroBlocker} Her ranged hero attack must use the projectile contract.`,
-  ),
-  greekHero(
-    TYPE_ATALANTA,
-    "greek-atalanta",
-    "Atalanta",
-    GOD_POSEIDON,
-    3,
-    2,
-    ["C"],
-    [HERO_FOUNDATION],
-    heroBlocker,
-  ),
-  greekHero(
-    TYPE_POLYPHEMUS,
-    "greek-polyphemus",
-    "Polyphemus",
-    GOD_POSEIDON,
-    4,
-    3,
-    ["C", "D"],
-    [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    `${heroBlocker} His deterministic gore attack needs special-action state and presentation.`,
-  ),
-  greekHero(
-    TYPE_AJAX,
-    "greek-ajax",
-    "Ajax",
-    GOD_HADES,
-    1,
-    0,
-    ["C"],
-    [HERO_FOUNDATION],
-    heroBlocker,
-  ),
-  greekHero(
-    TYPE_CHIRON,
-    "greek-chiron",
-    "Chiron",
-    GOD_HADES,
-    2,
-    1,
-    ["B", "C"],
-    [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
-    `${heroBlocker} His ranged hero attack must use the projectile contract.`,
-  ),
-  greekHero(
-    TYPE_ACHILLES,
-    "greek-achilles",
-    "Achilles",
-    GOD_HADES,
-    3,
-    2,
-    ["C"],
-    [HERO_FOUNDATION],
-    heroBlocker,
-  ),
-  greekHero(
-    TYPE_PERSEUS,
-    "greek-perseus",
-    "Perseus",
-    GOD_HADES,
-    4,
-    3,
-    ["C", "D"],
-    [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    `${heroBlocker} His instant-kill petrification needs faithful target rules, state, and presentation.`,
-  ),
+  greekHero({
+    id: TYPE_JASON,
+    key: "greek-jason",
+    label: "Jason",
+    requiredGod: GOD_ZEUS,
+    townCenterSlot: 1,
+    fortressSlot: 0,
+    gates: ["C"],
+    foundationLanes: [HERO_FOUNDATION],
+    state: { status: "ready" },
+  }),
+  greekHero({
+    id: TYPE_ODYSSEUS,
+    key: "greek-odysseus",
+    label: "Odysseus",
+    requiredGod: GOD_ZEUS,
+    townCenterSlot: 2,
+    fortressSlot: 1,
+    gates: ["B", "C"],
+    foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
+    state: {
+      status: "blocked",
+      blocker: `${heroBlocker} His ranged hero attack must use the projectile contract.`,
+    },
+  }),
+  greekHero({
+    id: TYPE_HERACLES,
+    key: "greek-heracles",
+    label: "Heracles",
+    requiredGod: GOD_ZEUS,
+    townCenterSlot: 3,
+    fortressSlot: 2,
+    gates: ["C"],
+    foundationLanes: [HERO_FOUNDATION],
+    state: { status: "blocked", blocker: heroBlocker },
+  }),
+  greekHero({
+    id: TYPE_BELLEROPHON,
+    key: "greek-bellerophon",
+    label: "Bellerophon",
+    requiredGod: GOD_ZEUS,
+    townCenterSlot: 4,
+    fortressSlot: 3,
+    gates: ["C", "D"],
+    foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    state: {
+      status: "blocked",
+      blocker: `${heroBlocker} His deterministic jump attack needs command, state, hash, and presentation support.`,
+    },
+  }),
+  greekHero({
+    id: TYPE_THESEUS,
+    key: "greek-theseus",
+    label: "Theseus",
+    requiredGod: GOD_POSEIDON,
+    townCenterSlot: 1,
+    fortressSlot: 0,
+    gates: ["C"],
+    foundationLanes: [HERO_FOUNDATION],
+    state: { status: "blocked", blocker: heroBlocker },
+  }),
+  greekHero({
+    id: TYPE_HIPPOLYTA,
+    key: "greek-hippolyta",
+    label: "Hippolyta",
+    requiredGod: GOD_POSEIDON,
+    townCenterSlot: 2,
+    fortressSlot: 1,
+    gates: ["B", "C"],
+    foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
+    state: {
+      status: "blocked",
+      blocker: `${heroBlocker} Her ranged hero attack must use the projectile contract.`,
+    },
+  }),
+  greekHero({
+    id: TYPE_ATALANTA,
+    key: "greek-atalanta",
+    label: "Atalanta",
+    requiredGod: GOD_POSEIDON,
+    townCenterSlot: 3,
+    fortressSlot: 2,
+    gates: ["C"],
+    foundationLanes: [HERO_FOUNDATION],
+    state: { status: "blocked", blocker: heroBlocker },
+  }),
+  greekHero({
+    id: TYPE_POLYPHEMUS,
+    key: "greek-polyphemus",
+    label: "Polyphemus",
+    requiredGod: GOD_POSEIDON,
+    townCenterSlot: 4,
+    fortressSlot: 3,
+    gates: ["C", "D"],
+    foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    state: {
+      status: "blocked",
+      blocker: `${heroBlocker} His deterministic gore attack needs special-action state and presentation.`,
+    },
+  }),
+  greekHero({
+    id: TYPE_AJAX,
+    key: "greek-ajax",
+    label: "Ajax",
+    requiredGod: GOD_HADES,
+    townCenterSlot: 1,
+    fortressSlot: 0,
+    gates: ["C"],
+    foundationLanes: [HERO_FOUNDATION],
+    state: { status: "blocked", blocker: heroBlocker },
+  }),
+  greekHero({
+    id: TYPE_CHIRON,
+    key: "greek-chiron",
+    label: "Chiron",
+    requiredGod: GOD_HADES,
+    townCenterSlot: 2,
+    fortressSlot: 1,
+    gates: ["B", "C"],
+    foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION],
+    state: {
+      status: "blocked",
+      blocker: `${heroBlocker} His ranged hero attack must use the projectile contract.`,
+    },
+  }),
+  greekHero({
+    id: TYPE_ACHILLES,
+    key: "greek-achilles",
+    label: "Achilles",
+    requiredGod: GOD_HADES,
+    townCenterSlot: 3,
+    fortressSlot: 2,
+    gates: ["C"],
+    foundationLanes: [HERO_FOUNDATION],
+    state: { status: "blocked", blocker: heroBlocker },
+  }),
+  greekHero({
+    id: TYPE_PERSEUS,
+    key: "greek-perseus",
+    label: "Perseus",
+    requiredGod: GOD_HADES,
+    townCenterSlot: 4,
+    fortressSlot: 3,
+    gates: ["C", "D"],
+    foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    state: {
+      status: "blocked",
+      blocker: `${heroBlocker} His instant-kill petrification needs faithful target rules, state, and presentation.`,
+    },
+  }),
 
   greekTempleMyth(
     TYPE_PEGASUS,

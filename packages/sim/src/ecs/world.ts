@@ -47,6 +47,7 @@ import { clearAttackOrder } from "./attack-state";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickGreekFavor } from "./favor";
+import { countLiveOrQueuedUnitType } from "./hero-lifecycle";
 import { registerPlayer } from "./players";
 import { assignFieldGoal, setFacingToward } from "./navigation";
 import { MAX_PROJECTILE_BODY_RADIUS, MAX_TARGET_BODY_RADIUS } from "./unit-catalog-bounds";
@@ -66,6 +67,13 @@ import {
   tickProjectileStore,
   type ProjectileStore,
 } from "./projectiles";
+import {
+  applyRelicCommand,
+  isRelicCommand,
+  releaseContainedRelics,
+  syncContainedRelics,
+  tickRelicTask,
+} from "./relics";
 import {
   GRID_CELL,
   GRID_CELLS,
@@ -104,16 +112,18 @@ import {
 import {
   assignGatherTask,
   assignWorkerTask,
-  clearWorkerTask,
   isValidPrayerTarget,
+  tickPrayerTask,
+} from "./worker-tasks";
+import {
+  clearUnitTask,
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_IDLE,
   MODE_PRAYING,
   MODE_RETURNING,
   NO_TARGET,
-  tickPrayerTask,
-} from "./worker-tasks";
+} from "./unit-tasks";
 
 export { TICK_HZ, TICK_S } from "../clock";
 export { setFacingToward } from "./navigation";
@@ -124,7 +134,7 @@ export {
   MODE_PRAYING,
   MODE_RETURNING,
   NO_TARGET,
-} from "./worker-tasks";
+} from "./unit-tasks";
 export const SIM_MAP_SIZE = MAP_TILES;
 export const MAX_UNITS = 10_000;
 // Players use real ids < 256, but stockpiles index by actual id; a 256-wide
@@ -194,6 +204,9 @@ export interface World {
   // Rebuilt from active prayer tasks every tick for Favor generation and HUD rate.
   prayingVillagers: Uint16Array;
   unitType: Uint16Array;
+  // Stable id of the hero or Temple currently containing this entity. Gate C
+  // uses it for relics; NO_TARGET means the entity exists on the map.
+  containedBy: Uint32Array;
   // Armor can produce fractional damage, so authoritative hit points remain f64.
   hp: Float64Array;
   buildProgress: Uint16Array;
@@ -311,6 +324,7 @@ export function createWorld(seed: number): World {
     playerFavorProgress: new Uint32Array(256),
     prayingVillagers: new Uint16Array(256),
     unitType: new Uint16Array(MAX_UNITS),
+    containedBy: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     hp: new Float64Array(MAX_UNITS),
     buildProgress: new Uint16Array(MAX_UNITS),
     trainRemaining: new Uint16Array(MAX_UNITS),
@@ -387,6 +401,7 @@ function isTypeAvailableToPlayer(
     playerCulture: cultureForMajorGod(majorGod),
     producerType,
     hasCompletedBuilding: (buildingType) => hasCompletedBuilding(world, playerId, buildingType),
+    ownedOrQueuedUnitCount: (type) => countLiveOrQueuedUnitType(world, playerId, type),
     hasGod: (god) => {
       if (god === majorGod) return true;
       for (let age = 0; age < AGE_COUNT; age += 1) {
@@ -501,6 +516,7 @@ export function spawnUnit(
   setFacingToward(world, index, x + vx, z + vz);
   world.owner[index] = owner;
   world.unitType[index] = type;
+  world.containedBy[index] = NO_TARGET;
   world.hp[index] = UNIT_TYPES[type]!.maxHp;
   world.buildProgress[index] = 0;
   clearProductionQueue(world, index);
@@ -510,7 +526,7 @@ export function spawnUnit(
   world.attackCooldown[index] = 0;
   world.carried[index] = 0;
   world.carriedResource[index] = 0;
-  clearWorkerTask(world, index);
+  clearUnitTask(world, index);
   world.selectable[index] = 1;
   world.selected[index] = 0;
   world.count += 1;
@@ -1138,14 +1154,18 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 6. Economy reads the same fresh grid as combat and writes moveTarget/moving for
-  // movement to consume - the third costume for chase/strike.
+  // 6. Unit tasks read the same fresh grid as combat and write moveTarget/moving
+  // for movement to consume. Every task mode is dispatched in this one dense pass.
   const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
 
   world.prayingVillagers.fill(0);
 
   for (let i = 0; i < world.count; i += 1) {
     if (world.mode[i] === MODE_IDLE) {
+      continue;
+    }
+
+    if (tickRelicTask(world, i)) {
       continue;
     }
 
@@ -1209,7 +1229,7 @@ export function tickWorld(world: World): void {
 
           world.mode[i] = MODE_RETURNING;
         } else {
-          clearWorkerTask(world, i);
+          clearUnitTask(world, i);
         }
 
         continue;
@@ -1332,7 +1352,7 @@ export function tickWorld(world: World): void {
 
               world.mode[i] = MODE_RETURNING;
             } else {
-              clearWorkerTask(world, i);
+              clearUnitTask(world, i);
             }
           } else {
             const prospectDx = world.gatherPosX[i]! - world.posX[i]!;
@@ -1352,7 +1372,7 @@ export function tickWorld(world: World): void {
                 assignFieldGoal(world, i, world.gatherPosX[i]!, world.gatherPosZ[i]!);
               }
             } else {
-              clearWorkerTask(world, i);
+              clearUnitTask(world, i);
             }
           }
 
@@ -1516,21 +1536,21 @@ export function tickWorld(world: World): void {
           }
         } else {
           // A player with no dropsites has bigger problems; the villager stands carrying.
-          clearWorkerTask(world, i);
+          clearUnitTask(world, i);
         }
       }
     } else if (world.mode[i] === MODE_BUILDING) {
       const target = resolveId(world, world.taskTarget[i]!);
 
       if (target < 0 || world.dying[target] === 1 || world.hp[target] === 0) {
-        clearWorkerTask(world, i);
+        clearUnitTask(world, i);
         continue;
       }
 
       const siteStats = UNIT_TYPES[world.unitType[target]!]!;
 
       if (world.buildProgress[target]! >= siteStats.buildTicks) {
-        clearWorkerTask(world, i);
+        clearUnitTask(world, i);
         continue;
       }
 
@@ -1778,6 +1798,10 @@ export function tickWorld(world: World): void {
     }
   }
 
+  // Contained relic positions follow their carrier/Temple only after movement
+  // has committed, keeping their authoritative coordinates deterministic.
+  syncContainedRelics(world);
+
   applyDeaths(world);
 
   // Annihilation, in-sim, hashed: the UI reads it, never computes it.
@@ -1845,6 +1869,10 @@ function applyDeaths(world: World): void {
     const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
     const eventIndex = world.deathEventCount;
 
+    // Heroes drop carried relics and destroyed Temples release deposited relics
+    // before the container handle is invalidated or a dense slot is swapped.
+    releaseContainedRelics(world, i);
+
     world.deathEventIds[eventIndex] = unitIdAt(world, i);
     world.deathEventTypes[eventIndex] = world.unitType[i]!;
     world.deathEventPosX[eventIndex] = world.posX[i]!;
@@ -1891,6 +1919,7 @@ function applyDeaths(world: World): void {
       world.facingZ[i] = world.facingZ[last]!;
       world.owner[i] = world.owner[last]!;
       world.unitType[i] = world.unitType[last]!;
+      world.containedBy[i] = world.containedBy[last]!;
       world.hp[i] = world.hp[last]!;
       world.buildProgress[i] = world.buildProgress[last]!;
       copyProductionQueue(world, i, last);
@@ -1998,7 +2027,7 @@ function applyPendingCommands(world: World): void {
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
           // Carried resources persist across interrupts: a hauler keeps the load.
-          clearWorkerTask(world, index);
+          clearUnitTask(world, index);
           assignFieldGoal(world, index, targetX, targetZ);
         }
       }
@@ -2012,7 +2041,7 @@ function applyPendingCommands(world: World): void {
         // dumb; forged or mis-addressed commands die here identically everywhere.
         if (world.owner[index] !== command.issuer) continue;
         // Carried resources persist across interrupts: a hauler keeps the load.
-        clearWorkerTask(world, index);
+        clearUnitTask(world, index);
       }
     } else if (command.type === COMMAND_ATTACK) {
       const target = resolveId(world, command.targetId);
@@ -2032,7 +2061,7 @@ function applyPendingCommands(world: World): void {
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
           // Carried resources persist across interrupts: a hauler keeps the load.
-          clearWorkerTask(world, index);
+          clearUnitTask(world, index);
           world.attackTarget[index] = command.targetId;
           world.attackOrdered[index] = 1;
           world.moveTargetX[index] = world.posX[target]!;
@@ -2111,6 +2140,8 @@ function applyPendingCommands(world: World): void {
           assignWorkerTask(world, index, MODE_PRAYING, command.targetId);
         }
       }
+    } else if (isRelicCommand(command)) {
+      applyRelicCommand(world, command);
     } else if (command.type === COMMAND_TRAIN) {
       const building = resolveId(world, command.buildingId);
 

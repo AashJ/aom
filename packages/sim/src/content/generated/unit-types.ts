@@ -3,6 +3,7 @@ import { definition as greekMilitia } from "../unit-types/greek/militia";
 import { definition as neutralTree } from "../unit-types/neutral/tree";
 import { definition as neutralBerryBush } from "../unit-types/neutral/berry-bush";
 import { definition as neutralGoldMine } from "../unit-types/neutral/gold-mine";
+import { definition as neutralRelic } from "../unit-types/neutral/relic";
 import { definition as greekVillager } from "../unit-types/greek/villager";
 import { definition as egyptianLaborer } from "../unit-types/egyptian/laborer";
 import { definition as greekTownCenter } from "../unit-types/greek/town-center";
@@ -30,6 +31,7 @@ import { definition as greekToxotes } from "../unit-types/greek/toxotes";
 import { definition as greekPeltast } from "../unit-types/greek/peltast";
 import { definition as greekGastraphetes } from "../unit-types/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-types/greek/hetairoi";
+import { definition as greekJason } from "../unit-types/greek/jason";
 import { definition as egyptianSlinger } from "../unit-types/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-types/egyptian/chariot-archer";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
@@ -39,6 +41,7 @@ export const UNIT_TYPE_DEFINITIONS = [
   neutralTree,
   neutralBerryBush,
   neutralGoldMine,
+  neutralRelic,
   greekVillager,
   egyptianLaborer,
   greekTownCenter,
@@ -66,6 +69,7 @@ export const UNIT_TYPE_DEFINITIONS = [
   greekPeltast,
   greekGastraphetes,
   greekHetairoi,
+  greekJason,
   egyptianSlinger,
   egyptianChariotArcher,
 ] as const satisfies readonly UnitTypeStats[];

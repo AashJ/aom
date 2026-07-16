@@ -508,7 +508,6 @@ export async function createGame(
 
         const issued = consumeCommandInput(
           input.state,
-          world,
           sink,
           selfPlayerId,
           camera,

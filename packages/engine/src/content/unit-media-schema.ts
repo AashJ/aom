@@ -46,6 +46,8 @@ export type UnitMediaAction =
   | "gatherWood"
   | "gatherGold"
   | "pray"
+  | "carryIdle"
+  | "carryWalk"
   | "construction";
 
 export type ModelAnimationClock = "loop" | "action-cycle" | "once";

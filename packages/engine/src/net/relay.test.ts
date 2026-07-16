@@ -5,6 +5,8 @@ import {
   COMMAND_CHEAT,
   COMMAND_CANCEL_TRAIN,
   COMMAND_MOVE,
+  COMMAND_DROP_OFF_RELIC,
+  COMMAND_PICK_UP_RELIC,
   COMMAND_PRAY,
   COMMAND_STOP,
   GOD_HERMES,
@@ -68,6 +70,27 @@ describe("relay sink", () => {
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_PRAY, unitIds: [3, 5], targetId: 17 }],
+      },
+    ]);
+  });
+
+  test("submits tickless relic pickup and Temple drop-off commands", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitPickUpRelic([3], 17);
+    sink.submitDropOffRelic([3], 21);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_PICK_UP_RELIC, unitIds: [3], targetId: 17 }],
+      },
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_DROP_OFF_RELIC, unitIds: [3], targetId: 21 }],
       },
     ]);
   });

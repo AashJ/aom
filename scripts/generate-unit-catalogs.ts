@@ -6,6 +6,7 @@ import {
   CULTURE_SHARED,
   UNIT_CLASS_ARCHER,
   UNIT_CLASS_BUILDING,
+  UNIT_CLASS_HERO,
   UNIT_CLASS_MELEE,
   UNIT_CLASS_MILITARY,
   UNIT_CLASS_RESOURCE,
@@ -142,6 +143,24 @@ const relationshipSlots = new Map<string, UnitTypeStats[]>();
 for (const entry of entries) {
   const definition = entry.definition;
   const attack = definition.attack;
+  const isHero = (definition.classes & UNIT_CLASS_HERO) !== 0;
+
+  if (isHero !== (definition.hero !== undefined)) {
+    throw new Error(`${definition.key} hero class and authored hero traits disagree.`);
+  }
+  if (
+    definition.hero !== undefined &&
+    (!Number.isInteger(definition.hero.trainLimit) ||
+      definition.hero.trainLimit < 1 ||
+      !Number.isInteger(definition.hero.relicCapacity) ||
+      definition.hero.relicCapacity < 0 ||
+      !Number.isFinite(definition.hero.relicPickupRange) ||
+      definition.hero.relicPickupRange < 0 ||
+      !Number.isFinite(definition.hero.relicDropOffRange) ||
+      definition.hero.relicDropOffRange < 0)
+  ) {
+    throw new Error(`${definition.key} has invalid authored hero traits.`);
+  }
 
   if (typeof definition.collidesWithProjectiles !== "boolean") {
     throw new Error(`${definition.key} has no authored projectile-collision policy.`);
@@ -296,6 +315,15 @@ for (const lane of UNIT_ROSTER) {
         definition.attack?.kind !== "projectile")
     ) {
       throw new Error(`${lane.key} must satisfy the ordinary-projectile family contract.`);
+    }
+    if (
+      lane.status !== "blocked" &&
+      lane.family === "hero" &&
+      ((definition.classes & UNIT_CLASS_HERO) === 0 ||
+        definition.hero === undefined ||
+        definition.attack === null)
+    ) {
+      throw new Error(`${lane.key} must satisfy the serial hero family contract.`);
     }
 
     const reference = unitReferenceEntry(lane.key);
@@ -515,10 +543,12 @@ for (const entry of mediaEntries) {
   }
 
   const rosterLane = UNIT_ROSTER.find((lane) => lane.id === sim.id);
-  const requiresCompleteOrdinaryMedia =
+  const requiresCompleteUnitMedia =
     rosterLane?.status !== "blocked" &&
-    (rosterLane?.family === "ordinary-melee" || rosterLane?.family === "ordinary-projectile");
-  if (requiresCompleteOrdinaryMedia) {
+    (rosterLane?.family === "ordinary-melee" ||
+      rosterLane?.family === "ordinary-projectile" ||
+      rosterLane?.family === "hero");
+  if (requiresCompleteUnitMedia) {
     if (media.presentation.kind !== "model") {
       throw new Error(`${media.key} requires model presentation for its ordinary-unit gate.`);
     }
@@ -534,6 +564,13 @@ for (const entry of mediaEntries) {
       media.audio.attackAcknowledge === undefined
     ) {
       throw new Error(`${media.key} is missing required ordinary-unit icon or voice audio.`);
+    }
+    if (
+      rosterLane?.family === "hero" &&
+      (media.presentation.actions.carryIdle === undefined ||
+        media.presentation.actions.carryWalk === undefined)
+    ) {
+      throw new Error(`${media.key} is missing required relic-carry presentation.`);
     }
   }
 }

@@ -1,4 +1,5 @@
 import { MAP_TILES } from "../terrain";
+import { NO_TARGET } from "./id";
 
 export const GRID_CELL = 2;
 export const GRID_DIM = MAP_TILES / GRID_CELL;
@@ -11,6 +12,7 @@ export interface UnitSpatialGridState {
   readonly cellCount: Uint32Array;
   readonly cellStart: Uint32Array;
   readonly cellUnits: Uint32Array;
+  readonly containedBy: Uint32Array;
 }
 
 export type UnitSpatialGridVisitor<TState extends UnitSpatialGridState, TContext> = (
@@ -56,6 +58,9 @@ export function rebuildUnitSpatialGrid(state: UnitSpatialGridState): void {
   state.cellCount.fill(0, 0, GRID_CELLS);
 
   for (let index = 0; index < state.count; index += 1) {
+    if (state.containedBy[index] !== NO_TARGET) {
+      continue;
+    }
     const cellX = gridCoordinateForPosition(state.posX[index]!);
     const cellZ = gridCoordinateForPosition(state.posZ[index]!);
     const cell = cellX + GRID_DIM * cellZ;
@@ -71,6 +76,9 @@ export function rebuildUnitSpatialGrid(state: UnitSpatialGridState): void {
   state.cellCount.fill(0, 0, GRID_CELLS);
 
   for (let index = 0; index < state.count; index += 1) {
+    if (state.containedBy[index] !== NO_TARGET) {
+      continue;
+    }
     const cellX = gridCoordinateForPosition(state.posX[index]!);
     const cellZ = gridCoordinateForPosition(state.posZ[index]!);
     const cell = cellX + GRID_DIM * cellZ;
