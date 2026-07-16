@@ -13,6 +13,8 @@ import { idGeneration, idIndex, packId } from "./ecs/id";
 import { registerPlayer } from "./ecs/players";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { AGE_CLASSICAL, GOD_RA, GOD_ZEUS } from "./ecs/progression";
+import { IMPLEMENTED_GREEK_HERO_TYPE_IDS } from "./content/unit-roster";
+import { CULTURE_GREEK } from "./content/unit-type-schema";
 import {
   CARRY_CAPACITY,
   FAVOR,
@@ -1691,6 +1693,29 @@ describe("production", () => {
     expect(greekTypes).toContain(TYPE_VILLAGER);
     expect(egyptianTypes).toContain(TYPE_EGYPTIAN_TOWN_CENTER);
     expect(egyptianTypes).toContain(TYPE_EGYPTIAN_LABORER);
+  });
+
+  test("culture-scoped starting units add every implemented Greek hero without leaking to Egypt", () => {
+    const world = createWorld(42);
+    world.walkable.fill(1);
+    registerPlayer(world, 0, GOD_ZEUS);
+    registerPlayer(world, 1, GOD_RA);
+
+    spawnUnits(world, 2, [0, 1], {
+      [CULTURE_GREEK]: IMPLEMENTED_GREEK_HERO_TYPE_IDS,
+    });
+
+    const heroTypes = new Set(IMPLEMENTED_GREEK_HERO_TYPE_IDS);
+    const greekHeroes: number[] = [];
+    const egyptianHeroes: number[] = [];
+    for (let index = 0; index < world.count; index += 1) {
+      const type = world.unitType[index]!;
+      if (!heroTypes.has(type)) continue;
+      (world.owner[index] === 0 ? greekHeroes : egyptianHeroes).push(type);
+    }
+
+    expect(greekHeroes).toEqual([...IMPLEMENTED_GREEK_HERO_TYPE_IDS]);
+    expect(egyptianHeroes).toEqual([]);
   });
 
   test("a town center trains a villager that spawns adjacent on walkable ground", () => {

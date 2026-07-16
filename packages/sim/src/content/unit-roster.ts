@@ -233,6 +233,13 @@ export const UNIT_ROSTER = [
   ...EGYPTIAN_FUTURE_ROSTER,
 ].sort((left, right) => left.id - right.id) as readonly UnitRosterEntry[];
 
+export const IMPLEMENTED_GREEK_HERO_TYPE_IDS = Object.freeze(
+  UNIT_ROSTER.filter(
+    (entry) =>
+      entry.culture === CULTURE_GREEK && entry.family === "hero" && entry.status === "implemented",
+  ).map((entry) => entry.id),
+);
+
 validateUnitRoster(UNIT_ROSTER);
 validateRosterReservations(UNIT_ROSTER, RESERVED_ROSTER_UNIT_TYPE_IDS);
 

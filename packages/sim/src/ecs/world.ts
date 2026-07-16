@@ -634,7 +634,42 @@ export function setSelected(world: World, id: number, on: boolean): void {
   world.selected[id] = on ? 1 : 0;
 }
 
-export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]): void {
+export interface StartingUnitTypesByCulture {
+  readonly [culture: number]: readonly number[] | undefined;
+}
+
+function spawnMobileUnitNearStart(
+  world: World,
+  centerX: number,
+  centerZ: number,
+  owner: number,
+  type: number,
+): void {
+  let x = 0;
+  let z = 0;
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const rawX = centerX - 28 + nextFloat(world.rng) * 56;
+    const rawZ = centerZ - 28 + nextFloat(world.rng) * 56;
+
+    x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+    z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
+
+    if (world.walkable[cellOf(x, z)] === 1) {
+      break;
+    }
+  }
+
+  // Spawn retry consumes a seed-derived, deterministic number of rng draws.
+  spawnUnit(world, x, z, 0, 0, owner, type);
+}
+
+export function spawnUnits(
+  world: World,
+  count: number,
+  ownerIds: number[] = [0],
+  startingUnitTypesByCulture?: StartingUnitTypesByCulture,
+): void {
   const ownerCount = ownerIds.length;
 
   // A solo world must never declare a winner.
@@ -686,25 +721,13 @@ export function spawnUnits(world: World, count: number, ownerIds: number[] = [0]
     spawnBuilding(world, centerX - 2, centerZ - 2, owner, townCenterType);
 
     for (let i = 0; i < unitsForOwner; i += 1) {
-      let x = 0;
-      let z = 0;
-
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        const rawX = centerX - 28 + nextFloat(world.rng) * 56;
-        const rawZ = centerZ - 28 + nextFloat(world.rng) * 56;
-
-        x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
-        z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
-
-        if (world.walkable[cellOf(x, z)] === 1) {
-          break;
-        }
-      }
-
       // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
-      // Spawn retry consumes a seed-derived, deterministic number of rng draws; spawn layout
-      // shifts vs. step 2, acceptable before anything persists.
-      spawnUnit(world, x, z, 0, 0, owner, workerType);
+      spawnMobileUnitNearStart(world, centerX, centerZ, owner, workerType);
+    }
+
+    const additionalTypes = startingUnitTypesByCulture?.[culture] ?? [];
+    for (let i = 0; i < additionalTypes.length; i += 1) {
+      spawnMobileUnitNearStart(world, centerX, centerZ, owner, additionalTypes[i]!);
     }
   }
 }
