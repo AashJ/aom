@@ -36,6 +36,7 @@ import {
 import { createCamera, updateMatrices } from "../camera/camera";
 import type { InputState } from "../input/input";
 import type { CommandSink } from "../net/sink";
+import { UNIT_PRESENTATIONS } from "../render/unit-presentation";
 import { consumeCommandInput, marqueeSelect, pickUnit } from "./pick";
 
 function commandInput(x: number, y: number): InputState {
@@ -131,6 +132,8 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     gatherTargetType: new Uint16Array(xs.length).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(xs.length),
     specialActionRemaining: new Uint16Array(xs.length),
+    targetReactionKind: new Uint8Array(xs.length),
+    elevation: new Float32Array(xs.length),
     visible: new Uint8Array(xs.length).fill(1),
     fog: new Uint8Array(MAP_TILES * MAP_TILES),
     selected: new Uint8Array(xs.length),
@@ -187,6 +190,24 @@ describe("pickUnit", () => {
     updateMatrices(camera, 16 / 9);
 
     expect(pickUnit(camera, 0, 0, snap, snap, 0, heights)).toBe(0);
+  });
+
+  test("picks the interpolated airborne body instead of its empty ground position", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const x = camera.target[0]!;
+    const z = camera.target[2]!;
+    const snap = snapshot([x], [z]);
+    snap.elevation[0] = 6;
+    updateMatrices(camera, 16 / 9);
+
+    const y = 7;
+    const m = camera.viewProj;
+    const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+    const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+    const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+
+    expect(pickUnit(camera, cx / cw, cy / cw, snap, snap, 0, heights)).toBe(0);
   });
 
   test("returns -1 for an empty snapshot", () => {
@@ -280,6 +301,36 @@ describe("pickUnit", () => {
     expect(world.selected[0]).toBe(1);
     expect(world.selected[1]).toBe(1);
     expect(world.selected[2]).toBe(1);
+  });
+
+  test("marquee selection follows an airborne unit's interpolated pose", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0);
+    spawnUnit(world, camera.target[0]!, camera.target[2]!, 0, 0);
+    const prev = createSnapshot(1);
+    const curr = createSnapshot(1);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    prev.elevation[0] = 6;
+    curr.elevation[0] = 6;
+    updateMatrices(camera, 16 / 9);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const presentation = UNIT_PRESENTATIONS[curr.unitType[0]!]!;
+    const x = curr.posX[0]!;
+    const z = curr.posZ[0]!;
+    const y = 6 + (presentation.worldHeight - presentation.bottomPadding) * 0.5;
+    const m = camera.viewProj;
+    const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+    const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+    const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+    const px = (cx / cw / 2 + 0.5) * canvas.clientWidth;
+    const py = (0.5 - cy / cw / 2) * canvas.clientHeight;
+
+    marqueeSelect(world, camera, px - 2, py - 2, px + 2, py + 2, prev, curr, 0, heights, canvas);
+
+    expect(world.selected[0]).toBe(1);
   });
 
   test("right-click on an own blueprint routes to Build", () => {

@@ -3,6 +3,7 @@ import { screenToGround, type Camera } from "../camera/camera";
 import { DEPTH_FORMAT } from "../gpu/device";
 import * as vec3 from "../math/vec3";
 import minimapWgsl from "../shaders/minimap.wgsl?raw";
+import { UNIT_POSE_FLOATS, UNIT_POSE_X, UNIT_POSE_Z, writeInterpolatedUnitPose } from "./unit-pose";
 
 export const MINIMAP_TEX_SIZE = 256;
 
@@ -153,6 +154,7 @@ export function createMinimapRenderer(
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
   const dotStaging = new Float32Array(MAX_UNITS * 4);
+  const unitPose = new Float64Array(UNIT_POSE_FLOATS);
   const dotBuffer = device.createBuffer({
     size: dotStaging.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -316,11 +318,9 @@ export function createMinimapRenderer(
         // Swap-remove reorders dense slots when units die. Interpolating across an
         // identity change would smear one unit's position toward another's; snap instead,
         // one imperceptible frame.
-        const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-        const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-        const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-        const x = prevX + (curr.posX[i]! - prevX) * alpha;
-        const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
+        writeInterpolatedUnitPose(unitPose, prev, curr, i, alpha);
+        const x = unitPose[UNIT_POSE_X]!;
+        const z = unitPose[UNIT_POSE_Z]!;
         const offset = dotCount * 4;
 
         worldToMinimapUnit(x, z, dotStaging, offset);

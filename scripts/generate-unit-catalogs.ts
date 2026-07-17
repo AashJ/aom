@@ -26,6 +26,7 @@ import type {
   UnitMediaDefinition,
 } from "../packages/engine/src/content/unit-media-schema";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../packages/engine/src/content/projectile-media";
+import { isValidTargetReactionContract } from "./lib/target-reaction-contract";
 
 const root = resolve(import.meta.dir, "..");
 const simSourceRoot = resolve(root, "packages/sim/src/content/unit-types");
@@ -244,6 +245,11 @@ for (const entry of entries) {
       special.validTargets.length === 0)
   ) {
     throw new Error(`${definition.key} has an invalid charged special-attack contract.`);
+  }
+
+  const reaction = special?.targetReaction;
+  if (reaction !== undefined && !isValidTargetReactionContract(reaction)) {
+    throw new Error(`${definition.key} has an invalid thrown target-reaction contract.`);
   }
 
   for (const prerequisiteType of definition.prerequisiteBuildings) {

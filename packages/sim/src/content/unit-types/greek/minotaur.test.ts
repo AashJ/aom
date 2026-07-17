@@ -1,13 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { COMMAND_ATTACK, enqueueCommand } from "../../../commands";
+import { COMMAND_ATTACK, COMMAND_MOVE, enqueueCommand } from "../../../commands";
 import { resolveDamage, resolveMeleeDamage } from "../../../ecs/combat";
 import { registerPlayer } from "../../../ecs/players";
+import { NO_PROJECTILE_TICK } from "../../../ecs/projectiles";
+import { TARGET_REACTION_THROWN } from "../../../ecs/target-reactions";
 import { createWorld, killUnit, spawnUnit, tickWorld } from "../../../ecs/world";
 import { hashWorld } from "../../../hash";
 import { createSnapshot, writeSnapshot } from "../../../snapshot";
 import { GATE_C_MYTH_UNIT_REFERENCES } from "../../unit-references/gate-c-myth";
 import { validateDefinitionAgainstReference } from "../../unit-reference-schema";
-import { TYPE_HOPLITE, TYPE_MINOTAUR } from "../../unit-type-ids";
+import {
+  TYPE_CHARIOT_ARCHER,
+  TYPE_HOPLITE,
+  TYPE_MINOTAUR,
+  TYPE_TOXOTES,
+} from "../../unit-type-ids";
 import { UNIT_TYPES } from "../../generated/unit-types";
 import { definition } from "./minotaur";
 
@@ -54,6 +61,17 @@ describe("Greek Minotaur unit pack", () => {
         rechargeTicks: 15 * 20,
         actionTicks: 2 * 20,
         impactDelayTicks: 19,
+        targetReaction: {
+          kind: "thrown",
+          distanceBase: 8,
+          distanceRandomRange: 2,
+          maxVelocityBase: 12,
+          maxVelocityRandomRange: 4,
+          maxHeightBase: 6,
+          maxHeightRandomRange: 2,
+          bounceBase: 1,
+          bounceRandomRange: 2,
+        },
       },
     });
     expect(resolveMeleeDamage(definition.attack, definition)).toBe(24);
@@ -79,10 +97,140 @@ describe("Greek Minotaur unit pack", () => {
     expect(world.specialActionImpactPending[0]).toBe(0);
     expect(world.specialRecharge[0]).toBe(300);
     expect(world.hp[1]).toBe(startingHp - 39);
+    expect(world.targetReactions.kind[1]).toBe(TARGET_REACTION_THROWN);
+    expect(world.targetReactions.elevation[1]).toBe(0);
 
     const snapshot = createSnapshot(4);
     writeSnapshot(world, snapshot, 0);
     expect(snapshot.specialActionRemaining[0]).toBe(21);
+    expect(snapshot.targetReactionKind[1]).toBe(TARGET_REACTION_THROWN);
+    expect(snapshot.elevation[1]).toBe(0);
+  });
+
+  test("lets pending orders change while Gore exclusively controls execution until landing", () => {
+    const { world, hoplite } = duel();
+    for (let tick = 0; tick < 20; tick += 1) tickWorld(world);
+    expect(world.targetReactions.kind[1]).toBe(TARGET_REACTION_THROWN);
+
+    const beforeCommandX = world.posX[1]!;
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 1,
+      type: COMMAND_MOVE,
+      unitIds: [hoplite],
+      targetX: 5,
+      targetZ: 20,
+    });
+    tickWorld(world);
+
+    expect(world.moving[1]).toBe(1);
+    expect(world.moveTargetX[1]).toBe(5);
+    // The queued order points left, but the exclusive reaction still carries
+    // the victim right along Gore's sampled direction.
+    expect(world.posX[1]).toBeGreaterThan(beforeCommandX);
+    expect(world.targetReactions.elevation[1]).toBeGreaterThan(0);
+
+    let ticks = 0;
+    while (world.targetReactions.kind[1] === TARGET_REACTION_THROWN && ticks < 500) {
+      tickWorld(world);
+      ticks += 1;
+    }
+    expect(ticks).toBeLessThan(500);
+    const resumedX = world.posX[1]!;
+    tickWorld(world);
+    expect(world.posX[1]).toBeLessThan(resumedX);
+  });
+
+  test("interrupts a victim's charged wind-up while preserving its attack order", () => {
+    const world = createWorld(42);
+    world.walkable.fill(1);
+    registerPlayer(world, 0);
+    registerPlayer(world, 1);
+    const attacker = spawnUnit(world, 20, 20, 0, 0, 0, TYPE_MINOTAUR);
+    const victim = spawnUnit(world, 20.5, 20, 0, 0, 1, TYPE_MINOTAUR);
+
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [attacker],
+      targetId: victim,
+    });
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 1,
+      type: COMMAND_ATTACK,
+      unitIds: [victim],
+      targetId: attacker,
+    });
+
+    tickWorld(world);
+    expect(world.specialActionRemaining[1]).toBe(40);
+    for (let tick = 0; tick < 19; tick += 1) tickWorld(world);
+
+    expect(world.targetReactions.kind[1]).toBe(TARGET_REACTION_THROWN);
+    expect(world.specialActionRemaining[1]).toBe(0);
+    expect(world.attackTarget[1]).toBe(attacker);
+    expect(world.attackOrdered[1]).toBe(1);
+  });
+
+  test("cancels a victim's unreleased projectile while preserving its attack order", () => {
+    const world = createWorld(42);
+    world.walkable.fill(1);
+    registerPlayer(world, 0);
+    registerPlayer(world, 1);
+    const attacker = spawnUnit(world, 20, 20, 0, 0, 0, TYPE_MINOTAUR);
+    const victim = spawnUnit(world, 20.5, 20, 0, 0, 1, TYPE_TOXOTES);
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [attacker],
+      targetId: victim,
+    });
+    enqueueCommand(world, {
+      tick: 12,
+      issuer: 1,
+      type: COMMAND_ATTACK,
+      unitIds: [victim],
+      targetId: attacker,
+    });
+    for (let tick = 0; tick < 20; tick += 1) tickWorld(world);
+
+    expect(world.targetReactions.kind[1]).toBe(TARGET_REACTION_THROWN);
+    expect(world.attackAimShots[1]).toBe(0);
+    expect(world.attackTarget[1]).toBe(attacker);
+    expect(world.attackOrdered[1]).toBe(1);
+    expect(world.projectiles.count).toBe(0);
+  });
+
+  test("preserves a victim's already-launched projectile", () => {
+    const world = createWorld(42);
+    world.walkable.fill(1);
+    registerPlayer(world, 0);
+    registerPlayer(world, 1);
+    const attacker = spawnUnit(world, 20, 20, 0, 0, 0, TYPE_MINOTAUR);
+    const victim = spawnUnit(world, 20.5, 20, 0, 0, 1, TYPE_CHARIOT_ARCHER);
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [attacker],
+      targetId: victim,
+    });
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 1,
+      type: COMMAND_ATTACK,
+      unitIds: [victim],
+      targetId: attacker,
+    });
+    for (let tick = 0; tick < 20; tick += 1) tickWorld(world);
+
+    expect(world.targetReactions.kind[1]).toBe(TARGET_REACTION_THROWN);
+    expect(world.projectiles.count).toBe(1);
+    expect(world.projectiles.sourceIds[0]).toBe(victim);
+    expect(world.projectiles.impactTicks[0]).not.toBe(NO_PROJECTILE_TICK);
   });
 
   test("locks the attacker and idle target against separation throughout the gore wind-up", () => {

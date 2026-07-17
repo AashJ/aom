@@ -270,6 +270,16 @@ function removeProjectile(store: ProjectileStore, index: number): void {
   store.count = last;
 }
 
+export function cancelPendingProjectilesBySource(store: ProjectileStore, sourceId: number): void {
+  for (let index = 0; index < store.count; ) {
+    if (store.sourceIds[index] === sourceId && store.impactTicks[index] === NO_PROJECTILE_TICK) {
+      removeProjectile(store, index);
+      continue;
+    }
+    index += 1;
+  }
+}
+
 export function projectileProgressAt(store: ProjectileStore, index: number, tick: number): number {
   const impactTick = store.impactTicks[index]!;
   if (impactTick === NO_PROJECTILE_TICK) return 0;

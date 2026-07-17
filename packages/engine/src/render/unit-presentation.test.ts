@@ -21,6 +21,7 @@ import {
   TYPE_MILITIA,
   TYPE_MINOTAUR,
   TYPE_SPEARMAN,
+  TARGET_REACTION_THROWN,
   TYPE_TOXOTES,
   TYPE_TREE,
   UNIT_TYPES,
@@ -254,6 +255,14 @@ describe("unit presentation", () => {
     );
     expect(UNIT_MEDIA[TYPE_HOPLITE]!.presentation).toMatchObject({ kind: "model" });
     expect(UNIT_MEDIA[TYPE_SPEARMAN]!.presentation).toMatchObject({ kind: "model" });
+
+    snapshot.targetReactionKind[0] = TARGET_REACTION_THROWN;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe("greekHopliteIdle");
+
+    snapshot.targetReactionKind[0] = 255;
+    expect(() => resolveModelPresentation(snapshot, 0, true)).toThrow(
+      "Unsupported target-reaction presentation kind 255",
+    );
   });
 
   test("uses Jason's original carry actions while a relic is contained", () => {

@@ -19,6 +19,15 @@ import {
 } from "./model-gpu-layout";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import {
+  snapshotsAlignAt,
+  UNIT_POSE_ELEVATION,
+  UNIT_POSE_FLOATS,
+  UNIT_POSE_X,
+  UNIT_POSE_Z,
+  unitSnapshotDisplacementSquared,
+  writeInterpolatedUnitPose,
+} from "./unit-pose";
+import {
   modelAnimationTime,
   resolveModelDeathPresentation,
   resolveModelGhostPresentation,
@@ -343,6 +352,7 @@ export async function createModelRenderer(
   const attachmentMatrix = mat4.create();
   const modelInstanceMatrix = mat4.create();
   const projectileVisualState = new Float32Array(PROJECTILE_VISUAL_FLOATS);
+  const unitPose = new Float64Array(UNIT_POSE_FLOATS);
   const projectileModelTransforms = PROJECTILE_PRESENTATIONS.map((presentation) => {
     const transform = mat4.create();
     writeProjectileModelTransform(transform, presentation.forwardAxis);
@@ -470,15 +480,10 @@ export async function createModelRenderer(
 
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
-        const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-        const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-        const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-        const dx = curr.posX[i]! - prevX;
-        const dz = curr.posZ[i]! - prevZ;
         const presentation = resolveModelPresentation(
           curr,
           i,
-          dx * dx + dz * dz > MOVING_EPSILON_SQ,
+          unitSnapshotDisplacementSquared(prev, curr, i) > MOVING_EPSILON_SQ,
         );
         if (!presentation) continue;
 
@@ -518,20 +523,15 @@ export async function createModelRenderer(
 
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
-        const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-        const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-        const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-        const dx = curr.posX[i]! - prevX;
-        const dz = curr.posZ[i]! - prevZ;
-        const presentation = resolveModelPresentation(
-          curr,
-          i,
-          dx * dx + dz * dz > MOVING_EPSILON_SQ,
-        );
+        const aligned = snapshotsAlignAt(prev, curr, i);
+        const movedSq = unitSnapshotDisplacementSquared(prev, curr, i);
+        const presentation = resolveModelPresentation(curr, i, movedSq > MOVING_EPSILON_SQ);
         if (!presentation) continue;
 
-        const x = prevX + dx * alpha;
-        const z = prevZ + dz * alpha;
+        writeInterpolatedUnitPose(unitPose, prev, curr, i, alpha);
+        const x = unitPose[UNIT_POSE_X]!;
+        const z = unitPose[UNIT_POSE_Z]!;
+        const elevation = unitPose[UNIT_POSE_ELEVATION]!;
         const typeStats = UNIT_TYPES[curr.unitType[i]!]!;
         const buildFrac =
           typeStats.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / typeStats.buildTicks) : 1;
@@ -569,7 +569,7 @@ export async function createModelRenderer(
           buildFrac,
           0,
           animationTime,
-          0,
+          elevation,
           null,
           heights,
         );

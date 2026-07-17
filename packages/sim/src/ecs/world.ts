@@ -89,6 +89,15 @@ import {
   tickSpecialRecharge,
 } from "./special-attacks";
 import {
+  clearTargetReaction,
+  copyTargetReaction,
+  createTargetReactionStore,
+  installTargetReaction,
+  targetReactionCapabilitiesAt,
+  tickTargetReactions,
+  type TargetReactionStore,
+} from "./target-reactions";
+import {
   cancelBuildingResearch,
   isBuildingResearching,
   tickBuildingResearch,
@@ -234,6 +243,7 @@ export interface World {
   specialActionRemaining: Uint16Array;
   specialActionTarget: Uint32Array;
   specialActionImpactPending: Uint8Array;
+  targetReactions: TargetReactionStore;
   projectiles: ProjectileStore;
   mode: Uint8Array;
   carried: Uint16Array;
@@ -353,6 +363,7 @@ export function createWorld(seed: number): World {
     specialActionRemaining: new Uint16Array(MAX_UNITS),
     specialActionTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     specialActionImpactPending: new Uint8Array(MAX_UNITS),
+    targetReactions: createTargetReactionStore(MAX_UNITS),
     projectiles: createProjectileStore(),
     mode: new Uint8Array(MAX_UNITS),
     carried: new Uint16Array(MAX_UNITS),
@@ -541,6 +552,7 @@ export function spawnUnit(
   world.attackCooldown[index] = 0;
   world.specialRecharge[index] = 0;
   clearSpecialAttack(world, index);
+  clearTargetReaction(world.targetReactions, index);
   world.carried[index] = 0;
   world.carriedResource[index] = 0;
   clearUnitTask(world, index);
@@ -1021,15 +1033,20 @@ export function tickWorld(world: World): void {
   // 2. Apply commands at the start of the tick.
   applyPendingCommands(world);
 
-  // 3. Build a spatial grid from start-of-tick positions.
+  // 3. Existing target reactions advance before the spatial grid is rebuilt.
+  // A reaction created by this tick's combat impact begins moving next tick,
+  // matching the action-controller handoff in Classic.
+  let hasActiveTargetReactions = tickTargetReactions(world);
+
+  // 4. Build a spatial grid from current authoritative positions.
   rebuildUnitSpatialGrid(world);
 
-  // 4. Existing projectile entities launch, fly, and impact before units decide
+  // 5. Existing projectile entities launch, fly, and impact before units decide
   // whether to begin a new attack cycle. A newly queued projectile cannot advance
   // until the next tick, preserving its animation-timed release boundary.
   tickProjectileStore(world, world.projectiles, UNIT_TYPES, MAX_PROJECTILE_BODY_RADIUS, dealDamage);
 
-  // 5. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
+  // 6. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
@@ -1045,6 +1062,15 @@ export function tickWorld(world: World): void {
       world.attackCooldown[i] = world.attackCooldown[i]! - 1;
     }
     if (special !== undefined) tickSpecialRecharge(world, i);
+
+    // Forced reactions overlay pending intent. The reaction policy decides
+    // whether the unit may execute attacks and ordinary orders this tick.
+    if (
+      hasActiveTargetReactions &&
+      targetReactionCapabilitiesAt(world.targetReactions, i).blocksOrderExecution
+    ) {
+      continue;
+    }
 
     if (world.specialActionRemaining[i]! > 0) {
       // A charged action owns the unit's position until it completes or is
@@ -1081,6 +1107,20 @@ export function tickWorld(world: World): void {
           const phase = advanceSpecialAttack(world, i, special);
           if (phase === "impact") {
             dealDamage(world, target, resolveDamage(special, targetStats));
+            if (
+              special.targetReaction !== undefined &&
+              world.dying[target] === 0 &&
+              world.hp[target]! > 0
+            ) {
+              hasActiveTargetReactions =
+                installTargetReaction(
+                  world,
+                  target,
+                  world.posX[i]!,
+                  world.posZ[i]!,
+                  special.targetReaction,
+                ) || hasActiveTargetReactions;
+            }
           }
           continue;
         }
@@ -1248,13 +1288,20 @@ export function tickWorld(world: World): void {
     }
   }
 
-  // 6. Unit tasks read the same fresh grid as combat and write moveTarget/moving
+  // 7. Unit tasks read the same fresh grid as combat and write moveTarget/moving
   // for movement to consume. Every task mode is dispatched in this one dense pass.
   const retargetRangeSq = NODE_RETARGET_RADIUS * NODE_RETARGET_RADIUS;
 
   world.prayingVillagers.fill(0);
 
   for (let i = 0; i < world.count; i += 1) {
+    if (
+      hasActiveTargetReactions &&
+      targetReactionCapabilitiesAt(world.targetReactions, i).blocksOrderExecution
+    ) {
+      continue;
+    }
+
     if (world.mode[i] === MODE_IDLE) {
       continue;
     }
@@ -1684,7 +1731,7 @@ export function tickWorld(world: World): void {
 
   tickGreekFavor(world);
 
-  // 6. Production countdown - research occupies its building; queued units resume
+  // 8. Production countdown - research occupies its building; queued units resume
   // on the completion tick. Completed spawns append after producedThrough.
   const producedThrough = world.count;
 
@@ -1726,7 +1773,7 @@ export function tickWorld(world: World): void {
     finishActiveProduction(world, i, (unitType) => UNIT_TYPES[unitType]!.buildTicks);
   }
 
-  // 7. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
+  // 9. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
   for (let i = 0; i < world.count; i += 1) {
     const x = world.posX[i]!;
     const z = world.posZ[i]!;
@@ -1735,6 +1782,17 @@ export function tickWorld(world: World): void {
     const wasMoving = world.moving[i] === 1;
     let pushX = 0;
     let pushZ = 0;
+
+    if (
+      hasActiveTargetReactions &&
+      targetReactionCapabilitiesAt(world.targetReactions, i).drivesPosition
+    ) {
+      // The target-reaction system already authored this unit's position for
+      // the tick. Ground movement and separation cannot add a second motion.
+      world.pushX[i] = 0;
+      world.pushZ[i] = 0;
+      continue;
+    }
 
     if (stats.isStatic) {
       // Static nodes stay in the grid as separation sources, but never accumulate pushes.
@@ -1819,6 +1877,14 @@ export function tickWorld(world: World): void {
             continue;
           }
 
+          // Reaction policy owns whether this neighbor participates on the ground.
+          if (
+            hasActiveTargetReactions &&
+            !targetReactionCapabilitiesAt(world.targetReactions, j).participatesInGroundSeparation
+          ) {
+            continue;
+          }
+
           // Charged actions lock their attacker in place. Suppress separation
           // for the attacker and between it and its assigned victim; otherwise
           // the generic crowd solver visibly slides the pair apart during the
@@ -1871,7 +1937,7 @@ export function tickWorld(world: World): void {
     world.pushZ[i] = pushZ + separationZ;
   }
 
-  // 8. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
+  // 10. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
   for (let i = 0; i < world.count; i += 1) {
     if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
       // Mobile units flowed around static sources during compute; the source itself never moves.
@@ -2041,6 +2107,7 @@ function applyDeaths(world: World): void {
       world.specialActionRemaining[i] = world.specialActionRemaining[last]!;
       world.specialActionTarget[i] = world.specialActionTarget[last]!;
       world.specialActionImpactPending[i] = world.specialActionImpactPending[last]!;
+      copyTargetReaction(world.targetReactions, i, last);
       world.mode[i] = world.mode[last]!;
       world.carried[i] = world.carried[last]!;
       world.carriedResource[i] = world.carriedResource[last]!;
@@ -2058,6 +2125,7 @@ function applyDeaths(world: World): void {
     }
 
     world.unitField[last] = null;
+    clearTargetReaction(world.targetReactions, last);
     clearProductionQueue(world, last);
     world.count -= 1;
     world.dying[i] = 0;

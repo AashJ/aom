@@ -80,6 +80,16 @@ export interface SpecialImpactEvidence extends ProjectileReleaseEvidence {
   readonly durationTicks: number;
 }
 
+export interface ThrownTargetReactionEvidence {
+  readonly executableSha256: string;
+  readonly goreHandlerAddress: `0x${string}`;
+  readonly thrownActionAddress: `0x${string}`;
+  readonly distance: readonly [base: number, randomRange: number];
+  readonly maxVelocity: readonly [base: number, randomRange: number];
+  readonly maxHeight: readonly [base: number, randomRange: number];
+  readonly bounces: readonly [base: number, randomRange: number];
+}
+
 interface UnitReferenceSourceCommon<A extends UnitAssetInventoryEvidence> {
   readonly culture: ReferenceCulture;
   readonly ruleset: "Age of Mythology Classic" | "Age of Mythology Extended Edition / The Titans";
@@ -110,11 +120,23 @@ export type ProjectileUnitReferenceSource = UnitReferenceSource<
   }
 >;
 
-export type SpecialUnitReferenceSource = UnitReferenceSource<
+type SpecialUnitReferenceSourceCommon = UnitReferenceSourceCommon<
   UnitAssetInventoryEvidence & {
     readonly specialImpact: SpecialImpactEvidence;
   }
->;
+> & {
+  readonly targetReaction?: ThrownTargetReactionEvidence;
+};
+
+export type SpecialUnitReferenceSource =
+  | (SpecialUnitReferenceSourceCommon & { readonly stage: "candidate" })
+  | (SpecialUnitReferenceSourceCommon & {
+      readonly stage: "final";
+      readonly finalRulesetReview: {
+        readonly commit: string;
+        readonly scope: string;
+      };
+    });
 
 interface UnitReferenceCommonExpected {
   readonly label: string;
@@ -472,6 +494,37 @@ export function validateUnitReferences(
         impact.durationTicks !== reference.expected.specialAttack.actionTicks
       ) {
         throw new Error(`${reference.key} has invalid special-impact evidence.`);
+      }
+
+      const expectedReaction = reference.expected.specialAttack.targetReaction;
+      const reactionEvidence = reference.source.targetReaction;
+      if (expectedReaction?.kind === "thrown") {
+        if (
+          reactionEvidence === undefined ||
+          !/^[0-9a-f]{64}$/.test(reactionEvidence.executableSha256) ||
+          !/^0x[0-9a-f]+$/i.test(reactionEvidence.goreHandlerAddress) ||
+          !/^0x[0-9a-f]+$/i.test(reactionEvidence.thrownActionAddress) ||
+          !structurallyEqual(reactionEvidence.distance, [
+            expectedReaction.distanceBase,
+            expectedReaction.distanceRandomRange,
+          ]) ||
+          !structurallyEqual(reactionEvidence.maxVelocity, [
+            expectedReaction.maxVelocityBase,
+            expectedReaction.maxVelocityRandomRange,
+          ]) ||
+          !structurallyEqual(reactionEvidence.maxHeight, [
+            expectedReaction.maxHeightBase,
+            expectedReaction.maxHeightRandomRange,
+          ]) ||
+          !structurallyEqual(reactionEvidence.bounces, [
+            expectedReaction.bounceBase,
+            expectedReaction.bounceRandomRange,
+          ])
+        ) {
+          throw new Error(`${reference.key} has invalid thrown target-reaction evidence.`);
+        }
+      } else if (reactionEvidence !== undefined) {
+        throw new Error(`${reference.key} has unused thrown target-reaction evidence.`);
       }
     }
 

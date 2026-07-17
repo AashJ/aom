@@ -243,4 +243,26 @@ describe("agentic unit references", () => {
       projectile.expected.attack.accuracy,
     );
   });
+
+  test("binds a thrown special's executable evidence to its authored reaction ranges", () => {
+    const lane = UNIT_ROSTER.find((entry) => entry.key === "greek-minotaur")!;
+    const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key)!;
+    if (reference.family !== "myth" || reference.source.targetReaction === undefined) {
+      throw new Error("Minotaur thrown-reaction evidence is unavailable.");
+    }
+    const driftedReference = {
+      ...reference,
+      source: {
+        ...reference.source,
+        targetReaction: {
+          ...reference.source.targetReaction,
+          distance: [9, 2] as const,
+        },
+      },
+    };
+
+    expect(() => validateUnitReferences([lane], [driftedReference])).toThrow(
+      "invalid thrown target-reaction evidence",
+    );
+  });
 });

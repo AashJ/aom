@@ -3,6 +3,13 @@ import { DEPTH_FORMAT } from "../gpu/device";
 import unitsWgsl from "../shaders/units.wgsl?raw";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import {
+  UNIT_POSE_ELEVATION,
+  UNIT_POSE_FLOATS,
+  UNIT_POSE_X,
+  UNIT_POSE_Z,
+  writeInterpolatedUnitPose,
+} from "./unit-pose";
+import {
   resolveStaticSpriteGhostPresentation,
   resolveStaticSpritePresentation,
   resolveStaticSpriteUnitPresentation,
@@ -87,6 +94,7 @@ export async function createStaticSpriteRenderer(
   const counts = new Uint32Array(UNIT_PRESENTATIONS.length);
   const firstInstances = new Uint32Array(UNIT_PRESENTATIONS.length);
   const writeOffsets = new Uint32Array(UNIT_PRESENTATIONS.length);
+  const unitPose = new Float64Array(UNIT_POSE_FLOATS);
   const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
@@ -202,6 +210,7 @@ export async function createStaticSpriteRenderer(
     hpFrac: number,
     buildFrac: number,
     frame: number,
+    elevation: number,
     terrainHeights: Float32Array,
   ): void {
     const presentation = UNIT_PRESENTATIONS[type]!;
@@ -209,7 +218,7 @@ export async function createStaticSpriteRenderer(
     if (presentation.kind !== "sprite" || !sprite) return;
     const offset = instanceIndex * INSTANCE_FLOATS;
     staging[offset] = x;
-    staging[offset + 1] = heightAt(terrainHeights, x, z);
+    staging[offset + 1] = heightAt(terrainHeights, x, z) + elevation;
     staging[offset + 2] = z;
     staging[offset + 3] = selected;
     staging[offset + 4] = owner;
@@ -259,11 +268,10 @@ export async function createStaticSpriteRenderer(
         const type = curr.unitType[i]!;
         const presentation = resolveStaticSpriteUnitPresentation(curr, i);
         if (!presentation) continue;
-        const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-        const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-        const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-        const x = prevX + (curr.posX[i]! - prevX) * alpha;
-        const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
+        writeInterpolatedUnitPose(unitPose, prev, curr, i, alpha);
+        const x = unitPose[UNIT_POSE_X]!;
+        const z = unitPose[UNIT_POSE_Z]!;
+        const elevation = unitPose[UNIT_POSE_ELEVATION]!;
         const stats = UNIT_TYPES[type]!;
         const buildFrac =
           stats.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / stats.buildTicks) : 1;
@@ -286,6 +294,7 @@ export async function createStaticSpriteRenderer(
           hpFrac,
           resolved.buildFrac,
           resolved.frame,
+          elevation,
           terrainHeights,
         );
       }
@@ -302,6 +311,7 @@ export async function createStaticSpriteRenderer(
           0,
           ghostValid ? -1 : -2,
           1,
+          0,
           0,
           terrainHeights,
         );

@@ -3,6 +3,13 @@ import { DEPTH_FORMAT } from "../gpu/device";
 import overlaysWgsl from "../shaders/unit-overlays.wgsl?raw";
 import { recordDraw, resetRendererStatistics, type RendererStatistics } from "./render-statistics";
 import { UNIT_PRESENTATIONS } from "./unit-presentation";
+import {
+  UNIT_POSE_ELEVATION,
+  UNIT_POSE_FLOATS,
+  UNIT_POSE_X,
+  UNIT_POSE_Z,
+  writeInterpolatedUnitPose,
+} from "./unit-pose";
 
 const RING_SEGMENTS = 32;
 const RING_INNER = 0.75;
@@ -66,6 +73,7 @@ export function createUnitOverlayRenderer(
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
   const staging = new Float32Array(maxInstances * INSTANCE_FLOATS);
+  const unitPose = new Float64Array(UNIT_POSE_FLOATS);
   const uniformStaging = new Float32Array(24);
   const uniformBuffer = device.createBuffer({
     size: uniformStaging.byteLength,
@@ -144,11 +152,9 @@ export function createUnitOverlayRenderer(
       let count = 0;
       for (let i = 0; i < curr.count; i += 1) {
         if (curr.visible[i] === 0) continue;
-        const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-        const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-        const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-        const x = prevX + (curr.posX[i]! - prevX) * alpha;
-        const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
+        writeInterpolatedUnitPose(unitPose, prev, curr, i, alpha);
+        const x = unitPose[UNIT_POSE_X]!;
+        const z = unitPose[UNIT_POSE_Z]!;
         const type = curr.unitType[i]!;
         const stats = UNIT_TYPES[type]!;
         const presentation = UNIT_PRESENTATIONS[type]!;
@@ -156,7 +162,7 @@ export function createUnitOverlayRenderer(
           stats.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / stats.buildTicks) : 1;
         const offset = count * INSTANCE_FLOATS;
         staging[offset] = x;
-        staging[offset + 1] = heightAt(terrainHeights, x, z);
+        staging[offset + 1] = heightAt(terrainHeights, x, z) + unitPose[UNIT_POSE_ELEVATION]!;
         staging[offset + 2] = z;
         staging[offset + 3] = curr.selected[i]!;
         staging[offset + 4] = curr.owner[i]!;

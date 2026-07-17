@@ -4,6 +4,8 @@ import {
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_PRAYING,
+  TARGET_REACTION_NONE,
+  TARGET_REACTION_THROWN,
   TICK_HZ,
   TYPE_BERRY,
   TYPE_GOLD_MINE,
@@ -77,6 +79,19 @@ export interface ResolvedModelPresentation {
   readonly animationClock: ModelAnimationClock;
 }
 
+function targetReactionAction(kind: number): UnitMediaAction | null {
+  switch (kind) {
+    case TARGET_REACTION_NONE:
+      return null;
+    case TARGET_REACTION_THROWN:
+      // Classic's thrown action owns the victim without selecting a locomotion
+      // or attack clip. The source model has no separate thrown animation.
+      return "idle";
+    default:
+      throw new RangeError(`Unsupported target-reaction presentation kind ${kind}.`);
+  }
+}
+
 function actionFor(
   presentation: RuntimeModelUnitPresentation,
   snapshot: RenderSnapshot,
@@ -93,6 +108,8 @@ function actionFor(
   ) {
     return "construction";
   }
+  const reactionAction = targetReactionAction(snapshot.targetReactionKind[index]!);
+  if (reactionAction !== null) return reactionAction;
   if (snapshot.specialActionRemaining[index]! > 0 && actions.specialAttack) {
     return "specialAttack";
   }

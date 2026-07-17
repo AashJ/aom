@@ -20,6 +20,13 @@ import { raycastHeightfield } from "../terrain/raycast";
 import type { InputState } from "../input/input";
 import type { CommandSink } from "../net/sink";
 import { UNIT_PRESENTATIONS } from "../render/unit-presentation";
+import {
+  UNIT_POSE_ELEVATION,
+  UNIT_POSE_FLOATS,
+  UNIT_POSE_X,
+  UNIT_POSE_Z,
+  writeInterpolatedUnitPose,
+} from "../render/unit-pose";
 
 // Mobile-unit rings remain deliberately generous compared with their simulation bodies.
 const MIN_PICK_HALF_WIDTH = 0.5;
@@ -27,6 +34,7 @@ const MIN_PICK_HALF_WIDTH = 0.5;
 const rayOrigin = vec3.create();
 const rayDir = vec3.create();
 const commandTarget = vec3.create();
+const interpolatedUnitPose = new Float64Array(UNIT_POSE_FLOATS);
 
 interface SelectedCommandUnits {
   ids: number[];
@@ -129,12 +137,9 @@ function writeHitMarker(
   alpha: number,
   markerOut: Float32Array,
 ): void {
-  const aligned = hit < prev.count && prev.ids[hit] === curr.ids[hit];
-  const prevX = aligned ? prev.posX[hit]! : curr.posX[hit]!;
-  const prevZ = aligned ? prev.posZ[hit]! : curr.posZ[hit]!;
-
-  markerOut[0] = prevX + (curr.posX[hit]! - prevX) * alpha;
-  markerOut[1] = prevZ + (curr.posZ[hit]! - prevZ) * alpha;
+  writeInterpolatedUnitPose(interpolatedUnitPose, prev, curr, hit, alpha);
+  markerOut[0] = interpolatedUnitPose[UNIT_POSE_X]!;
+  markerOut[1] = interpolatedUnitPose[UNIT_POSE_Z]!;
 }
 
 export function pickUnit(
@@ -163,12 +168,10 @@ export function pickUnit(
     // Swap-remove reorders dense slots when units die. Interpolating across an
     // identity change would smear one unit's position toward another's; snap instead,
     // one imperceptible frame.
-    const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-    const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-    const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-    const x = prevX + (curr.posX[i]! - prevX) * alpha;
-    const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
-    const y = heightAt(heights, x, z);
+    writeInterpolatedUnitPose(interpolatedUnitPose, prev, curr, i, alpha);
+    const x = interpolatedUnitPose[UNIT_POSE_X]!;
+    const z = interpolatedUnitPose[UNIT_POSE_Z]!;
+    const y = heightAt(heights, x, z) + interpolatedUnitPose[UNIT_POSE_ELEVATION]!;
     const type = curr.unitType[i]!;
     const stats = UNIT_TYPES[type]!;
     const presentation = UNIT_PRESENTATIONS[type]!;
@@ -374,15 +377,15 @@ export function marqueeSelect(
   for (let i = 0; i < curr.count; i += 1) {
     if (curr.visible[i] === 0) continue;
 
-    const aligned = i < prev.count && prev.ids[i] === curr.ids[i];
-    const prevX = aligned ? prev.posX[i]! : curr.posX[i]!;
-    const prevZ = aligned ? prev.posZ[i]! : curr.posZ[i]!;
-    const x = prevX + (curr.posX[i]! - prevX) * alpha;
-    const z = prevZ + (curr.posZ[i]! - prevZ) * alpha;
+    writeInterpolatedUnitPose(interpolatedUnitPose, prev, curr, i, alpha);
+    const x = interpolatedUnitPose[UNIT_POSE_X]!;
+    const z = interpolatedUnitPose[UNIT_POSE_Z]!;
     const type = curr.unitType[i]!;
     const presentation = UNIT_PRESENTATIONS[type]!;
     const y =
-      heightAt(heights, x, z) + (presentation.worldHeight - presentation.bottomPadding) * 0.5;
+      heightAt(heights, x, z) +
+      interpolatedUnitPose[UNIT_POSE_ELEVATION]! +
+      (presentation.worldHeight - presentation.bottomPadding) * 0.5;
     const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
     const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
     const cw = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;

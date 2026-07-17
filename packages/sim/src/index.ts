@@ -90,6 +90,11 @@ export {
   NO_GOD,
 } from "./ecs/progression";
 export * from "./ecs/types";
+export {
+  TARGET_REACTION_NONE,
+  TARGET_REACTION_THROWN,
+  type TargetReactionKind,
+} from "./ecs/target-reactions";
 export * from "./content/culture-types";
 export * from "./content/unit-roster";
 export * from "./ecs/world";

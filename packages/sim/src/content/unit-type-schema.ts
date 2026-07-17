@@ -106,7 +106,28 @@ export interface ChargedMeleeSpecialAttack {
   readonly impactDelayTicks: number;
   // Entries are OR alternatives; each class mask inside an entry is conjunctive.
   readonly validTargets: readonly DamageBonusTarget[];
+  readonly targetReaction?: TargetReaction;
 }
+
+export interface ThrownTargetReaction {
+  readonly kind: "thrown";
+  // Classic consumes four synchronized random draws in this order. Float
+  // ranges are base-inclusive/range-exclusive; bounceRandomRange is an integer
+  // modulus. Keeping the source shape explicit prevents a unit implementation
+  // from burying behavior constants in the target-reaction system.
+  readonly distanceBase: number;
+  readonly distanceRandomRange: number;
+  readonly maxVelocityBase: number;
+  readonly maxVelocityRandomRange: number;
+  readonly maxHeightBase: number;
+  readonly maxHeightRandomRange: number;
+  readonly bounceBase: number;
+  readonly bounceRandomRange: number;
+}
+
+// Append future source-proven reaction shapes only when a representative unit
+// proves their state, interruption, collision, snapshot, and hash contracts.
+export type TargetReaction = ThrownTargetReaction;
 
 // Append future source-proven charged shapes to this union. Do not add nullable
 // fields for mechanics that no implemented unit exercises.

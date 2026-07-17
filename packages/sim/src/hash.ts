@@ -101,6 +101,22 @@ export function hashWorld(world: World): number {
     world.facingX,
     world.facingZ,
     world.hp,
+    world.targetReactions.directionX,
+    world.targetReactions.directionZ,
+    world.targetReactions.distance,
+    world.targetReactions.maxVelocity,
+    world.targetReactions.maxHeight,
+    world.targetReactions.arcStartX,
+    world.targetReactions.arcStartZ,
+    world.targetReactions.arcStartY,
+    world.targetReactions.arcEndX,
+    world.targetReactions.arcEndZ,
+    world.targetReactions.arcEndY,
+    world.targetReactions.arcElapsed,
+    world.targetReactions.arcDuration,
+    world.targetReactions.arcVerticalVelocity,
+    world.targetReactions.arcGravity,
+    world.targetReactions.elevation,
   ];
 
   for (let arrayIndex = 0; arrayIndex < arrays.length; arrayIndex += 1) {
@@ -208,6 +224,18 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
 
     word = world.specialActionImpactPending[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.targetReactions.kind[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.targetReactions.numberBounces[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.targetReactions.numberBouncesDone[i]! >>> 0;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
