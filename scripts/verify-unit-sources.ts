@@ -12,8 +12,11 @@ import {
 } from "../packages/sim/src/content/unit-reference-schema";
 import { UNIT_REFERENCE_SPECS } from "../packages/sim/src/content/unit-references";
 import {
+  AREA_DAMAGE_ENEMIES,
+  AREA_DAMAGE_NEUTRAL_UNITS,
   CULTURE_EGYPTIAN,
   CULTURE_GREEK,
+  CULTURE_NORSE,
   UNIT_CLASS_ARCHER,
   UNIT_CLASS_BUILDING,
   UNIT_CLASS_CAVALRY,
@@ -28,13 +31,18 @@ import {
   type DamageBonus,
   type DamageBonusTarget,
 } from "../packages/sim/src/content/unit-type-schema";
-import { CULTURE_NORSE } from "../packages/sim/src/content/unit-type-schema";
 import { readXmbFile, type XmbNode } from "./lib/xmb";
 import {
   animationTagFraction,
+  animationTagFractions,
   readTrialAction,
   type TrialAttackActionName,
 } from "./lib/trial-unit";
+import {
+  classicDdtDimensions,
+  readClassicBarEntry,
+  readClassicParticleSource,
+} from "./lib/classic-particle";
 
 const root = resolve(import.meta.dir, "..");
 const protoPath = resolve(root, "private-assets/work/extracted/data/proto.xmb");
@@ -46,6 +54,8 @@ const animationRoots: Readonly<Record<ReferenceCulture, string>> = {
   greek: resolve(root, "private-assets/output/units/greek/raw/anim"),
   egyptian: resolve(root, "private-assets/output/units/egyptian/raw/anim"),
 };
+const modelArchivePath = resolve(root, "private-assets/work/trial/AOM/MODELS/MODELS.BAR");
+const textureArchivePath = resolve(root, "private-assets/work/trial/AOM/TEXTURES/TEXTURES.BAR");
 const cultureIds: Readonly<Record<ReferenceCulture, number>> = {
   greek: CULTURE_GREEK,
   egyptian: CULTURE_EGYPTIAN,
@@ -80,6 +90,32 @@ function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function sha256Bytes(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function glbAnimationDurationTicks(path: string): number {
+  const file = readFileSync(path);
+  const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
+  if (view.getUint32(0, true) !== 0x46546c67 || view.getUint32(4, true) !== 2) {
+    throw new Error(`${path} is not a GLB 2.0 file.`);
+  }
+  const jsonLength = view.getUint32(12, true);
+  const gltf = JSON.parse(new TextDecoder().decode(file.subarray(20, 20 + jsonLength))) as {
+    readonly accessors: readonly { readonly max?: readonly number[] }[];
+    readonly animations?: readonly {
+      readonly samplers: readonly { readonly input: number }[];
+    }[];
+  };
+  let duration = 0;
+  for (const animation of gltf.animations ?? []) {
+    for (const sampler of animation.samplers) {
+      duration = Math.max(duration, gltf.accessors[sampler.input]?.max?.[0] ?? 0);
+    }
+  }
+  return Math.round(duration * TICK_HZ);
+}
+
 function childValues(node: XmbNode, name: string): readonly XmbNode[] {
   return node.children.filter((candidate) => candidate.name === name);
 }
@@ -104,6 +140,7 @@ function trialClasses(unit: XmbNode): number {
   if (types.has("AbstractInfantry")) classes |= UNIT_CLASS_INFANTRY;
   if (types.has("MythUnitInfantry")) classes |= UNIT_CLASS_INFANTRY;
   if (types.has("AbstractCavalry")) classes |= UNIT_CLASS_CAVALRY;
+  if (types.has("MythUnitCavalry")) classes |= UNIT_CLASS_CAVALRY;
   if (types.has("Military")) classes |= UNIT_CLASS_MILITARY;
   if (types.has("Hero")) classes |= UNIT_CLASS_HERO;
   if (types.has("MythUnit")) classes |= UNIT_CLASS_MYTH;
@@ -149,6 +186,8 @@ function damageBonus(type: string, multiplier: number): DamageBonus {
       return { target: { kind: "classes", classes: UNIT_CLASS_SIEGE }, multiplier };
     case "MythUnit":
       return { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier };
+    case "Hero":
+      return { target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier };
     default:
       throw new Error(`Unsupported Trial damage bonus type ${type}.`);
   }
@@ -162,7 +201,9 @@ function trialAttack(
   readonly range: number;
   readonly bonuses: readonly DamageBonus[];
   readonly numericParameter: (name: string, type?: string) => number;
+  readonly numericParameter2: (name: string, type?: string) => number;
   readonly rateTypes: readonly string[];
+  readonly optionTypes: readonly string[];
 } {
   const action = readTrialAction(unit, actionName);
 
@@ -196,7 +237,11 @@ function trialAttack(
       .flatMap((candidate) =>
         candidate.attributes.type === undefined ? [] : [candidate.attributes.type],
       ),
+    optionTypes: action.parameters.flatMap((candidate) =>
+      candidate.attributes.options === undefined ? [] : candidate.attributes.options.split("|"),
+    ),
     numericParameter: (name, type) => action.numericParameter(name, type),
+    numericParameter2: (name, type) => action.numericParameter2(name, type),
   };
 }
 
@@ -275,7 +320,9 @@ function trialComparableValues(
 
   if (reference.family !== "myth") return primary;
 
-  const special = trialAttack(unit, "Gore");
+  const specialAction =
+    reference.expected.specialAttack.kind === "charged-melee" ? "Gore" : "WhirlwindAttack";
+  const special = trialAttack(unit, specialAction);
   const validTargets: DamageBonusTarget[] = [];
   for (const type of special.rateTypes) {
     let target: DamageBonusTarget;
@@ -286,8 +333,10 @@ function trialComparableValues(
         kind: "classes",
         classes: UNIT_CLASS_MYTH | UNIT_CLASS_INFANTRY,
       };
+    } else if (type === "MythUnit") {
+      target = { kind: "classes", classes: UNIT_CLASS_MYTH };
     } else {
-      throw new Error(`${unit.attributes.name} has unsupported Gore target ${type}.`);
+      throw new Error(`${unit.attributes.name} has unsupported ${specialAction} target ${type}.`);
     }
     if (!validTargets.some((candidate) => structurallyEqual(candidate, target))) {
       validTargets.push(target);
@@ -301,6 +350,18 @@ function trialComparableValues(
     "specialAttack.bonuses": special.bonuses,
     "specialAttack.rechargeTicks": numberValue(unit, "rechargetime") * TICK_HZ,
     "specialAttack.validTargets": validTargets,
+    ...(reference.expected.specialAttack.kind === "charged-area-pulse"
+      ? {
+          "specialAttack.radius": special.numericParameter2("Damage", "Hack"),
+          "specialAttack.damageRelations": special.optionTypes.reduce((relations, option) => {
+            if (option === "AttackEnemy") return relations | AREA_DAMAGE_ENEMIES;
+            if (option === "AttackGAIAUnits") return relations | AREA_DAMAGE_NEUTRAL_UNITS;
+            throw new Error(
+              `${unit.attributes.name} has unsupported ${specialAction} option ${option}.`,
+            );
+          }, 0),
+        }
+      : {}),
   };
 }
 
@@ -331,7 +392,12 @@ function verifyTrialGameplay(reference: UnitReferenceSpec, unit: XmbNode, proto:
   }
 }
 
-for (const path of [protoPath, ...Object.values(inventoryPaths)]) {
+for (const path of [
+  protoPath,
+  ...Object.values(inventoryPaths),
+  modelArchivePath,
+  textureArchivePath,
+]) {
   if (!existsSync(path)) {
     throw new Error(
       `Missing private fidelity source ${path}. Run the local asset extraction first.`,
@@ -340,6 +406,8 @@ for (const path of [protoPath, ...Object.values(inventoryPaths)]) {
 }
 
 const proto = readXmbFile(protoPath);
+const modelArchive = readFileSync(modelArchivePath);
+const textureArchive = readFileSync(textureArchivePath);
 const protoSha256 = sha256(protoPath);
 const inventories = new Map<ReferenceCulture, UnitInventory>();
 const inventoryHashes = new Map<ReferenceCulture, string>();
@@ -427,6 +495,108 @@ for (const reference of UNIT_REFERENCE_SPECS) {
     );
     if (fraction !== impact.fraction) {
       throw new Error(`${reference.key} special impact tag does not match its pinned source.`);
+    }
+
+    const cycleEvidence = reference.source.assetInventory.meleeAttackCycles;
+    if (cycleEvidence !== undefined) {
+      const fractions = animationTagFractions(
+        readFileSync(animationPath, "utf8"),
+        "attack",
+        "Attack",
+      );
+      if (
+        fractions.length !== cycleEvidence.length ||
+        cycleEvidence.some((cycle, index) => cycle.fraction !== fractions[index])
+      ) {
+        throw new Error(`${reference.key} melee-cycle tags do not match their pinned source.`);
+      }
+      for (const cycle of cycleEvidence) {
+        const modelPath = resolve(
+          animationRoots[reference.source.culture],
+          "..",
+          "..",
+          "models",
+          cycle.model,
+        );
+        if (
+          !existsSync(modelPath) ||
+          sha256(modelPath) !== cycle.modelSha256 ||
+          glbAnimationDurationTicks(modelPath) !== cycle.durationTicks
+        ) {
+          throw new Error(`${reference.key} melee-cycle model does not match its pinned source.`);
+        }
+      }
+    }
+
+    for (const particleEvidence of reference.source.assetInventory.specialParticles ?? []) {
+      const particleBytes = readClassicBarEntry(modelArchive, particleEvidence.prtFile);
+      const textureBytes = readClassicBarEntry(textureArchive, particleEvidence.textureFile);
+      if (
+        sha256Bytes(particleBytes) !== particleEvidence.prtSha256 ||
+        sha256Bytes(textureBytes) !== particleEvidence.textureSha256
+      ) {
+        throw new Error(`${reference.key} particle asset hashes do not match their pinned source.`);
+      }
+
+      const particle = readClassicParticleSource(particleBytes);
+      const expectedParticle = {
+        loop: particleEvidence.loop,
+        syncWithAttackAnimation: particleEvidence.syncWithAttackAnimation,
+        maxParticles: particleEvidence.maxParticles,
+        particleLifetimeSeconds: particleEvidence.particleLifetimeSeconds,
+        emissionStartSeconds: particleEvidence.emissionStartSeconds,
+        emissionDurationSeconds: particleEvidence.emissionDurationSeconds,
+        emissionRatePerSecond: particleEvidence.emissionRatePerSecond,
+        emissionRateVariance: particleEvidence.emissionRateVariance,
+        initialVelocity: particleEvidence.initialVelocity,
+        usesSpreader: particleEvidence.spreader === "point",
+        shapeType: 0,
+        offAxisDegrees: particleEvidence.offAxisDegrees,
+        offPlaneDegrees: particleEvidence.offPlaneDegrees,
+        materialType: particleEvidence.blend === "additive" ? 1 : -1,
+        baseScale: particleEvidence.baseScale,
+        scaleCycleSeconds: particleEvidence.scaleCycleSeconds,
+        opacityStages: particleEvidence.opacityStages,
+        scaleStages: particleEvidence.scaleStages,
+      };
+      const actualParticle = {
+        loop: particle.loop,
+        syncWithAttackAnimation: particle.syncWithAttackAnimation,
+        maxParticles: particle.maxParticles,
+        particleLifetimeSeconds: particle.particleLifetimeSeconds,
+        emissionStartSeconds: particle.emissionStartSeconds,
+        emissionDurationSeconds: particle.emissionDurationSeconds,
+        emissionRatePerSecond: particle.emissionRatePerSecond,
+        emissionRateVariance: particle.emissionRateVariance,
+        initialVelocity: particle.initialVelocity,
+        usesSpreader: particle.usesSpreader,
+        shapeType: particle.shapeType,
+        offAxisDegrees: particle.offAxisDegrees,
+        offPlaneDegrees: particle.offPlaneDegrees,
+        materialType: particle.materialType,
+        baseScale: particle.baseScale,
+        scaleCycleSeconds: particle.scaleCycleSeconds,
+        opacityStages: particle.opacityStages,
+        scaleStages: particle.scaleStages,
+      };
+      const sourceTextureName = particleEvidence.textureFile.replace(/\.ddt$/i, ".tga");
+      const animationSource = readFileSync(animationPath, "utf8");
+      if (
+        !structurallyEqual(actualParticle, expectedParticle) ||
+        particle.appearanceFiles.length !== 1 ||
+        particle.appearanceFiles[0]!.toLowerCase() !== sourceTextureName.toLowerCase() ||
+        !structurallyEqual(classicDdtDimensions(textureBytes), [
+          particleEvidence.textureWidth,
+          particleEvidence.textureHeight,
+        ]) ||
+        !animationSource.includes(
+          `connect ${particleEvidence.attachmentNode} ${particleEvidence.animationSelector} HOTSPOT`,
+        )
+      ) {
+        throw new Error(
+          `${reference.key} particle ${particleEvidence.key} does not match its pinned source.`,
+        );
+      }
     }
   }
 }

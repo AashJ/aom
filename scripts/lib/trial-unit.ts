@@ -1,10 +1,11 @@
 import type { XmbNode } from "./xmb";
 
-export type TrialAttackActionName = "HandAttack" | "RangedAttack" | "Gore";
+export type TrialAttackActionName = "HandAttack" | "RangedAttack" | "Gore" | "WhirlwindAttack";
 
 export interface TrialActionReader {
   readonly parameters: readonly XmbNode[];
   numericParameter(name: string, type?: string): number;
+  numericParameter2(name: string, type?: string): number;
 }
 
 export function readTrialAction(
@@ -32,6 +33,19 @@ export function readTrialAction(
       }
       return value;
     },
+    numericParameter2(name, type) {
+      const parameter = parameters.find(
+        (candidate) =>
+          candidate.attributes.name === name &&
+          (type === undefined || candidate.attributes.type === type),
+      );
+      const value = Number(parameter?.attributes.value2);
+      if (parameter === undefined || !Number.isFinite(value)) {
+        const descriptor = type === undefined ? name : `${name} ${type}`;
+        throw new Error(`${unit.attributes.name} has no second numeric ${descriptor}.`);
+      }
+      return value;
+    },
   };
 }
 
@@ -39,7 +53,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function animationTagFraction(source: string, action: string, tag: string): number {
+function animationBody(source: string, action: string): string {
   const actionStart = source.search(new RegExp(`\\banim\\s+${escapeRegExp(action)}\\b`, "i"));
   const openBrace = source.indexOf("{", actionStart);
   if (actionStart < 0 || openBrace < 0) throw new Error(`No ${action} animation.`);
@@ -57,11 +71,21 @@ export function animationTagFraction(source: string, action: string, tag: string
     }
   }
   if (closeBrace < 0) throw new Error(`Unterminated ${action} animation.`);
-  const body = source.slice(openBrace, closeBrace + 1);
-  const match = body.match(
-    new RegExp(`\\btag\\s+${escapeRegExp(tag)}\\s+([0-9.]+)\\s+true\\b`, "i"),
+  return source.slice(openBrace, closeBrace + 1);
+}
+
+export function animationTagFractions(source: string, action: string, tag: string): number[] {
+  const body = animationBody(source, action);
+  const matches = body.matchAll(
+    new RegExp(`\\btag\\s+${escapeRegExp(tag)}\\s+([0-9.]+)\\s+true\\b`, "gi"),
   );
-  const fraction = Number(match?.[1]);
-  if (!Number.isFinite(fraction)) throw new Error(`${action} has no repeating ${tag} tag.`);
-  return fraction;
+  const fractions = [...matches].map((match) => Number(match[1]));
+  if (fractions.length === 0 || fractions.some((fraction) => !Number.isFinite(fraction))) {
+    throw new Error(`${action} has no repeating ${tag} tag.`);
+  }
+  return fractions;
+}
+
+export function animationTagFraction(source: string, action: string, tag: string): number {
+  return animationTagFractions(source, action, tag)[0]!;
 }

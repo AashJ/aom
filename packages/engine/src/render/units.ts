@@ -1,5 +1,6 @@
 import type { RenderSnapshot } from "@aom/sim";
 import { createModelRenderer } from "./model-renderer";
+import { createParticleRenderer } from "./particle-renderer";
 import {
   addRendererStatistics,
   resetRendererStatistics,
@@ -32,9 +33,10 @@ export async function createUnitsRenderer(
   maxProjectiles: number,
   heights: Float32Array,
 ): Promise<UnitsRenderer> {
-  const [models, sprites] = await Promise.all([
+  const [models, sprites, particles] = await Promise.all([
     createModelRenderer(device, format, maxInstances, maxProjectiles),
     createStaticSpriteRenderer(device, format, maxInstances, heights),
+    createParticleRenderer(device, format, maxInstances),
   ]);
   const overlays = createUnitOverlayRenderer(device, format, maxInstances, heights);
   const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
@@ -44,7 +46,7 @@ export async function createUnitsRenderer(
       pass,
       queue,
       viewProj,
-      _cameraViewDir,
+      cameraViewDir,
       prev,
       curr,
       alpha,
@@ -86,6 +88,10 @@ export async function createUnitsRenderer(
           ghostZ,
           ghostValid,
         ),
+      );
+      addRendererStatistics(
+        statistics,
+        particles.draw(pass, queue, viewProj, cameraViewDir, prev, curr, alpha, terrainHeights),
       );
       addRendererStatistics(
         statistics,

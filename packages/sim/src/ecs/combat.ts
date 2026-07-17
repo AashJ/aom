@@ -5,6 +5,7 @@ import {
   type DamageBonus,
   type DamageBonusTarget,
   type MeleeAttack,
+  type MeleeAttackCycle,
   type UnitTypeStats,
 } from "../content/unit-type-schema";
 
@@ -46,4 +47,12 @@ export function resolveAttackDamage(attack: Attack, targetStats: UnitTypeStats):
 // decided by Attack.kind; armor/bonus resolution is shared across every kind.
 export function resolveMeleeDamage(attack: MeleeAttack, targetStats: UnitTypeStats): number {
   return resolveAttackDamage(attack, targetStats);
+}
+
+export function resolveMeleeCycleDamage(
+  attack: MeleeAttack,
+  cycle: MeleeAttackCycle,
+  targetStats: UnitTypeStats,
+): number {
+  return resolveMeleeDamage(attack, targetStats) * (cycle.actionTicks / attack.cooldownTicks);
 }

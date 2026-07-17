@@ -20,7 +20,6 @@ import {
   MAX_UNITS,
   MODE_PRAYING,
   RESOURCE_COUNT,
-  CULTURE_GREEK,
   registerPlayer,
   resolveId,
   spawnResourceNodes,
@@ -32,7 +31,6 @@ import {
   UNIT_TYPES,
   UNIT_CLASS_HUMAN,
   UNIT_CLASS_WORKER,
-  TYPE_MINOTAUR,
   updateVisibility,
   VIS_VISIBLE,
   WOOD,
@@ -72,10 +70,6 @@ import { createPlayerStateStore, type PlayerStateCallback } from "./player-state
 const placementRayOrigin = vec3.create();
 const placementRayDir = vec3.create();
 const placementHit = vec3.create();
-
-const MULTIPLAYER_STARTING_UNITS_BY_CULTURE = {
-  [CULTURE_GREEK]: [TYPE_MINOTAUR],
-} as const;
 
 function cheatFromChat(code: string): CheatId | null {
   switch (code) {
@@ -258,12 +252,7 @@ export async function createGame(
     registerPlayer(world, ownerIds[ownerIndex]!, session ? GOD_ZEUS : soloMajorGod);
   }
 
-  spawnUnits(
-    world,
-    3 * ownerIds.length,
-    ownerIds,
-    session ? MULTIPLAYER_STARTING_UNITS_BY_CULTURE : undefined,
-  );
+  spawnUnits(world, 3 * ownerIds.length, ownerIds);
   const selfCulture = cultureForMajorGod(world.playerMajorGod[selfPlayerId]!);
   const selfTownCenterType = townCenterTypeForCulture(selfCulture);
   const selfWorkerType = workerTypeForCulture(selfCulture);

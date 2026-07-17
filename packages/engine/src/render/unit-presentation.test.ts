@@ -20,6 +20,7 @@ import {
   TYPE_JASON,
   TYPE_MILITIA,
   TYPE_MINOTAUR,
+  TYPE_NEMEAN_LION,
   TYPE_SPEARMAN,
   TARGET_REACTION_THROWN,
   TYPE_TOXOTES,
@@ -313,5 +314,29 @@ describe("unit presentation", () => {
     snapshot.specialActionRemaining[0] = 21;
     const presentation = resolveModelPresentation(snapshot, 0, false)!;
     expect(modelAnimationTime(presentation, snapshot, 0, 0, 2)).toBeCloseTo(0.95, 8);
+  });
+
+  test("uses the simulation-selected Nemean Lion attack cycle and roar clock", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_NEMEAN_LION;
+
+    snapshot.actionCooldown[0] = 24;
+    snapshot.meleeActionVariant[0] = 0;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekNemeanLionAttackA");
+
+    snapshot.actionCooldown[0] = 9;
+    snapshot.meleeActionVariant[0] = 1;
+    const attack = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(attack)).toBe("greekNemeanLionAttackB");
+    expect(modelAnimationTime(attack, snapshot, 0, 0, 0.9)).toBeCloseTo(0.45, 8);
+
+    snapshot.meleeActionVariant[0] = 0xff;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekNemeanLionIdle");
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.specialActionRemaining[0] = 60;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekNemeanLionRoar");
   });
 });

@@ -131,6 +131,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     mode: new Uint8Array(xs.length),
     gatherTargetType: new Uint16Array(xs.length).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(xs.length),
+    meleeActionVariant: new Uint8Array(xs.length),
     specialActionRemaining: new Uint16Array(xs.length),
     targetReactionKind: new Uint8Array(xs.length),
     elevation: new Float32Array(xs.length),

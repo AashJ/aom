@@ -11,6 +11,11 @@ export interface StableIdState {
   readonly handleOf: Uint32Array;
 }
 
+export interface StableIdLookupState extends StableIdState {
+  readonly slotOf: Int32Array;
+  readonly nextHandle: number;
+}
+
 export function packId(index: number, generation: number): number {
   return (index | (generation << 16)) >>> 0;
 }
@@ -18,6 +23,12 @@ export function packId(index: number, generation: number): number {
 export function stableIdAt(state: StableIdState, index: number): number {
   const handle = state.handleOf[index]!;
   return packId(handle, state.generation[handle]!);
+}
+
+export function resolveStableId(state: StableIdLookupState, id: number): number {
+  const handle = idIndex(id);
+  if (handle >= state.nextHandle || state.generation[handle] !== idGeneration(id)) return -1;
+  return state.slotOf[handle]!;
 }
 
 export function idIndex(id: number): number {

@@ -43,7 +43,7 @@ describe("agentic unit references", () => {
     expect(centaur.foundationLanes).toEqual([
       "serial-projectile-foundation",
       "serial-myth-unit-lifecycle",
-      "serial-special-actions",
+      "serial-charged-ranged-special",
     ]);
     expect(centaur.blocker).toStartWith("Gates B+C+D:");
 
@@ -88,7 +88,7 @@ describe("agentic unit references", () => {
     ]).toEqual([6, 6, 6]);
   });
 
-  test("closes every released ordinary Greek hero lane with a final reference", () => {
+  test("closes prior releases while keeping the active serial proof candidate-owned", () => {
     const releasedHeroKeys = [
       "greek-odysseus",
       "greek-heracles",
@@ -100,13 +100,60 @@ describe("agentic unit references", () => {
     ];
     expect(
       UNIT_ROSTER.filter((entry) => entry.status === "ready").map((entry) => entry.key),
-    ).toEqual(["greek-minotaur"]);
+    ).toEqual(["greek-nemean-lion"]);
     for (const key of releasedHeroKeys) {
       const lane = UNIT_ROSTER.find((entry) => entry.key === key);
       const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === key);
       expect(lane?.status).toBe("implemented");
       expect(reference?.family).toBe("hero");
       expect(reference?.source.stage).toBe("final");
+    }
+
+    const minotaurLane = UNIT_ROSTER.find((entry) => entry.key === "greek-minotaur");
+    const minotaurReference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === "greek-minotaur");
+    expect(minotaurLane?.status).toBe("implemented");
+    expect(minotaurReference?.family).toBe("myth");
+    expect(minotaurReference?.source.stage).toBe("final");
+
+    const nemeanLane = UNIT_ROSTER.find((entry) => entry.key === "greek-nemean-lion");
+    const nemeanReference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === "greek-nemean-lion");
+    expect(nemeanLane?.status).toBe("ready");
+    expect(nemeanReference?.family).toBe("myth");
+    expect(nemeanReference?.source.stage).toBe("candidate");
+  });
+
+  test("keeps post-C3 special families grouped without prematurely opening a lane", () => {
+    const keysForFoundation = (foundation: string): string[] =>
+      UNIT_ROSTER.filter((entry) => entry.foundationLanes.includes(foundation)).map(
+        (entry) => entry.key,
+      );
+
+    expect(keysForFoundation("serial-jump-special")).toEqual([
+      "greek-bellerophon",
+      "egyptian-anubite",
+    ]);
+    expect(keysForFoundation("serial-area-whirlwind-special")).toEqual([
+      "greek-nemean-lion",
+      "egyptian-sphinx",
+      "egyptian-avenger",
+      "egyptian-scorpion-man",
+    ]);
+    expect(keysForFoundation("serial-charged-ranged-special")).toEqual([
+      "greek-centaur",
+      "greek-manticore",
+      "greek-chimera",
+    ]);
+    expect(keysForFoundation("serial-petrification-special")).toEqual([
+      "greek-perseus",
+      "greek-medusa",
+    ]);
+
+    for (const lane of UNIT_ROSTER) {
+      if (lane.status !== "blocked" || (lane.family !== "hero" && lane.family !== "myth")) {
+        continue;
+      }
+      expect(lane.blocker).not.toContain("Myth-unit rules");
+      expect(lane.blocker).not.toContain("Myth-unit favor/lifecycle");
     }
   });
 
@@ -247,15 +294,20 @@ describe("agentic unit references", () => {
   test("binds a thrown special's executable evidence to its authored reaction ranges", () => {
     const lane = UNIT_ROSTER.find((entry) => entry.key === "greek-minotaur")!;
     const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === lane.key)!;
-    if (reference.family !== "myth" || reference.source.targetReaction === undefined) {
+    if (
+      reference.family !== "myth" ||
+      !("targetReaction" in reference.source) ||
+      reference.source.targetReaction === undefined
+    ) {
       throw new Error("Minotaur thrown-reaction evidence is unavailable.");
     }
+    const targetReaction = reference.source.targetReaction;
     const driftedReference = {
       ...reference,
       source: {
         ...reference.source,
         targetReaction: {
-          ...reference.source.targetReaction,
+          ...targetReaction,
           distance: [9, 2] as const,
         },
       },
@@ -264,5 +316,52 @@ describe("agentic unit references", () => {
     expect(() => validateUnitReferences([lane], [driftedReference])).toThrow(
       "invalid thrown target-reaction evidence",
     );
+  });
+
+  test("pins the Nemean Lion sound wave to its original particle and texture", () => {
+    const reference = UNIT_REFERENCE_SPECS.find(
+      (candidate) => candidate.key === "greek-nemean-lion",
+    );
+    if (reference?.family !== "myth") throw new Error("Nemean Lion myth reference is missing.");
+    const particle = reference.source.assetInventory.specialParticles?.[0];
+
+    expect(particle).toMatchObject({
+      key: "greekNemeanLionSoundWave",
+      animationSelector: "soundwave",
+      attachmentNode: "TOPOFHEAD",
+      loop: true,
+      syncWithAttackAnimation: true,
+      maxParticles: 20,
+      particleLifetimeSeconds: 0.8,
+      emissionStartSeconds: 1.1,
+      emissionDurationSeconds: 1,
+      emissionRatePerSecond: 8,
+      emissionRateVariance: 0.2,
+      initialVelocity: 5,
+      blend: "additive",
+      textureWidth: 64,
+      textureHeight: 64,
+      presentation: {
+        spreader: "radial-horizontal",
+        heightOffset: 1.75,
+        opacityFadeOutSeconds: 0.2,
+      },
+    });
+  });
+
+  test("keeps area gameplay evidence independent from optional particle presentation", () => {
+    const lane = UNIT_ROSTER.find((candidate) => candidate.key === "greek-nemean-lion")!;
+    const reference: UnitReferenceSpec = UNIT_REFERENCE_SPECS.find(
+      (candidate) => candidate.key === lane.key,
+    )!;
+    if (reference.family !== "myth") throw new Error("Nemean Lion myth reference is missing.");
+    const { specialParticles: _specialParticles, ...assetInventory } =
+      reference.source.assetInventory;
+    const gameplayOnlyReference = {
+      ...reference,
+      source: { ...reference.source, assetInventory },
+    };
+
+    expect(() => validateUnitReferences([lane], [gameplayOnlyReference])).not.toThrow();
   });
 });

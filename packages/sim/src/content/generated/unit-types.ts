@@ -40,6 +40,7 @@ import { definition as greekAtalanta } from "../unit-types/greek/atalanta";
 import { definition as greekAjax } from "../unit-types/greek/ajax";
 import { definition as greekChiron } from "../unit-types/greek/chiron";
 import { definition as greekMinotaur } from "../unit-types/greek/minotaur";
+import { definition as greekNemeanLion } from "../unit-types/greek/nemean-lion";
 import { definition as egyptianSlinger } from "../unit-types/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-types/egyptian/chariot-archer";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
@@ -86,6 +87,7 @@ export const UNIT_TYPE_DEFINITIONS = [
   greekAjax,
   greekChiron,
   greekMinotaur,
+  greekNemeanLion,
   egyptianSlinger,
   egyptianChariotArcher,
 ] as const satisfies readonly UnitTypeStats[];

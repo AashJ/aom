@@ -40,12 +40,14 @@ import { definition as greekAtalanta } from "../unit-media/greek/atalanta";
 import { definition as greekAjax } from "../unit-media/greek/ajax";
 import { definition as greekChiron } from "../unit-media/greek/chiron";
 import { definition as greekMinotaur } from "../unit-media/greek/minotaur";
+import { definition as greekNemeanLion } from "../unit-media/greek/nemean-lion";
 import { definition as egyptianSlinger } from "../unit-media/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-media/egyptian/chariot-archer";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
   IconConfig,
   ModelAssetDefinition,
+  ParticleEffectDefinition,
   RuntimeProjectilePresentation,
   RuntimeModelActionDefinition,
   RuntimeModelAssetDefinition,
@@ -98,9 +100,36 @@ export const UNIT_MEDIA_DEFINITIONS = [
   greekAjax,
   greekChiron,
   greekMinotaur,
+  greekNemeanLion,
   egyptianSlinger,
   egyptianChariotArcher,
 ] as const satisfies readonly UnitMediaDefinition[];
+
+type ParticleEffectParameters = Omit<ParticleEffectDefinition, "key" | "trigger" | "textureUrl">;
+const PARTICLE_EFFECT_PARAMETERS_BY_TYPE: Readonly<
+  Record<number, readonly ParticleEffectParameters[]>
+> = {
+  "116": [
+    {
+      blend: "additive",
+      spreader: "radial-horizontal",
+      maxParticles: 20,
+      particleLifetimeSeconds: 0.8,
+      emissionStartSeconds: 1.1,
+      emissionDurationSeconds: 1,
+      emissionRatePerSecond: 8,
+      emissionRateVariance: 0.2,
+      initialVelocity: 5,
+      heightOffset: 1.75,
+      baseScale: 6,
+      scaleFadeInSeconds: 1,
+      peakOpacity: 0.3,
+      opacityVariance: 0.1,
+      opacityFadeInSeconds: 0.2,
+      opacityFadeOutSeconds: 0.2,
+    },
+  ],
+};
 
 const unitMedia: UnitMediaDefinition[] = [];
 const authoredModelConfigs: ModelAssetDefinition[] = [];
@@ -179,9 +208,35 @@ for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
   };
 }
 
+const particleEffectDefinitions: ParticleEffectDefinition[] = [];
+const unitParticleEffectIndices: (readonly number[] | undefined)[] = [];
+let maxParticlesPerUnit = 0;
+for (const definition of UNIT_MEDIA_DEFINITIONS) {
+  const effects = (definition as UnitMediaDefinition).effects ?? [];
+  const parameters = PARTICLE_EFFECT_PARAMETERS_BY_TYPE[definition.type] ?? [];
+  if (effects.length !== parameters.length) {
+    throw new Error(`Generated particle parameters do not match ${definition.key}.`);
+  }
+  const indices: number[] = [];
+  let particlesForUnit = 0;
+  for (let effectIndex = 0; effectIndex < effects.length; effectIndex += 1) {
+    const effect = { ...effects[effectIndex]!, ...parameters[effectIndex]! };
+    indices.push(particleEffectDefinitions.length);
+    particleEffectDefinitions.push(effect);
+    particlesForUnit += effect.maxParticles;
+  }
+  if (indices.length > 0) unitParticleEffectIndices[definition.type] = Object.freeze(indices);
+  maxParticlesPerUnit = Math.max(maxParticlesPerUnit, particlesForUnit);
+}
+
 export const UNIT_MEDIA: readonly UnitMediaDefinition[] = Object.freeze(unitMedia);
 export const UNIT_PRESENTATIONS: readonly RuntimeUnitPresentation[] = Object.freeze(presentations);
 export const PROJECTILE_PRESENTATIONS: readonly RuntimeProjectilePresentation[] =
   Object.freeze(projectilePresentations);
 export const MODEL_CONFIGS: readonly RuntimeModelAssetDefinition[] = Object.freeze(modelConfigs);
 export const TYPE_ICONS: readonly (IconConfig | undefined)[] = Object.freeze(icons);
+export const PARTICLE_EFFECT_DEFINITIONS: readonly ParticleEffectDefinition[] =
+  Object.freeze(particleEffectDefinitions);
+export const UNIT_PARTICLE_EFFECT_INDICES: readonly (readonly number[] | undefined)[] =
+  Object.freeze(unitParticleEffectIndices);
+export const MAX_PARTICLES_PER_UNIT = maxParticlesPerUnit;

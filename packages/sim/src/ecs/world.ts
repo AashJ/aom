@@ -41,7 +41,7 @@ import {
   VIS_EXPLORED,
   VISIBILITY_TILES,
 } from "../visibility";
-import { idGeneration, idIndex, stableIdAt } from "./id";
+import { resolveStableId, stableIdAt } from "./id";
 import { resolveDamage, resolveMeleeDamage } from "./combat";
 import { clearAttackOrder } from "./attack-state";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
@@ -82,10 +82,17 @@ import {
   rebuildUnitSpatialGrid,
 } from "./spatial-grid";
 import {
+  activeMeleeAttackCycle,
+  beginMeleeAttackCycle,
+  NO_MELEE_ATTACK_VARIANT,
+} from "./melee-attack-cycles";
+import { tickActiveMeleeAttack } from "./melee-combat";
+import {
   advanceSpecialAttack,
   beginSpecialAttack,
   clearSpecialAttack,
   isValidSpecialTarget,
+  resolveChargedAreaPulse,
   tickSpecialRecharge,
 } from "./special-attacks";
 import {
@@ -239,6 +246,8 @@ export interface World {
   attackOrdered: Uint8Array;
   attackAimTarget: Uint32Array;
   attackAimShots: Uint16Array;
+  meleeActionVariant: Uint8Array;
+  meleeActionImpactPending: Uint8Array;
   specialRecharge: Uint16Array;
   specialActionRemaining: Uint16Array;
   specialActionTarget: Uint32Array;
@@ -359,6 +368,8 @@ export function createWorld(seed: number): World {
     attackOrdered: new Uint8Array(MAX_UNITS),
     attackAimTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackAimShots: new Uint16Array(MAX_UNITS),
+    meleeActionVariant: new Uint8Array(MAX_UNITS).fill(NO_MELEE_ATTACK_VARIANT),
+    meleeActionImpactPending: new Uint8Array(MAX_UNITS),
     specialRecharge: new Uint16Array(MAX_UNITS),
     specialActionRemaining: new Uint16Array(MAX_UNITS),
     specialActionTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
@@ -625,13 +636,10 @@ export function spawnBuilding(
 }
 
 export function resolveId(world: World, id: number): number {
-  const handle = idIndex(id);
-
   // -1 = stale or invalid — a unit that died during the input-delay window; callers treat it
   // as a silent, deterministic no-op. Ordering a corpse around must never be an error and NEVER
   // a desync. Dead handles keep slotOf = -1, so they resolve to -1 naturally.
-  if (handle >= world.nextHandle || world.generation[handle] !== idGeneration(id)) return -1;
-  return world.slotOf[handle]!;
+  return resolveStableId(world, id);
 }
 
 export function unitIdAt(world: World, index: number): number {
@@ -1058,7 +1066,9 @@ export function tickWorld(world: World): void {
       continue;
     }
 
-    if (world.attackCooldown[i]! > 0) {
+    const activeMeleeCycle =
+      attack.kind === "melee" ? activeMeleeAttackCycle(world, i, attack) : null;
+    if (activeMeleeCycle === null && world.attackCooldown[i]! > 0) {
       world.attackCooldown[i] = world.attackCooldown[i]! - 1;
     }
     if (special !== undefined) tickSpecialRecharge(world, i);
@@ -1070,6 +1080,12 @@ export function tickWorld(world: World): void {
       targetReactionCapabilitiesAt(world.targetReactions, i).blocksOrderExecution
     ) {
       continue;
+    }
+
+    if (activeMeleeCycle !== null && attack.kind === "melee") {
+      if (tickActiveMeleeAttack(world, i, attack, activeMeleeCycle, NEUTRAL_OWNER, dealDamage)) {
+        continue;
+      }
     }
 
     if (world.specialActionRemaining[i]! > 0) {
@@ -1106,20 +1122,29 @@ export function tickWorld(world: World): void {
           setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
           const phase = advanceSpecialAttack(world, i, special);
           if (phase === "impact") {
-            dealDamage(world, target, resolveDamage(special, targetStats));
-            if (
-              special.targetReaction !== undefined &&
-              world.dying[target] === 0 &&
-              world.hp[target]! > 0
-            ) {
-              hasActiveTargetReactions =
-                installTargetReaction(
-                  world,
-                  target,
-                  world.posX[i]!,
-                  world.posZ[i]!,
-                  special.targetReaction,
-                ) || hasActiveTargetReactions;
+            switch (special.kind) {
+              case "charged-melee": {
+                dealDamage(world, target, resolveDamage(special, targetStats));
+                if (
+                  special.targetReaction !== undefined &&
+                  world.dying[target] === 0 &&
+                  world.hp[target]! > 0
+                ) {
+                  hasActiveTargetReactions =
+                    installTargetReaction(
+                      world,
+                      target,
+                      world.posX[i]!,
+                      world.posZ[i]!,
+                      special.targetReaction,
+                    ) || hasActiveTargetReactions;
+                }
+                break;
+              }
+              case "charged-area-pulse": {
+                resolveChargedAreaPulse(world, i, special, UNIT_TYPES, NEUTRAL_OWNER, dealDamage);
+                break;
+              }
             }
           }
           continue;
@@ -1179,8 +1204,12 @@ export function tickWorld(world: World): void {
               beginSpecialAttack(world, i, unitIdAt(world, target), special);
               world.attackCooldown[i] = special.actionTicks;
             } else if (attack.kind === "melee") {
-              dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
-              world.attackCooldown[i] = attack.cooldownTicks;
+              if (attack.cycleVariants === undefined) {
+                dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
+                world.attackCooldown[i] = attack.cooldownTicks;
+              } else {
+                beginMeleeAttackCycle(world, i, attack, nextFloat(world.rng));
+              }
             } else {
               beginProjectileAttack(world, i, target, UNIT_TYPES);
             }
@@ -1862,6 +1891,9 @@ export function tickWorld(world: World): void {
     const maxCellX = cellX < GRID_DIM - 1 ? cellX + 1 : GRID_DIM - 1;
     const minCellZ = cellZ > 0 ? cellZ - 1 : 0;
     const maxCellZ = cellZ < GRID_DIM - 1 ? cellZ + 1 : GRID_DIM - 1;
+    const actionPositionLocked =
+      world.meleeActionVariant[i] !== NO_MELEE_ATTACK_VARIANT ||
+      world.specialActionRemaining[i]! > 0;
 
     // Radius 0.8 is smaller than the 2-unit cell size, so the 3x3 neighborhood always suffices.
     for (let neighborCellZ = minCellZ; neighborCellZ <= maxCellZ; neighborCellZ += 1) {
@@ -1885,14 +1917,13 @@ export function tickWorld(world: World): void {
             continue;
           }
 
-          // Charged actions lock their attacker in place. Suppress separation
-          // for the attacker and between it and its assigned victim; otherwise
-          // the generic crowd solver visibly slides the pair apart during the
-          // wind-up and can move an idle victim beyond the authored hit range.
+          // Authored actions own their attacker's position. Suppress separation
+          // whenever either participant is active; otherwise a lower-index
+          // neighbor can still slide the attacker during its wind-up.
           if (
-            world.specialActionRemaining[i]! > 0 ||
-            (world.specialActionRemaining[j]! > 0 &&
-              world.specialActionTarget[j] === unitIdAt(world, i))
+            actionPositionLocked ||
+            world.meleeActionVariant[j] !== NO_MELEE_ATTACK_VARIANT ||
+            world.specialActionRemaining[j]! > 0
           ) {
             continue;
           }
@@ -2103,6 +2134,8 @@ function applyDeaths(world: World): void {
       world.attackOrdered[i] = world.attackOrdered[last]!;
       world.attackAimTarget[i] = world.attackAimTarget[last]!;
       world.attackAimShots[i] = world.attackAimShots[last]!;
+      world.meleeActionVariant[i] = world.meleeActionVariant[last]!;
+      world.meleeActionImpactPending[i] = world.meleeActionImpactPending[last]!;
       world.specialRecharge[i] = world.specialRecharge[last]!;
       world.specialActionRemaining[i] = world.specialActionRemaining[last]!;
       world.specialActionTarget[i] = world.specialActionTarget[last]!;

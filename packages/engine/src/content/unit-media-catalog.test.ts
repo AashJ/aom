@@ -7,10 +7,13 @@ import {
 } from "@aom/sim";
 import { TYPE_ICONS } from "../assets/icons";
 import {
+  MAX_PARTICLES_PER_UNIT,
   MODEL_CONFIGS,
+  PARTICLE_EFFECT_DEFINITIONS,
   PROJECTILE_PRESENTATIONS,
   UNIT_MEDIA,
   UNIT_MEDIA_DEFINITIONS,
+  UNIT_PARTICLE_EFFECT_INDICES,
 } from "./generated/unit-media";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "./projectile-media";
 
@@ -67,5 +70,27 @@ describe("generated unit media catalog", () => {
       expect(media.audio.acknowledge?.files.length).toBeGreaterThan(0);
       expect(media.audio.attackAcknowledge?.files.length).toBeGreaterThan(0);
     }
+  });
+
+  test("compiles source-bound special particles into one renderer catalog", () => {
+    expect(PARTICLE_EFFECT_DEFINITIONS).toHaveLength(1);
+    expect(PARTICLE_EFFECT_DEFINITIONS[0]).toMatchObject({
+      key: "greekNemeanLionSoundWave",
+      trigger: "special-attack",
+      blend: "additive",
+      maxParticles: 20,
+      particleLifetimeSeconds: 0.8,
+      emissionStartSeconds: 1.1,
+      emissionDurationSeconds: 1,
+      emissionRatePerSecond: 8,
+      emissionRateVariance: 0.2,
+      initialVelocity: 5,
+      baseScale: 6,
+    });
+    expect(MAX_PARTICLES_PER_UNIT).toBe(20);
+    const nemeanMedia = UNIT_MEDIA_DEFINITIONS.find(
+      (definition) => definition.key === "greek-nemean-lion",
+    )!;
+    expect(UNIT_PARTICLE_EFFECT_INDICES[nemeanMedia.type]).toEqual([0]);
   });
 });

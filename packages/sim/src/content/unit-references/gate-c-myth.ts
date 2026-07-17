@@ -1,9 +1,13 @@
-import { GOD_ATHENA } from "../../ecs/progression";
-import { TYPE_GREEK_TEMPLE, TYPE_MINOTAUR } from "../unit-type-ids";
+import { GOD_APHRODITE, GOD_ATHENA } from "../../ecs/progression";
+import { TYPE_GREEK_TEMPLE, TYPE_MINOTAUR, TYPE_NEMEAN_LION } from "../unit-type-ids";
 import { mythUnitExpected, type UnitReferenceSpec } from "../unit-reference-schema";
 import {
   CULTURE_GREEK,
+  AREA_DAMAGE_ENEMIES,
+  AREA_DAMAGE_NEUTRAL_UNITS,
   NO_DAMAGE_BONUSES,
+  UNIT_CLASS_CAVALRY,
+  UNIT_CLASS_HERO,
   UNIT_CLASS_HUMAN,
   UNIT_CLASS_INFANTRY,
   UNIT_CLASS_MELEE,
@@ -22,9 +26,14 @@ export const GATE_C_MYTH_UNIT_REFERENCES = [
     id: TYPE_MINOTAUR,
     key: "greek-minotaur",
     source: {
-      stage: "candidate",
+      stage: "final",
       culture: "greek",
       ruleset: "Age of Mythology Classic",
+      finalRulesetReview: {
+        commit: "688bf8f860a84bd36efff52efb358dd10d675f17",
+        scope:
+          "Complete Minotaur myth-unit pack and charged Gore foundation, including Classic throw-and-bounce target reactions, interruption semantics, deterministic state, original media, and shared airborne presentation.",
+      },
       trialProto: {
         sha256: TRIAL_PROTO_SHA256,
         unitId: 355,
@@ -101,6 +110,176 @@ export const GATE_C_MYTH_UNIT_REFERENCES = [
       requiredGod: GOD_ATHENA,
       prerequisiteBuildings: [TYPE_GREEK_TEMPLE],
       trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 1 }],
+    }),
+  },
+  {
+    family: "myth",
+    attackKind: "melee",
+    id: TYPE_NEMEAN_LION,
+    key: "greek-nemean-lion",
+    source: {
+      stage: "candidate",
+      culture: "greek",
+      ruleset: "Age of Mythology Classic",
+      trialProto: {
+        sha256: TRIAL_PROTO_SHA256,
+        unitId: 530,
+        unitName: "Nemean Lion",
+      },
+      assetInventory: {
+        sha256: GREEK_ASSET_INVENTORY_SHA256,
+        rosterName: "Nemean Lion",
+        rootAnimation: "nemean lion_anim.txt",
+        meleeAttackCycles: [
+          {
+            sha256: "8918bf792a6ad2e599db2464b40dc208336eef01647a85fdc4106829af638824",
+            action: "attack",
+            tag: "Attack",
+            fraction: 0.46,
+            durationTicks: 24,
+            model: "special g nemean lion_attacka.glb",
+            modelSha256: "de005d11aee6551f58f5d5baada35b1df667df956eeb3cd47869af9b49131bb5",
+          },
+          {
+            sha256: "8918bf792a6ad2e599db2464b40dc208336eef01647a85fdc4106829af638824",
+            action: "attack",
+            tag: "Attack",
+            fraction: 0.43,
+            durationTicks: 18,
+            model: "special g nemean lion_attackb.glb",
+            modelSha256: "09531c16458f1a0fe8955d36fb6caa003f695a26d5a9f05b28dd947d730a8d7d",
+          },
+        ],
+        specialImpact: {
+          sha256: "8918bf792a6ad2e599db2464b40dc208336eef01647a85fdc4106829af638824",
+          action: "whirlwindAttack",
+          tag: "Attack",
+          fraction: 0.4,
+          durationTicks: 60,
+        },
+        specialParticles: [
+          {
+            key: "greekNemeanLionSoundWave",
+            prtFile: "special g nemean lion attack.prt",
+            prtSha256: "91e0ca407364ef95f913c9a45d1340915d7b2340392a7b8add66181041ace2c1",
+            textureFile: "special g nemean lion soundwave.ddt",
+            textureSha256: "6b814537d9045f621657e34674ead2d01d5bc63329cd19ac7ad18ff98a368c54",
+            animationSelector: "soundwave",
+            attachmentNode: "TOPOFHEAD",
+            loop: true,
+            syncWithAttackAnimation: true,
+            maxParticles: 20,
+            particleLifetimeSeconds: 0.8,
+            emissionStartSeconds: 1.1,
+            emissionDurationSeconds: 1,
+            emissionRatePerSecond: 8,
+            emissionRateVariance: 0.2,
+            initialVelocity: 5,
+            spreader: "point",
+            offAxisDegrees: -45,
+            offPlaneDegrees: 90,
+            blend: "additive",
+            baseScale: 6,
+            scaleCycleSeconds: 1.5,
+            opacityStages: [
+              [0, 0, 0, 0.2],
+              [0.3, 0.1, 5, 5],
+              [0, 0, 0, 0],
+            ],
+            scaleStages: [
+              [0, 0, 0, 1],
+              [1, 0, 0, 0],
+            ],
+            textureWidth: 64,
+            textureHeight: 64,
+            presentation: {
+              spreader: "radial-horizontal",
+              heightOffset: 1.75,
+              scaleFadeInSeconds: 1,
+              peakOpacity: 0.3,
+              opacityVariance: 0.1,
+              opacityFadeInSeconds: 0.2,
+              opacityFadeOutSeconds: 0.2,
+            },
+          },
+        ],
+      },
+      areaSpecial: {
+        executableSha256: "5975176380f29104c66e49fa7dc73d2a24221612190de630258f8523f7825366",
+        handlerAddress: "0x77c6d0",
+        center: "attacker",
+        falloff: "linear",
+      },
+      trialDeltas: [
+        {
+          field: "attack.bonuses",
+          trial: [
+            { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 3 },
+            { target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.5 },
+          ],
+          final: [
+            { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 2 },
+            { target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.5 },
+          ],
+          reason:
+            "The shipped Age of Mythology ruleset uses a 2x ordinary myth-unit multiplier; the Trial row predates that final balance.",
+        },
+        {
+          field: "cost",
+          trial: [0, 0, 250, 25],
+          final: [0, 0, 250, 22],
+          reason:
+            "The shipped Age of Mythology ruleset costs 22 Favor; the Trial row retains the pre-release 25 Favor value.",
+        },
+      ],
+    },
+    expected: mythUnitExpected({
+      label: "Nemean Lion",
+      culture: CULTURE_GREEK,
+      classes: UNIT_CLASS_MYTH | UNIT_CLASS_CAVALRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+      maxHp: 660,
+      lineOfSight: 16,
+      movementSpeed: 4.8,
+      armor: [0.3, 0.6, 0.8],
+      attack: {
+        kind: "melee",
+        damage: [20, 0, 10],
+        range: 0.1,
+        aggroRange: 16,
+        cooldownTicks: 20,
+        bonuses: [
+          { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 2 },
+          { target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.5 },
+        ],
+        cycleVariants: [
+          { actionTicks: 24, impactDelayTicks: 11 },
+          { actionTicks: 18, impactDelayTicks: 8 },
+        ],
+      },
+      specialAttack: {
+        kind: "charged-area-pulse",
+        damage: [12, 0, 0],
+        range: 0.1,
+        radius: 10,
+        falloff: "linear",
+        damageRelations: AREA_DAMAGE_ENEMIES | AREA_DAMAGE_NEUTRAL_UNITS,
+        bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.01 }],
+        rechargeTicks: 20 * 20,
+        actionTicks: 3 * 20,
+        impactDelayTicks: 24,
+        validTargets: [
+          { kind: "classes", classes: UNIT_CLASS_HUMAN },
+          { kind: "classes", classes: UNIT_CLASS_MYTH },
+        ],
+      },
+      bodyRadius: 0.99,
+      cost: [0, 0, 250, 22],
+      buildTicks: 20 * 20,
+      populationCost: 4,
+      requiredAge: 2,
+      requiredGod: GOD_APHRODITE,
+      prerequisiteBuildings: [TYPE_GREEK_TEMPLE],
+      trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 2 }],
     }),
   },
 ] as const satisfies readonly UnitReferenceSpec[];

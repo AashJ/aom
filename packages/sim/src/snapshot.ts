@@ -7,6 +7,7 @@ import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
 import { findAgeAdvanceResearch } from "./ecs/research";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { MAX_PROJECTILES, NO_PROJECTILE_TICK, projectileProgressAt } from "./ecs/projectiles";
+import { NO_MELEE_ATTACK_VARIANT } from "./ecs/melee-attack-cycles";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
 import {
@@ -28,6 +29,7 @@ export interface RenderSnapshot {
   mode: Uint8Array;
   gatherTargetType: Uint16Array;
   actionCooldown: Uint16Array;
+  meleeActionVariant: Uint8Array;
   specialActionRemaining: Uint16Array;
   targetReactionKind: Uint8Array;
   elevation: Float32Array;
@@ -93,6 +95,7 @@ export function createSnapshot(
     mode: new Uint8Array(capacity),
     gatherTargetType: new Uint16Array(capacity).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(capacity),
+    meleeActionVariant: new Uint8Array(capacity).fill(NO_MELEE_ATTACK_VARIANT),
     specialActionRemaining: new Uint16Array(capacity),
     targetReactionKind: new Uint8Array(capacity),
     elevation: new Float32Array(capacity),
@@ -274,6 +277,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;
     out.actionCooldown[i] = world.attackCooldown[i]!;
+    out.meleeActionVariant[i] = world.meleeActionVariant[i]!;
     out.specialActionRemaining[i] = world.specialActionRemaining[i]!;
     out.targetReactionKind[i] = world.targetReactions.kind[i]!;
     out.elevation[i] = world.targetReactions.elevation[i]!;

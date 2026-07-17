@@ -36,7 +36,7 @@ function duel() {
 }
 
 describe("Greek Minotaur unit pack", () => {
-  test("matches the integration-owned Classic candidate reference", () => {
+  test("matches the integration-owned final Classic reference", () => {
     expect(() =>
       validateDefinitionAgainstReference(definition, GATE_C_MYTH_UNIT_REFERENCES[0]),
     ).not.toThrow();

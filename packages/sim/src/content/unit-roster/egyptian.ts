@@ -49,7 +49,9 @@ import { CULTURE_EGYPTIAN } from "../unit-type-schema";
 const PROJECTILE_FOUNDATION = "serial-projectile-foundation";
 const HERO_FOUNDATION = "serial-egyptian-hero-lifecycle";
 const MYTH_FOUNDATION = "serial-myth-unit-lifecycle";
-const SPECIAL_ACTION_FOUNDATION = "serial-special-actions";
+const JUMP_ATTACK_FOUNDATION = "serial-jump-special";
+const AREA_WHIRLWIND_FOUNDATION = "serial-area-whirlwind-special";
+const CONTINUOUS_LIGHTNING_FOUNDATION = "serial-continuous-lightning-attack";
 const SIEGE_FOUNDATION = "serial-siege-units";
 const AREA_MINIMUM_RANGE_FOUNDATION = "serial-projectile-area-minimum-range";
 const TRADE_FOUNDATION = "serial-trade-routes";
@@ -206,11 +208,16 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     culture: CULTURE_EGYPTIAN,
     family: "hero",
     gates: ["B", "C", "D"],
-    foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    foundationLanes: [
+      PROJECTILE_FOUNDATION,
+      HERO_FOUNDATION,
+      "serial-egyptian-pharaoh-lifecycle",
+      "serial-egyptian-support-actions",
+    ],
     requiredGod: NO_GOD,
     trainedAt: [],
     blocker:
-      "Singular Pharaoh creation/automatic return, myth counters, ranged combat, healing, empowerment, and lifecycle hashing.",
+      "Singular Pharaoh creation/automatic return plus healing, empowerment, command routing, and lifecycle hashing remain outside the Greek hero and C3 contracts.",
   }),
   blockedUnitLane({
     id: TYPE_PRIEST,
@@ -219,14 +226,19 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     culture: CULTURE_EGYPTIAN,
     family: "hero",
     gates: ["B", "C", "D"],
-    foundationLanes: [PROJECTILE_FOUNDATION, HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    foundationLanes: [
+      PROJECTILE_FOUNDATION,
+      HERO_FOUNDATION,
+      "serial-egyptian-support-actions",
+      "serial-conversion-actions",
+    ],
     requiredGod: NO_GOD,
     trainedAt: [
       { type: TYPE_EGYPTIAN_TEMPLE, commandSlot: 0 },
       { type: TYPE_EGYPTIAN_TOWN_CENTER, commandSlot: 1 },
     ],
     blocker:
-      "Egyptian hero/myth counters and ranged combat plus healing, empowerment, conversion, and construction rules.",
+      "Healing, empowerment, conversion, construction, Egyptian hero targeting, and their command/state rules remain outside the Greek hero and ordinary projectile contracts.",
   }),
   blockedUnitLane({
     id: TYPE_SON_OF_OSIRIS,
@@ -249,8 +261,8 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     GOD_ANUBIS,
     1,
     ["C", "D"],
-    [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit favor/lifecycle and hero counters plus deterministic jump attack behavior.",
+    [MYTH_FOUNDATION, JUMP_ATTACK_FOUNDATION],
+    "JumpAttack needs deterministic launch/landing, target revalidation, collision, damage timing, recharge, and presentation; C3 provides no attacker-displacement special.",
   ),
   egyptianTempleMyth(
     TYPE_SPHINX,
@@ -259,8 +271,8 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     GOD_BAST,
     1,
     ["C", "D"],
-    [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus deterministic area whirlwind targeting, movement, and recharge.",
+    [MYTH_FOUNDATION, AREA_WHIRLWIND_FOUNDATION],
+    "WhirlwindAttack needs deterministic area target enumeration, movement, damage timing, recharge, and presentation; C3 opens only single-target charged melee.",
   ),
   egyptianTempleMyth(
     TYPE_WADJET,
@@ -270,7 +282,7 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     1,
     ["B", "C", "D"],
     [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, "serial-unit-regeneration"],
-    "Myth-unit and projectile rules plus faithful regeneration state, timing, and hashing.",
+    "Regenerate needs authoritative health-restoration timing, interruption, snapshot/hash state, and presentation beyond ordinary projectile combat.",
   ),
   egyptianTempleMyth(
     TYPE_PETSUCHOS,
@@ -279,8 +291,8 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     GOD_HATHOR,
     2,
     ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus continuous lightning targeting, damage timing, and presentation.",
+    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CONTINUOUS_LIGHTNING_FOUNDATION],
+    "LightningAttack needs continuous target tracking, repeated damage timing, interruption, and presentation; it is not an ordinary released projectile.",
   ),
   egyptianTempleMyth(
     TYPE_ROC,
@@ -290,7 +302,7 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     3,
     ["C", "E"],
     [MYTH_FOUNDATION, FLIGHT_FOUNDATION, TRANSPORT_FOUNDATION],
-    "Myth-unit rules plus air navigation, embark/disembark, capacity, cargo, and visibility.",
+    "Air navigation, embark/disembark, capacity, contained-unit state, destruction handling, and visibility remain unimplemented.",
   ),
   egyptianTempleMyth(
     TYPE_SCARAB,
@@ -300,7 +312,7 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     2,
     ["C", "D"],
     [MYTH_FOUNDATION, SIEGE_FOUNDATION],
-    "Myth-unit rules plus siege-specific building acquisition, damage, collision, and presentation.",
+    "Siege-specific building acquisition, counter damage, collision, and presentation remain unimplemented.",
   ),
   egyptianTempleMyth(
     TYPE_MUMMY,
@@ -310,7 +322,7 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     4,
     ["B", "C", "D"],
     [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, "serial-conversion-and-minion-spawn"],
-    "Myth/projectile rules plus conversion attacks, immunity, minion creation, and lifecycle state.",
+    "ConvertAttack needs target/immunity rules, deterministic conversion timing, minion creation, ownership, and lifecycle state beyond ordinary projectiles.",
   ),
   egyptianTempleMyth(
     TYPE_PHOENIX,
@@ -320,7 +332,7 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     4,
     ["C", "D", "E"],
     [MYTH_FOUNDATION, "serial-phoenix-egg-rebirth", FLIGHT_FOUNDATION],
-    "Myth and air rules plus deterministic egg replacement, rebirth, targeting, and death state.",
+    "Air navigation plus deterministic Phoenix Egg replacement, rebirth, targeting, death state, and presentation remain unimplemented.",
   ),
   egyptianTempleMyth(
     TYPE_AVENGER,
@@ -329,8 +341,8 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     GOD_HORUS,
     4,
     ["C", "D"],
-    [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus deterministic area whirlwind targeting, movement, and recharge.",
+    [MYTH_FOUNDATION, AREA_WHIRLWIND_FOUNDATION],
+    "WhirlwindAttack needs deterministic area target enumeration, movement, damage timing, recharge, and presentation; C3 opens only single-target charged melee.",
   ),
   egyptianTempleMyth(
     TYPE_SCORPION_MAN,
@@ -339,8 +351,8 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     GOD_NEPHTHYS,
     2,
     ["C", "D"],
-    [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus deterministic area attack targeting, damage timing, and recharge.",
+    [MYTH_FOUNDATION, AREA_WHIRLWIND_FOUNDATION],
+    "WhirlwindAttack needs deterministic area target enumeration, damage timing, recharge, and presentation; C3 opens only single-target charged melee.",
   ),
   blockedUnitLane({
     id: TYPE_LEVIATHAN,
@@ -358,7 +370,7 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     requiredGod: GOD_NEPHTHYS,
     trainedAt: [{ type: TYPE_EGYPTIAN_DOCK, commandSlot: 5 }],
     blocker:
-      "Aquatic myth lifecycle, water navigation/combat, embark/disembark, capacity, and cargo state.",
+      "Water navigation/combat, aquatic occupancy, embark/disembark, capacity, and contained-unit state remain unimplemented.",
   }),
   blockedUnitLane({
     id: TYPE_WAR_TURTLE,
@@ -369,13 +381,14 @@ export const EGYPTIAN_FUTURE_ROSTER = [
     gates: ["C", "D", "E"],
     foundationLanes: [
       MYTH_FOUNDATION,
-      SPECIAL_ACTION_FOUNDATION,
+      "serial-buck-special",
       WATER_FOUNDATION,
       NAVAL_COMBAT_FOUNDATION,
     ],
     requiredGod: GOD_THOTH,
     trainedAt: [{ type: TYPE_EGYPTIAN_DOCK, commandSlot: 6 }],
-    blocker: "Aquatic myth rules plus deterministic buck attack, naval targeting, and recharge.",
+    blocker:
+      "Water navigation and naval targeting plus deterministic BuckAttack displacement, collision, damage timing, recharge, and presentation remain unimplemented.",
   }),
   blockedUnitLane({
     id: TYPE_EGYPTIAN_TITAN,

@@ -24,6 +24,31 @@ export interface UnitAudioDefinition {
   readonly specialAttack?: AudioCueDefinition;
 }
 
+export interface ParticleEffectMediaDefinition {
+  readonly key: string;
+  readonly trigger: "special-attack";
+  readonly textureUrl: string;
+}
+
+export interface ParticleEffectDefinition extends ParticleEffectMediaDefinition {
+  readonly blend: "additive";
+  readonly spreader: "radial-horizontal";
+  readonly maxParticles: number;
+  readonly particleLifetimeSeconds: number;
+  readonly emissionStartSeconds: number;
+  readonly emissionDurationSeconds: number;
+  readonly emissionRatePerSecond: number;
+  readonly emissionRateVariance: number;
+  readonly initialVelocity: number;
+  readonly heightOffset: number;
+  readonly baseScale: number;
+  readonly scaleFadeInSeconds: number;
+  readonly peakOpacity: number;
+  readonly opacityVariance: number;
+  readonly opacityFadeInSeconds: number;
+  readonly opacityFadeOutSeconds: number;
+}
+
 export interface ModelAttachmentDefinition {
   readonly model: string;
   readonly targetNode: string;
@@ -151,6 +176,7 @@ export interface UnitMediaDefinition {
   readonly key: string;
   readonly presentation: UnitPresentation;
   readonly models: readonly ModelAssetDefinition[];
+  readonly effects?: readonly ParticleEffectMediaDefinition[];
   readonly icon: IconConfig | null;
   readonly audio: UnitAudioDefinition;
 }

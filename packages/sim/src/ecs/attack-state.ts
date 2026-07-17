@@ -1,11 +1,15 @@
 import type { FlowField } from "../flow";
 import { NO_TARGET } from "./id";
+import { interruptMeleeAttackCycle, type MeleeAttackCycleState } from "./melee-attack-cycles";
 
-export interface AttackSequenceState {
-  readonly attackTarget: Uint32Array;
-  readonly attackOrdered: Uint8Array;
+export interface ProjectileAimState {
   readonly attackAimTarget: Uint32Array;
   readonly attackAimShots: Uint16Array;
+}
+
+export interface AttackSequenceState extends ProjectileAimState, MeleeAttackCycleState {
+  readonly attackTarget: Uint32Array;
+  readonly attackOrdered: Uint8Array;
   readonly moving: Uint8Array;
   readonly unitField: (FlowField | null)[];
 }
@@ -13,11 +17,12 @@ export interface AttackSequenceState {
 export function resetAttackSequence(state: AttackSequenceState, index: number): void {
   state.attackAimTarget[index] = NO_TARGET;
   state.attackAimShots[index] = 0;
+  interruptMeleeAttackCycle(state, index);
 }
 
 /** Records one projectile attack cycle and returns the number of prior same-target shots. */
 export function advanceProjectileAim(
-  state: AttackSequenceState,
+  state: ProjectileAimState,
   index: number,
   targetId: number,
 ): number {

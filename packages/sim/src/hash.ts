@@ -206,6 +206,14 @@ export function hashWorld(world: World): number {
     word = world.attackCooldown[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.meleeActionVariant[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.meleeActionImpactPending[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
   }
 
   // Charged actions own an independent recharge plus an in-progress, stable-id

@@ -66,7 +66,12 @@ import { CULTURE_GREEK } from "../unit-type-schema";
 const PROJECTILE_FOUNDATION = "serial-projectile-foundation";
 const HERO_FOUNDATION = "serial-greek-hero-lifecycle";
 const MYTH_FOUNDATION = "serial-myth-unit-lifecycle";
-const SPECIAL_ACTION_FOUNDATION = "serial-special-actions";
+const CHARGED_MELEE_FOUNDATION = "serial-charged-melee-special";
+const THROWN_REACTION_FOUNDATION = "serial-thrown-target-reaction";
+const JUMP_ATTACK_FOUNDATION = "serial-jump-special";
+const CHARGED_RANGED_FOUNDATION = "serial-charged-ranged-special";
+const AREA_WHIRLWIND_FOUNDATION = "serial-area-whirlwind-special";
+const PETRIFICATION_FOUNDATION = "serial-petrification-special";
 const SIEGE_FOUNDATION = "serial-siege-units";
 const AREA_MINIMUM_RANGE_FOUNDATION = "serial-projectile-area-minimum-range";
 const TRADE_FOUNDATION = "serial-trade-routes";
@@ -315,11 +320,11 @@ export const GREEK_FUTURE_ROSTER = [
     townCenterSlot: 4,
     fortressSlot: 3,
     gates: ["C", "D"],
-    foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    foundationLanes: [HERO_FOUNDATION, JUMP_ATTACK_FOUNDATION],
     state: {
       status: "blocked",
       blocker:
-        "His deterministic jump attack needs Gate D command, state, hash, and presentation support.",
+        "JumpAttack needs deterministic launch/landing, target revalidation, collision, damage timing, recharge, and presentation; C3 provides no attacker-displacement special.",
     },
   }),
   greekHero({
@@ -363,11 +368,16 @@ export const GREEK_FUTURE_ROSTER = [
     townCenterSlot: 4,
     fortressSlot: 3,
     gates: ["C", "D"],
-    foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    foundationLanes: [
+      HERO_FOUNDATION,
+      CHARGED_MELEE_FOUNDATION,
+      THROWN_REACTION_FOUNDATION,
+      "serial-special-target-taxonomy",
+    ],
     state: {
       status: "blocked",
       blocker:
-        "His deterministic gore attack needs Gate D special-action state, hashing, and presentation.",
+        "C3 covers charged Gore and thrown reactions, but Classic Polyphemus also targets Huntable and every MythUnit while respecting frozen/stone immunity; those target-state predicates are not represented.",
     },
   }),
   greekHero({
@@ -415,11 +425,11 @@ export const GREEK_FUTURE_ROSTER = [
     townCenterSlot: 4,
     fortressSlot: 3,
     gates: ["C", "D"],
-    foundationLanes: [HERO_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    foundationLanes: [HERO_FOUNDATION, PETRIFICATION_FOUNDATION],
     state: {
       status: "blocked",
       blocker:
-        "His instant-kill petrification needs Gate D target rules, state, hashing, and presentation.",
+        "FreezeAttack needs petrification target/immunity rules, deterministic terminal state, recharge, and presentation; C3 target reactions do not model permanent transformation or instant death.",
     },
   }),
 
@@ -431,7 +441,7 @@ export const GREEK_FUTURE_ROSTER = [
     0,
     ["C", "E"],
     [MYTH_FOUNDATION, FLIGHT_FOUNDATION],
-    "Myth-unit favor/lifecycle rules plus air navigation, occupancy, scouting, and visibility.",
+    "Air navigation, occupancy, scouting, visibility, and faithful noncombat flight behavior.",
   ),
   defineUnitLane({
     id: TYPE_MINOTAUR,
@@ -440,10 +450,10 @@ export const GREEK_FUTURE_ROSTER = [
     culture: CULTURE_GREEK,
     family: "myth",
     gates: ["C", "D"],
-    foundationLanes: [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
+    foundationLanes: [MYTH_FOUNDATION, CHARGED_MELEE_FOUNDATION, THROWN_REACTION_FOUNDATION],
     requiredGod: GOD_ATHENA,
     trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 1 }],
-    status: "ready",
+    status: "implemented",
     blocker: null,
   }),
   greekTempleMyth(
@@ -453,8 +463,8 @@ export const GREEK_FUTURE_ROSTER = [
     GOD_HERMES,
     1,
     ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus ordinary and charged ranged attacks with faithful recharge state.",
+    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CHARGED_RANGED_FOUNDATION],
+    "Charged ranged attack release, projectile ownership, target validation, recharge, and presentation are not represented by C3's charged-melee kind.",
   ),
   greekTempleMyth(
     TYPE_CYCLOPS,
@@ -463,19 +473,22 @@ export const GREEK_FUTURE_ROSTER = [
     GOD_ARES,
     1,
     ["C", "D"],
-    [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus deterministic unit pickup, throw flight, impact, and immunity rules.",
+    [MYTH_FOUNDATION, THROWN_REACTION_FOUNDATION, "serial-unit-pickup-throw"],
+    "The thrown-reaction store can move a released victim, but Cyclops still needs deterministic pickup/containment, release, impact damage, and throw-immunity rules.",
   ),
-  greekTempleMyth(
-    TYPE_NEMEAN_LION,
-    "greek-nemean-lion",
-    "Nemean Lion",
-    GOD_APHRODITE,
-    2,
-    ["C", "D"],
-    [MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus deterministic area roar/whirlwind targeting and recharge.",
-  ),
+  defineUnitLane({
+    id: TYPE_NEMEAN_LION,
+    key: "greek-nemean-lion",
+    label: "Nemean Lion",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["C", "D"],
+    foundationLanes: [MYTH_FOUNDATION, AREA_WHIRLWIND_FOUNDATION],
+    requiredGod: GOD_APHRODITE,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 2 }],
+    status: "ready",
+    blocker: null,
+  }),
   greekTempleMyth(
     TYPE_MANTICORE,
     "greek-manticore",
@@ -483,8 +496,8 @@ export const GREEK_FUTURE_ROSTER = [
     GOD_APOLLO,
     2,
     ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus ordinary and charged multi-projectile ranged attacks.",
+    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CHARGED_RANGED_FOUNDATION],
+    "Charged multi-projectile release, deterministic projectile fan-out, recharge, and presentation are not represented by the ordinary projectile or C3 contracts.",
   ),
   greekTempleMyth(
     TYPE_HYDRA,
@@ -494,7 +507,7 @@ export const GREEK_FUTURE_ROSTER = [
     2,
     ["C", "D"],
     [MYTH_FOUNDATION, "serial-hydra-head-growth"],
-    "Myth-unit rules plus kill-driven head growth, derived attacks, death copying, and hashing.",
+    "Kill-driven head growth, head-dependent attack derivation, swap/death copying, hashing, and presentation remain unimplemented.",
   ),
   blockedUnitLane({
     id: TYPE_SCYLLA,
@@ -506,7 +519,8 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [MYTH_FOUNDATION, WATER_FOUNDATION, NAVAL_COMBAT_FOUNDATION],
     requiredGod: GOD_DIONYSUS,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 5 }],
-    blocker: "Aquatic myth-unit lifecycle, water navigation, naval targeting, and collision rules.",
+    blocker:
+      "Water navigation, naval targeting, aquatic occupancy, and collision rules remain unimplemented.",
   }),
   greekTempleMyth(
     TYPE_MEDUSA,
@@ -515,8 +529,8 @@ export const GREEK_FUTURE_ROSTER = [
     GOD_HERA,
     3,
     ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit and projectile rules plus faithful petrification targeting, immunity, and recharge.",
+    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, PETRIFICATION_FOUNDATION],
+    "FreezeAttack needs petrification target/immunity rules, deterministic terminal state, recharge, and presentation beyond ordinary projectile impact.",
   ),
   greekTempleMyth(
     TYPE_COLOSSUS,
@@ -526,7 +540,7 @@ export const GREEK_FUTURE_ROSTER = [
     3,
     ["C", "D"],
     [MYTH_FOUNDATION, "serial-resource-eating-regeneration"],
-    "Myth/siege counters plus resource-eating regeneration and its command and hash state.",
+    "Resource-target commands, consumption, regeneration timing, interruption, and hashed action state remain unimplemented.",
   ),
   greekTempleMyth(
     TYPE_CHIMERA,
@@ -535,8 +549,13 @@ export const GREEK_FUTURE_ROSTER = [
     GOD_ARTEMIS,
     4,
     ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, SPECIAL_ACTION_FOUNDATION],
-    "Myth-unit rules plus charged fire-breath projectile/area behavior and recharge state.",
+    [
+      PROJECTILE_FOUNDATION,
+      MYTH_FOUNDATION,
+      CHARGED_RANGED_FOUNDATION,
+      "serial-projectile-area-effects",
+    ],
+    "Charged fire-breath needs ranged-special release plus deterministic projectile-area targeting, damage, recharge, and presentation.",
   ),
   blockedUnitLane({
     id: TYPE_CARCINOS,
@@ -548,7 +567,8 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [MYTH_FOUNDATION, WATER_FOUNDATION, NAVAL_COMBAT_FOUNDATION],
     requiredGod: GOD_HERA,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 6 }],
-    blocker: "Aquatic myth-unit lifecycle, water navigation, naval targeting, and collision rules.",
+    blocker:
+      "Water navigation, naval targeting, aquatic occupancy, and collision rules remain unimplemented.",
   }),
   blockedUnitLane({
     id: TYPE_GREEK_TITAN,

@@ -8,6 +8,7 @@ import {
   type DamageBonusTarget,
   type HeroTraits,
   type MeleeAttack,
+  type MeleeAttackCycle,
   type ProjectileAttack,
   type SpecialAttack,
   type TypeCommandRelationship,
@@ -26,6 +27,7 @@ export type TrialComparableField =
   | "attack.damage"
   | "attack.range"
   | "attack.bonuses"
+  | "attack.cycleVariants"
   | "attack.accuracy"
   | "attack.accuracyReductionFactor"
   | "attack.aimBonus"
@@ -41,6 +43,8 @@ export type TrialComparableField =
   | "specialAttack.bonuses"
   | "specialAttack.rechargeTicks"
   | "specialAttack.validTargets"
+  | "specialAttack.radius"
+  | "specialAttack.damageRelations"
   | "bodyRadius"
   | "collidesWithProjectiles"
   | "cost"
@@ -54,7 +58,8 @@ export type TrialComparableValue =
   | boolean
   | readonly number[]
   | readonly DamageBonus[]
-  | readonly DamageBonusTarget[];
+  | readonly DamageBonusTarget[]
+  | readonly MeleeAttackCycle[];
 
 export interface TrialFidelityDelta {
   readonly field: TrialComparableField;
@@ -78,6 +83,59 @@ export interface ProjectileReleaseEvidence {
 
 export interface SpecialImpactEvidence extends ProjectileReleaseEvidence {
   readonly durationTicks: number;
+}
+
+export interface MeleeAttackCycleEvidence extends SpecialImpactEvidence {
+  readonly model: string;
+  readonly modelSha256: string;
+}
+
+export interface SpecialParticleEvidence {
+  readonly key: string;
+  readonly prtFile: string;
+  readonly prtSha256: string;
+  readonly textureFile: string;
+  readonly textureSha256: string;
+  readonly animationSelector: string;
+  readonly attachmentNode: string;
+  readonly loop: true;
+  readonly syncWithAttackAnimation: true;
+  readonly maxParticles: number;
+  readonly particleLifetimeSeconds: number;
+  readonly emissionStartSeconds: number;
+  readonly emissionDurationSeconds: number;
+  readonly emissionRatePerSecond: number;
+  readonly emissionRateVariance: number;
+  readonly initialVelocity: number;
+  readonly spreader: "point";
+  readonly offAxisDegrees: number;
+  readonly offPlaneDegrees: number;
+  readonly blend: "additive";
+  readonly baseScale: number;
+  readonly scaleCycleSeconds: number;
+  readonly opacityStages: readonly (readonly [number, number, number, number])[];
+  readonly scaleStages: readonly (readonly [number, number, number, number])[];
+  readonly textureWidth: number;
+  readonly textureHeight: number;
+  // Explicit source-to-runtime mapping. The source verifier pins the raw PRT
+  // fields above; catalog generation consumes this complete presentation shape
+  // instead of duplicating a hand-picked subset in the authored media pack.
+  readonly presentation: {
+    readonly spreader: "radial-horizontal";
+    readonly heightOffset: number;
+    readonly scaleFadeInSeconds: number;
+    readonly peakOpacity: number;
+    readonly opacityVariance: number;
+    readonly opacityFadeInSeconds: number;
+    readonly opacityFadeOutSeconds: number;
+  };
+}
+
+export interface AreaSpecialEvidence {
+  readonly executableSha256: string;
+  readonly handlerAddress: `0x${string}`;
+  readonly center: "attacker";
+  readonly falloff: "linear";
 }
 
 export interface ThrownTargetReactionEvidence {
@@ -123,9 +181,12 @@ export type ProjectileUnitReferenceSource = UnitReferenceSource<
 type SpecialUnitReferenceSourceCommon = UnitReferenceSourceCommon<
   UnitAssetInventoryEvidence & {
     readonly specialImpact: SpecialImpactEvidence;
+    readonly meleeAttackCycles?: readonly MeleeAttackCycleEvidence[];
+    readonly specialParticles?: readonly SpecialParticleEvidence[];
   }
 > & {
   readonly targetReaction?: ThrownTargetReactionEvidence;
+  readonly areaSpecial?: AreaSpecialEvidence;
 };
 
 export type SpecialUnitReferenceSource =
@@ -387,6 +448,9 @@ export function trialComparableExpected(
     "attack.damage": attack.damage,
     "attack.range": attack.range,
     "attack.bonuses": attack.bonuses,
+    ...(attack.kind === "melee" && attack.cycleVariants !== undefined
+      ? { "attack.cycleVariants": attack.cycleVariants }
+      : {}),
   };
 
   const primaryFields =
@@ -416,6 +480,12 @@ export function trialComparableExpected(
     "specialAttack.bonuses": special.bonuses,
     "specialAttack.rechargeTicks": special.rechargeTicks,
     "specialAttack.validTargets": special.validTargets,
+    ...(special.kind === "charged-area-pulse"
+      ? {
+          "specialAttack.radius": special.radius,
+          "specialAttack.damageRelations": special.damageRelations,
+        }
+      : {}),
   };
 }
 
@@ -496,7 +566,10 @@ export function validateUnitReferences(
         throw new Error(`${reference.key} has invalid special-impact evidence.`);
       }
 
-      const expectedReaction = reference.expected.specialAttack.targetReaction;
+      const expectedReaction =
+        reference.expected.specialAttack.kind === "charged-melee"
+          ? reference.expected.specialAttack.targetReaction
+          : undefined;
       const reactionEvidence = reference.source.targetReaction;
       if (expectedReaction?.kind === "thrown") {
         if (
@@ -525,6 +598,96 @@ export function validateUnitReferences(
         }
       } else if (reactionEvidence !== undefined) {
         throw new Error(`${reference.key} has unused thrown target-reaction evidence.`);
+      }
+
+      const areaEvidence = reference.source.areaSpecial;
+      if (reference.expected.specialAttack.kind === "charged-area-pulse") {
+        if (
+          areaEvidence === undefined ||
+          !/^[0-9a-f]{64}$/.test(areaEvidence.executableSha256) ||
+          !/^0x[0-9a-f]+$/i.test(areaEvidence.handlerAddress) ||
+          areaEvidence.center !== "attacker" ||
+          areaEvidence.falloff !== reference.expected.specialAttack.falloff
+        ) {
+          throw new Error(`${reference.key} has invalid area-special evidence.`);
+        }
+      } else if (areaEvidence !== undefined) {
+        throw new Error(`${reference.key} has unused area-special evidence.`);
+      }
+
+      const particleEvidence = reference.source.assetInventory.specialParticles;
+      if (particleEvidence !== undefined) {
+        const particleKeys = new Set<string>();
+        if (
+          particleEvidence.length === 0 ||
+          particleEvidence.some((particle) => {
+            const presentation = particle.presentation;
+            if (particleKeys.has(particle.key)) return true;
+            particleKeys.add(particle.key);
+            return (
+              particle.key.trim().length === 0 ||
+              !/^[0-9a-f]{64}$/.test(particle.prtSha256) ||
+              !/^[0-9a-f]{64}$/.test(particle.textureSha256) ||
+              particle.prtFile.trim().length === 0 ||
+              particle.textureFile.trim().length === 0 ||
+              particle.animationSelector.trim().length === 0 ||
+              particle.attachmentNode.trim().length === 0 ||
+              !Number.isInteger(particle.maxParticles) ||
+              particle.maxParticles < 1 ||
+              particle.particleLifetimeSeconds <= 0 ||
+              particle.emissionStartSeconds < 0 ||
+              particle.emissionDurationSeconds <= 0 ||
+              particle.emissionRatePerSecond <= 0 ||
+              particle.emissionRateVariance < 0 ||
+              particle.initialVelocity < 0 ||
+              particle.textureWidth < 1 ||
+              particle.textureHeight < 1 ||
+              particle.opacityStages.length === 0 ||
+              particle.scaleStages.length === 0 ||
+              !Number.isFinite(presentation.heightOffset) ||
+              presentation.heightOffset < 0 ||
+              !Number.isFinite(presentation.scaleFadeInSeconds) ||
+              presentation.scaleFadeInSeconds <= 0 ||
+              !Number.isFinite(presentation.peakOpacity) ||
+              presentation.peakOpacity <= 0 ||
+              presentation.peakOpacity > 1 ||
+              !Number.isFinite(presentation.opacityVariance) ||
+              presentation.opacityVariance < 0 ||
+              presentation.opacityVariance >= presentation.peakOpacity ||
+              presentation.peakOpacity + presentation.opacityVariance > 1 ||
+              !Number.isFinite(presentation.opacityFadeInSeconds) ||
+              presentation.opacityFadeInSeconds <= 0 ||
+              !Number.isFinite(presentation.opacityFadeOutSeconds) ||
+              presentation.opacityFadeOutSeconds <= 0
+            );
+          })
+        ) {
+          throw new Error(`${reference.key} has invalid particle evidence.`);
+        }
+      }
+
+      const expectedCycles = reference.expected.attack.cycleVariants;
+      const cycleEvidence = reference.source.assetInventory.meleeAttackCycles;
+      if (expectedCycles !== undefined) {
+        if (
+          cycleEvidence === undefined ||
+          cycleEvidence.length !== expectedCycles.length ||
+          cycleEvidence.some(
+            (evidence, index) =>
+              !/^[0-9a-f]{64}$/.test(evidence.sha256) ||
+              !/^[0-9a-f]{64}$/.test(evidence.modelSha256) ||
+              evidence.action !== "attack" ||
+              evidence.tag !== "Attack" ||
+              evidence.model.trim().length === 0 ||
+              evidence.durationTicks !== expectedCycles[index]!.actionTicks ||
+              Math.round(evidence.fraction * evidence.durationTicks) !==
+                expectedCycles[index]!.impactDelayTicks,
+          )
+        ) {
+          throw new Error(`${reference.key} has invalid variable melee-cycle evidence.`);
+        }
+      } else if (cycleEvidence !== undefined) {
+        throw new Error(`${reference.key} has unused variable melee-cycle evidence.`);
       }
     }
 

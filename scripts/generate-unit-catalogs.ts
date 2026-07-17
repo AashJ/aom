@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { unlinkSync } from "node:fs";
 import {
+  AREA_DAMAGE_ENEMIES,
+  AREA_DAMAGE_NEUTRAL_UNITS,
   CULTURE_SHARED,
   UNIT_CLASS_ARCHER,
   UNIT_CLASS_BUILDING,
@@ -27,6 +29,10 @@ import type {
 } from "../packages/engine/src/content/unit-media-schema";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../packages/engine/src/content/projectile-media";
 import { isValidTargetReactionContract } from "./lib/target-reaction-contract";
+import {
+  compileParticleEffectParameters,
+  type ParticleEffectParameters,
+} from "./lib/unit-particle-contract";
 
 const root = resolve(import.meta.dir, "..");
 const simSourceRoot = resolve(root, "packages/sim/src/content/unit-types");
@@ -223,6 +229,21 @@ for (const entry of entries) {
       if (maximumTravel < attack.range) {
         throw new Error(`${definition.key} projectile lifespan cannot cover its attack range.`);
       }
+    } else if (
+      attack.cycleVariants !== undefined &&
+      (attack.cycleVariants.length < 2 ||
+        attack.cycleVariants.length > 0xfe ||
+        attack.cycleVariants.some(
+          (cycle) =>
+            !Number.isInteger(cycle.actionTicks) ||
+            cycle.actionTicks < 1 ||
+            cycle.actionTicks > 0xffff ||
+            !Number.isInteger(cycle.impactDelayTicks) ||
+            cycle.impactDelayTicks < 1 ||
+            cycle.impactDelayTicks >= cycle.actionTicks,
+        ))
+    ) {
+      throw new Error(`${definition.key} has an invalid variable melee-cycle contract.`);
     }
   }
 
@@ -247,7 +268,18 @@ for (const entry of entries) {
     throw new Error(`${definition.key} has an invalid charged special-attack contract.`);
   }
 
-  const reaction = special?.targetReaction;
+  if (
+    special?.kind === "charged-area-pulse" &&
+    (!Number.isFinite(special.radius) ||
+      special.radius <= 0 ||
+      special.falloff !== "linear" ||
+      (special.damageRelations & ~(AREA_DAMAGE_ENEMIES | AREA_DAMAGE_NEUTRAL_UNITS)) !== 0 ||
+      (special.damageRelations & AREA_DAMAGE_ENEMIES) === 0)
+  ) {
+    throw new Error(`${definition.key} has an invalid charged area-pulse contract.`);
+  }
+
+  const reaction = special?.kind === "charged-melee" ? special.targetReaction : undefined;
   if (reaction !== undefined && !isValidTargetReactionContract(reaction)) {
     throw new Error(`${definition.key} has an invalid thrown target-reaction contract.`);
   }
@@ -362,7 +394,13 @@ for (const lane of UNIT_ROSTER) {
     }
     if (
       lane.status !== "blocked" &&
-      lane.foundationLanes.includes("serial-special-actions") &&
+      lane.foundationLanes.some((foundation) =>
+        [
+          "serial-special-actions",
+          "serial-charged-melee-special",
+          "serial-area-whirlwind-special",
+        ].includes(foundation),
+      ) &&
       definition.specialAttack === undefined
     ) {
       throw new Error(`${lane.key} must satisfy its charged special-action foundation.`);
@@ -479,6 +517,8 @@ mediaEntries.sort(
 const mediaIds = new Set<number>();
 const mediaKeys = new Set<string>();
 const modelsByKey = new Map<string, ModelAssetDefinition>();
+const effectKeys = new Set<string>();
+const particleParametersByType = new Map<number, readonly ParticleEffectParameters[]>();
 for (const entry of mediaEntries) {
   const media = entry.definition;
   if (mediaIds.has(media.type)) throw new Error(`Duplicate media type id ${media.type}.`);
@@ -496,6 +536,37 @@ for (const entry of mediaEntries) {
   for (const model of media.models) {
     if (modelsByKey.has(model.key)) throw new Error(`Duplicate model key ${model.key}.`);
     modelsByKey.set(model.key, model);
+  }
+
+  const reference = unitReferenceEntry(media.key);
+  const particleEvidence =
+    reference?.family === "myth" ? (reference.source.assetInventory.specialParticles ?? []) : [];
+  const particleEffects = media.effects ?? [];
+  if (particleEffects.length !== particleEvidence.length) {
+    throw new Error(`${media.key} particle media and source evidence must match one-for-one.`);
+  }
+
+  const compiledParticleParameters: ParticleEffectParameters[] = [];
+  for (const effect of particleEffects) {
+    if (effectKeys.has(effect.key)) throw new Error(`Duplicate particle effect key ${effect.key}.`);
+    effectKeys.add(effect.key);
+    const evidence = particleEvidence.find((candidate) => candidate.key === effect.key);
+    if (evidence === undefined) {
+      throw new Error(`${media.key} particle effect ${effect.key} has no keyed source evidence.`);
+    }
+    if (
+      effect.trigger !== "special-attack" ||
+      sim.specialAttack === undefined ||
+      effect.textureUrl.trim().length === 0
+    ) {
+      throw new Error(`${media.key} has an invalid particle effect ${effect.key}.`);
+    }
+    compiledParticleParameters.push(
+      compileParticleEffectParameters(evidence, sim.specialAttack.actionTicks),
+    );
+  }
+  if (compiledParticleParameters.length > 0) {
+    particleParametersByType.set(media.type, compiledParticleParameters);
   }
 }
 
@@ -629,12 +700,20 @@ const mediaImports = mediaEntries.map(({ binding, file }) => {
   const modulePath = `../unit-media/${file.replace(/\.ts$/, "")}`;
   return `import { definition as ${binding} } from ${JSON.stringify(modulePath)};`;
 });
+const particleParameterSource = JSON.stringify(
+  Object.fromEntries(
+    [...particleParametersByType.entries()].sort(([left], [right]) => left - right),
+  ),
+  null,
+  2,
+);
 const unformattedMediaSource = `// Generated by scripts/generate-unit-catalogs.ts. Do not edit by hand.
 ${mediaImports.join("\n")}
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
   IconConfig,
   ModelAssetDefinition,
+  ParticleEffectDefinition,
   RuntimeProjectilePresentation,
   RuntimeModelActionDefinition,
   RuntimeModelAssetDefinition,
@@ -648,6 +727,11 @@ import type {
 export const UNIT_MEDIA_DEFINITIONS = [
 ${mediaEntries.map(({ binding }) => `  ${binding},`).join("\n")}
 ] as const satisfies readonly UnitMediaDefinition[];
+
+type ParticleEffectParameters = Omit<ParticleEffectDefinition, "key" | "trigger" | "textureUrl">;
+const PARTICLE_EFFECT_PARAMETERS_BY_TYPE: Readonly<
+  Record<number, readonly ParticleEffectParameters[]>
+> = ${particleParameterSource};
 
 const unitMedia: UnitMediaDefinition[] = [];
 const authoredModelConfigs: ModelAssetDefinition[] = [];
@@ -726,11 +810,35 @@ for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
   };
 }
 
+const particleEffectDefinitions: ParticleEffectDefinition[] = [];
+const unitParticleEffectIndices: (readonly number[] | undefined)[] = [];
+let maxParticlesPerUnit = 0;
+for (const definition of UNIT_MEDIA_DEFINITIONS) {
+  const effects = (definition as UnitMediaDefinition).effects ?? [];
+  const parameters = PARTICLE_EFFECT_PARAMETERS_BY_TYPE[definition.type] ?? [];
+  if (effects.length !== parameters.length) {
+    throw new Error(\`Generated particle parameters do not match \${definition.key}.\`);
+  }
+  const indices: number[] = [];
+  let particlesForUnit = 0;
+  for (let effectIndex = 0; effectIndex < effects.length; effectIndex += 1) {
+    const effect = { ...effects[effectIndex]!, ...parameters[effectIndex]! };
+    indices.push(particleEffectDefinitions.length);
+    particleEffectDefinitions.push(effect);
+    particlesForUnit += effect.maxParticles;
+  }
+  if (indices.length > 0) unitParticleEffectIndices[definition.type] = Object.freeze(indices);
+  maxParticlesPerUnit = Math.max(maxParticlesPerUnit, particlesForUnit);
+}
+
 export const UNIT_MEDIA: readonly UnitMediaDefinition[] = Object.freeze(unitMedia);
 export const UNIT_PRESENTATIONS: readonly RuntimeUnitPresentation[] = Object.freeze(presentations);
 export const PROJECTILE_PRESENTATIONS: readonly RuntimeProjectilePresentation[] = Object.freeze(projectilePresentations);
 export const MODEL_CONFIGS: readonly RuntimeModelAssetDefinition[] = Object.freeze(modelConfigs);
 export const TYPE_ICONS: readonly (IconConfig | undefined)[] = Object.freeze(icons);
+export const PARTICLE_EFFECT_DEFINITIONS: readonly ParticleEffectDefinition[] = Object.freeze(particleEffectDefinitions);
+export const UNIT_PARTICLE_EFFECT_INDICES: readonly (readonly number[] | undefined)[] = Object.freeze(unitParticleEffectIndices);
+export const MAX_PARTICLES_PER_UNIT = maxParticlesPerUnit;
 `;
 
 async function formattedSource(name: string, unformatted: string): Promise<string> {

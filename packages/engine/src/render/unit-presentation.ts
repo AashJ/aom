@@ -124,7 +124,16 @@ function actionFor(
     if (targetType === TYPE_BERRY && actions.gatherFood) return "gatherFood";
     if (targetType === TYPE_TREE && actions.gatherWood) return "gatherWood";
   }
-  if (snapshot.actionCooldown[index]! > 0 && actions.attack) return "attack";
+  if (snapshot.actionCooldown[index]! > 0 && actions.attack) {
+    const attack = stats.attack;
+    if (
+      attack?.kind !== "melee" ||
+      attack.cycleVariants === undefined ||
+      snapshot.meleeActionVariant[index]! < attack.cycleVariants.length
+    ) {
+      return "attack";
+    }
+  }
   if (carriesRelic && actions.carryIdle) return "carryIdle";
   return "idle";
 }
@@ -136,6 +145,17 @@ function resolveModelAction(
   index: number,
 ): ResolvedModelPresentation {
   let variant = idIndex(snapshot.ids[index]!) % definition.modelIndices.length;
+  if (action === "attack") {
+    const attack = UNIT_TYPES[snapshot.unitType[index]!]!.attack;
+    const authoredVariant = snapshot.meleeActionVariant[index]!;
+    if (
+      attack?.kind === "melee" &&
+      attack.cycleVariants !== undefined &&
+      authoredVariant < attack.cycleVariants.length
+    ) {
+      variant = authoredVariant;
+    }
+  }
   if (definition.variant === "construction-stage") {
     const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
     const buildFraction = snapshot.buildProgress[index]! / Math.max(1, stats.buildTicks);
@@ -219,7 +239,10 @@ export function modelAnimationTime(
     const stats = UNIT_TYPES[snapshot.unitType[index]!]!;
     const actionTicks =
       presentation.action === "attack"
-        ? (stats.attack?.cooldownTicks ?? GATHER_COOLDOWN_TICKS)
+        ? stats.attack?.kind === "melee" && stats.attack.cycleVariants !== undefined
+          ? (stats.attack.cycleVariants[snapshot.meleeActionVariant[index]!]?.actionTicks ??
+            stats.attack.cooldownTicks)
+          : (stats.attack?.cooldownTicks ?? GATHER_COOLDOWN_TICKS)
         : presentation.action === "specialAttack"
           ? (stats.specialAttack?.actionTicks ?? GATHER_COOLDOWN_TICKS)
           : GATHER_COOLDOWN_TICKS;

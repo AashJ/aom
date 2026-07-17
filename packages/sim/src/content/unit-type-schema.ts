@@ -67,6 +67,16 @@ interface AttackBase {
 
 export interface MeleeAttack extends AttackBase {
   readonly kind: "melee";
+  // Classic can select unequal source clips for one attack action. Damage is
+  // authored as a per-cooldown rate, so each selected clip scales the landed
+  // hit by actionTicks / cooldownTicks. The active variant is authoritative
+  // simulation state; presentation never re-selects it independently.
+  readonly cycleVariants?: readonly [MeleeAttackCycle, ...MeleeAttackCycle[]];
+}
+
+export interface MeleeAttackCycle {
+  readonly actionTicks: number;
+  readonly impactDelayTicks: number;
 }
 
 export interface ProjectileFlight {
@@ -95,8 +105,7 @@ export interface ProjectileAttack extends AttackBase {
 
 export type Attack = MeleeAttack | ProjectileAttack;
 
-export interface ChargedMeleeSpecialAttack {
-  readonly kind: "charged-melee";
+interface ChargedSpecialAttackBase {
   readonly damage: DamageProfile;
   readonly range: number;
   readonly bonuses: readonly DamageBonus[];
@@ -106,7 +115,23 @@ export interface ChargedMeleeSpecialAttack {
   readonly impactDelayTicks: number;
   // Entries are OR alternatives; each class mask inside an entry is conjunctive.
   readonly validTargets: readonly DamageBonusTarget[];
+}
+
+export interface ChargedMeleeSpecialAttack extends ChargedSpecialAttackBase {
+  readonly kind: "charged-melee";
   readonly targetReaction?: TargetReaction;
+}
+
+export const AREA_DAMAGE_ENEMIES = 1 << 0;
+export const AREA_DAMAGE_NEUTRAL_UNITS = 1 << 1;
+
+export interface ChargedAreaPulseSpecialAttack extends ChargedSpecialAttackBase {
+  readonly kind: "charged-area-pulse";
+  // The first proven area action is centered on its attacker and lands once at
+  // the authored impact tag. Linear falloff reaches zero at radius.
+  readonly radius: number;
+  readonly falloff: "linear";
+  readonly damageRelations: number;
 }
 
 export interface ThrownTargetReaction {
@@ -131,7 +156,7 @@ export type TargetReaction = ThrownTargetReaction;
 
 // Append future source-proven charged shapes to this union. Do not add nullable
 // fields for mechanics that no implemented unit exercises.
-export type SpecialAttack = ChargedMeleeSpecialAttack;
+export type SpecialAttack = ChargedMeleeSpecialAttack | ChargedAreaPulseSpecialAttack;
 
 export type DamageBonusTarget =
   | {

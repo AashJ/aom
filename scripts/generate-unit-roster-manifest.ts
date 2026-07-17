@@ -109,12 +109,15 @@ function wrappedLine(prefix: string, value: string, width = 100): readonly strin
   const continuation = "    ";
   const lines: string[] = [];
   let line = prefix;
+  let hasWord = false;
   for (const word of words) {
-    if (line.length > prefix.length && line.length + word.length + 1 > width) {
+    if (hasWord && line.length + word.length + 1 > width) {
       lines.push(line);
       line = continuation + word;
+      hasWord = true;
     } else {
-      line += `${line.length === prefix.length ? "" : " "}${word}`;
+      line += `${hasWord ? " " : ""}${word}`;
+      hasWord = true;
     }
   }
   lines.push(line);
