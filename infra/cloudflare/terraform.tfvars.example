@@ -1,0 +1,4 @@
+cloudflare_account_id = "REPLACE_ME"
+cloudflare_zone_id    = "REPLACE_ME"
+web_hostname          = "play.example.com"
+relay_hostname        = "relay.example.com"
