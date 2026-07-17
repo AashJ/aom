@@ -13,7 +13,6 @@ import { idGeneration, idIndex, packId } from "./ecs/id";
 import { registerPlayer } from "./ecs/players";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { AGE_CLASSICAL, GOD_RA, GOD_ZEUS } from "./ecs/progression";
-import { IMPLEMENTED_GREEK_HERO_TYPE_IDS } from "./content/unit-roster";
 import { CULTURE_GREEK } from "./content/unit-type-schema";
 import {
   CARRY_CAPACITY,
@@ -32,6 +31,7 @@ import {
   TYPE_HOPLITE,
   TYPE_GOLD_MINE,
   TYPE_MILITIA,
+  TYPE_MINOTAUR,
   TYPE_SPEARMAN,
   TYPE_TREE,
   UNIT_TYPES,
@@ -1695,27 +1695,26 @@ describe("production", () => {
     expect(egyptianTypes).toContain(TYPE_EGYPTIAN_LABORER);
   });
 
-  test("culture-scoped starting units add every implemented Greek hero without leaking to Egypt", () => {
+  test("culture-scoped starting units can add the Greek Minotaur without leaking to Egypt", () => {
     const world = createWorld(42);
     world.walkable.fill(1);
     registerPlayer(world, 0, GOD_ZEUS);
     registerPlayer(world, 1, GOD_RA);
 
     spawnUnits(world, 2, [0, 1], {
-      [CULTURE_GREEK]: IMPLEMENTED_GREEK_HERO_TYPE_IDS,
+      [CULTURE_GREEK]: [TYPE_MINOTAUR],
     });
 
-    const heroTypes = new Set(IMPLEMENTED_GREEK_HERO_TYPE_IDS);
-    const greekHeroes: number[] = [];
-    const egyptianHeroes: number[] = [];
+    const greekMinotaurs: number[] = [];
+    const egyptianMinotaurs: number[] = [];
     for (let index = 0; index < world.count; index += 1) {
       const type = world.unitType[index]!;
-      if (!heroTypes.has(type)) continue;
-      (world.owner[index] === 0 ? greekHeroes : egyptianHeroes).push(type);
+      if (type !== TYPE_MINOTAUR) continue;
+      (world.owner[index] === 0 ? greekMinotaurs : egyptianMinotaurs).push(type);
     }
 
-    expect(greekHeroes).toEqual([...IMPLEMENTED_GREEK_HERO_TYPE_IDS]);
-    expect(egyptianHeroes).toEqual([]);
+    expect(greekMinotaurs).toEqual([TYPE_MINOTAUR]);
+    expect(egyptianMinotaurs).toEqual([]);
   });
 
   test("a town center trains a villager that spawns adjacent on walkable ground", () => {

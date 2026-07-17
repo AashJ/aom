@@ -130,6 +130,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     mode: new Uint8Array(xs.length),
     gatherTargetType: new Uint16Array(xs.length).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(xs.length),
+    specialActionRemaining: new Uint16Array(xs.length),
     visible: new Uint8Array(xs.length).fill(1),
     fog: new Uint8Array(MAP_TILES * MAP_TILES),
     selected: new Uint8Array(xs.length),

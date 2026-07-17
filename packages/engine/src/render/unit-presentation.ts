@@ -93,6 +93,9 @@ function actionFor(
   ) {
     return "construction";
   }
+  if (snapshot.specialActionRemaining[index]! > 0 && actions.specialAttack) {
+    return "specialAttack";
+  }
   const carriesRelic = snapshot.carriedRelicCount[index]! > 0;
   if (moved && carriesRelic && actions.carryWalk) return "carryWalk";
   if (moved && actions.walk) return "walk";
@@ -200,11 +203,14 @@ export function modelAnimationTime(
     const actionTicks =
       presentation.action === "attack"
         ? (stats.attack?.cooldownTicks ?? GATHER_COOLDOWN_TICKS)
-        : GATHER_COOLDOWN_TICKS;
-    const elapsedTicks = Math.min(
-      actionTicks,
-      Math.max(0, actionTicks - snapshot.actionCooldown[index]! + alpha),
-    );
+        : presentation.action === "specialAttack"
+          ? (stats.specialAttack?.actionTicks ?? GATHER_COOLDOWN_TICKS)
+          : GATHER_COOLDOWN_TICKS;
+    const remainingTicks =
+      presentation.action === "specialAttack"
+        ? snapshot.specialActionRemaining[index]!
+        : snapshot.actionCooldown[index]!;
+    const elapsedTicks = Math.min(actionTicks, Math.max(0, actionTicks - remainingTicks + alpha));
     return duration * (elapsedTicks / Math.max(1, actionTicks));
   }
 

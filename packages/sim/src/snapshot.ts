@@ -28,6 +28,7 @@ export interface RenderSnapshot {
   mode: Uint8Array;
   gatherTargetType: Uint16Array;
   actionCooldown: Uint16Array;
+  specialActionRemaining: Uint16Array;
   visible: Uint8Array;
   fog: Uint8Array;
   selected: Uint8Array;
@@ -90,6 +91,7 @@ export function createSnapshot(
     mode: new Uint8Array(capacity),
     gatherTargetType: new Uint16Array(capacity).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(capacity),
+    specialActionRemaining: new Uint16Array(capacity),
     visible: new Uint8Array(capacity),
     fog: new Uint8Array(VISIBILITY_TILES),
     selected: new Uint8Array(capacity),
@@ -268,6 +270,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;
     out.actionCooldown[i] = world.attackCooldown[i]!;
+    out.specialActionRemaining[i] = world.specialActionRemaining[i]!;
     out.visible[i] =
       world.containedBy[i] === NO_TARGET && isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
     // Copies selected, not selectable; selectable only means the unit may be selected.

@@ -15,7 +15,6 @@ import {
   GOD_RA,
   GOD_ZEUS,
   hashWorld,
-  IMPLEMENTED_GREEK_HERO_TYPE_IDS,
   MAP_TILES,
   MAX_TRAIN_QUEUE,
   MAX_UNITS,
@@ -33,6 +32,7 @@ import {
   UNIT_TYPES,
   UNIT_CLASS_HUMAN,
   UNIT_CLASS_WORKER,
+  TYPE_MINOTAUR,
   updateVisibility,
   VIS_VISIBLE,
   WOOD,
@@ -74,7 +74,7 @@ const placementRayDir = vec3.create();
 const placementHit = vec3.create();
 
 const MULTIPLAYER_STARTING_UNITS_BY_CULTURE = {
-  [CULTURE_GREEK]: IMPLEMENTED_GREEK_HERO_TYPE_IDS,
+  [CULTURE_GREEK]: [TYPE_MINOTAUR],
 } as const;
 
 function cheatFromChat(code: string): CheatId | null {

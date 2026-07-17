@@ -16,6 +16,10 @@ export interface UnitTypeStats {
   // Exactly one primary attack shape or none. The discriminant is authoritative:
   // combat never guesses delivery behavior from classes, range, or presentation.
   readonly attack: Attack | null;
+  // Charged attacks are a second, independently recharging action. They remain
+  // separate from the primary attack so neither combat nor presentation has to
+  // infer a special cycle from a unit id, animation name, or damage spike.
+  readonly specialAttack?: SpecialAttack;
   readonly isStatic: boolean;
   readonly resource: number;
   // Melee reach measures to the target's surface, not center.
@@ -90,6 +94,23 @@ export interface ProjectileAttack extends AttackBase {
 }
 
 export type Attack = MeleeAttack | ProjectileAttack;
+
+export interface ChargedMeleeSpecialAttack {
+  readonly kind: "charged-melee";
+  readonly damage: DamageProfile;
+  readonly range: number;
+  readonly bonuses: readonly DamageBonus[];
+  readonly rechargeTicks: number;
+  // Full wind-up/recovery cycle and the authored impact tag within that cycle.
+  readonly actionTicks: number;
+  readonly impactDelayTicks: number;
+  // Entries are OR alternatives; each class mask inside an entry is conjunctive.
+  readonly validTargets: readonly DamageBonusTarget[];
+}
+
+// Append future source-proven charged shapes to this union. Do not add nullable
+// fields for mechanics that no implemented unit exercises.
+export type SpecialAttack = ChargedMeleeSpecialAttack;
 
 export type DamageBonusTarget =
   | {

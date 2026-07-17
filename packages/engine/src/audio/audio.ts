@@ -26,6 +26,7 @@ interface EntityAudioState {
   visible: boolean;
   x: number;
   z: number;
+  specialActionRemaining: number;
 }
 
 export interface GameAudio {
@@ -417,6 +418,7 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
         visible: snapshot.visible[i] === 1,
         x: snapshot.posX[i]!,
         z: snapshot.posZ[i]!,
+        specialActionRemaining: snapshot.specialActionRemaining[i]!,
       };
       const previous = entities.get(id);
 
@@ -458,6 +460,11 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
             enterBattle();
           }
         }
+      }
+
+      if (previous.specialActionRemaining === 0 && state.specialActionRemaining > 0) {
+        const specialCue = UNIT_MEDIA[type]?.audio.specialAttack;
+        if (specialCue) playCue(specialCue, effectsGain, state.x, state.z);
       }
 
       if (state.buildProgress > previous.buildProgress) {

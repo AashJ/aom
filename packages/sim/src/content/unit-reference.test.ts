@@ -98,7 +98,9 @@ describe("agentic unit references", () => {
       "greek-ajax",
       "greek-chiron",
     ];
-    expect(UNIT_ROSTER.filter((entry) => entry.status === "ready")).toEqual([]);
+    expect(
+      UNIT_ROSTER.filter((entry) => entry.status === "ready").map((entry) => entry.key),
+    ).toEqual(["greek-minotaur"]);
     for (const key of releasedHeroKeys) {
       const lane = UNIT_ROSTER.find((entry) => entry.key === key);
       const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === key);

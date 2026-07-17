@@ -192,6 +192,26 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  // Charged actions own an independent recharge plus an in-progress, stable-id
+  // target. Every field affects future damage or action availability.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.specialRecharge[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.specialActionRemaining[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.specialActionTarget[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.specialActionImpactPending[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   for (let i = 0; i < world.count; i += 1) {
     word = world.attackTarget[i]!;
     h ^= word;

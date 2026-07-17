@@ -12,8 +12,8 @@ is not launchable until its family audit freezes a complete candidate reference 
 
 - Total reserved unit workcells: **76**
 - Implemented: **23**
-- Ready for fan-out: **0**
-- Blocked on shared foundations: **53**
+- Ready for fan-out: **1**
+- Blocked on shared foundations: **52**
 
 ## ordinary-melee (10)
 
@@ -197,12 +197,10 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Blocker: Gates C+E: Myth-unit favor/lifecycle rules plus air navigation, occupancy, scouting,
     and visibility.
 
-- `greek-minotaur` — id `113`; Greek; Gates C+D; blocked.
+- `greek-minotaur` — id `113`; Greek; Gates C+D; ready.
   - Assignment: Greek Temple slot 1
   - Required god: Athena.
   - Foundation owners: serial-myth-unit-lifecycle; serial-special-actions
-  - Blocker: Gates C+D: Myth-unit favor/lifecycle and hero counters plus deterministic gore attack
-    behavior.
 
 - `greek-centaur` — id `114`; Greek; Gates B+C+D; blocked.
   - Assignment: Greek Temple slot 1

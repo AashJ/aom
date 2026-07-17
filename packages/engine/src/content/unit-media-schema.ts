@@ -21,6 +21,7 @@ export interface UnitAudioDefinition {
   readonly created?: AudioCueDefinition;
   readonly death?: AudioCueDefinition;
   readonly completed?: AudioCueDefinition;
+  readonly specialAttack?: AudioCueDefinition;
 }
 
 export interface ModelAttachmentDefinition {
@@ -40,6 +41,7 @@ export type UnitMediaAction =
   | "idle"
   | "walk"
   | "attack"
+  | "specialAttack"
   | "death"
   | "build"
   | "gatherFood"

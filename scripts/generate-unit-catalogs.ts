@@ -9,6 +9,7 @@ import {
   UNIT_CLASS_HERO,
   UNIT_CLASS_MELEE,
   UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
   UNIT_CLASS_RESOURCE,
   UNIT_CLASS_WORKER,
   type UnitTypeStats,
@@ -224,6 +225,27 @@ for (const entry of entries) {
     }
   }
 
+  const special = definition.specialAttack;
+  if (
+    special !== undefined &&
+    (!Number.isFinite(special.range) ||
+      special.range < 0 ||
+      special.damage.length !== 3 ||
+      special.damage.some((damage) => !Number.isFinite(damage) || damage < 0) ||
+      !Number.isInteger(special.rechargeTicks) ||
+      special.rechargeTicks < 1 ||
+      special.rechargeTicks > 0xffff ||
+      !Number.isInteger(special.actionTicks) ||
+      special.actionTicks < 1 ||
+      special.actionTicks > 0xffff ||
+      !Number.isInteger(special.impactDelayTicks) ||
+      special.impactDelayTicks < 1 ||
+      special.impactDelayTicks >= special.actionTicks ||
+      special.validTargets.length === 0)
+  ) {
+    throw new Error(`${definition.key} has an invalid charged special-attack contract.`);
+  }
+
   for (const prerequisiteType of definition.prerequisiteBuildings) {
     const prerequisite = definitionsById.get(prerequisiteType);
     if (prerequisite === undefined) {
@@ -324,6 +346,20 @@ for (const lane of UNIT_ROSTER) {
         definition.attack === null)
     ) {
       throw new Error(`${lane.key} must satisfy the serial hero family contract.`);
+    }
+    if (
+      lane.status !== "blocked" &&
+      lane.family === "myth" &&
+      ((definition.classes & UNIT_CLASS_MYTH) === 0 || definition.attack === null)
+    ) {
+      throw new Error(`${lane.key} must satisfy the serial myth-unit family contract.`);
+    }
+    if (
+      lane.status !== "blocked" &&
+      lane.foundationLanes.includes("serial-special-actions") &&
+      definition.specialAttack === undefined
+    ) {
+      throw new Error(`${lane.key} must satisfy its charged special-action foundation.`);
     }
 
     const reference = unitReferenceEntry(lane.key);
@@ -547,7 +583,8 @@ for (const entry of mediaEntries) {
     rosterLane?.status !== "blocked" &&
     (rosterLane?.family === "ordinary-melee" ||
       rosterLane?.family === "ordinary-projectile" ||
-      rosterLane?.family === "hero");
+      rosterLane?.family === "hero" ||
+      rosterLane?.family === "myth");
   if (requiresCompleteUnitMedia) {
     if (media.presentation.kind !== "model") {
       throw new Error(`${media.key} requires model presentation for its ordinary-unit gate.`);
@@ -571,6 +608,13 @@ for (const entry of mediaEntries) {
         media.presentation.actions.carryWalk === undefined)
     ) {
       throw new Error(`${media.key} is missing required relic-carry presentation.`);
+    }
+    if (
+      sim.specialAttack !== undefined &&
+      (media.presentation.actions.specialAttack === undefined ||
+        media.audio.specialAttack === undefined)
+    ) {
+      throw new Error(`${media.key} is missing required charged special-attack media.`);
     }
   }
 }

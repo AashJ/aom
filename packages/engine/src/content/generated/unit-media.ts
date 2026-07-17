@@ -39,6 +39,7 @@ import { definition as greekHippolyta } from "../unit-media/greek/hippolyta";
 import { definition as greekAtalanta } from "../unit-media/greek/atalanta";
 import { definition as greekAjax } from "../unit-media/greek/ajax";
 import { definition as greekChiron } from "../unit-media/greek/chiron";
+import { definition as greekMinotaur } from "../unit-media/greek/minotaur";
 import { definition as egyptianSlinger } from "../unit-media/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-media/egyptian/chariot-archer";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
@@ -96,6 +97,7 @@ export const UNIT_MEDIA_DEFINITIONS = [
   greekAtalanta,
   greekAjax,
   greekChiron,
+  greekMinotaur,
   egyptianSlinger,
   egyptianChariotArcher,
 ] as const satisfies readonly UnitMediaDefinition[];

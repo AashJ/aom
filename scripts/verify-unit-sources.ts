@@ -26,6 +26,7 @@ import {
   UNIT_CLASS_NON_GREEK_UNIT,
   UNIT_CLASS_SIEGE,
   type DamageBonus,
+  type DamageBonusTarget,
 } from "../packages/sim/src/content/unit-type-schema";
 import { CULTURE_NORSE } from "../packages/sim/src/content/unit-type-schema";
 import { readXmbFile, type XmbNode } from "./lib/xmb";
@@ -101,9 +102,11 @@ function trialClasses(unit: XmbNode): number {
   let classes = 0;
   if (types.has("HumanSoldier")) classes |= UNIT_CLASS_HUMAN;
   if (types.has("AbstractInfantry")) classes |= UNIT_CLASS_INFANTRY;
+  if (types.has("MythUnitInfantry")) classes |= UNIT_CLASS_INFANTRY;
   if (types.has("AbstractCavalry")) classes |= UNIT_CLASS_CAVALRY;
   if (types.has("Military")) classes |= UNIT_CLASS_MILITARY;
   if (types.has("Hero")) classes |= UNIT_CLASS_HERO;
+  if (types.has("MythUnit")) classes |= UNIT_CLASS_MYTH;
   if (types.has("AbstractArcher")) classes |= UNIT_CLASS_ARCHER;
   if (childValues(unit, "action").some((action) => action.attributes.name === "HandAttack")) {
     classes |= UNIT_CLASS_MELEE;
@@ -159,6 +162,7 @@ function trialAttack(
   readonly range: number;
   readonly bonuses: readonly DamageBonus[];
   readonly numericParameter: (name: string, type?: string) => number;
+  readonly rateTypes: readonly string[];
 } {
   const action = readTrialAction(unit, actionName);
 
@@ -185,6 +189,13 @@ function trialAttack(
     damage: [damage("Hack"), damage("Pierce"), damage("Crush")],
     range: action.numericParameter("MaximumRange"),
     bonuses,
+    rateTypes: action.parameters
+      .filter(
+        (candidate) => candidate.attributes.name === "Rate" && candidate.attributes.type !== "All",
+      )
+      .flatMap((candidate) =>
+        candidate.attributes.type === undefined ? [] : [candidate.attributes.type],
+      ),
     numericParameter: (name, type) => action.numericParameter(name, type),
   };
 }
@@ -223,42 +234,73 @@ function trialComparableValues(
     requiredAge: numberValue(unit, "allowedage") - 1,
   };
 
+  let primary: Readonly<Partial<Record<TrialComparableField, TrialComparableValue>>>;
   if (reference.expected.attack.kind === "melee") {
     const attack = trialAttack(unit, "HandAttack");
-    return {
+    primary = {
       ...common,
       "attack.damage": attack.damage,
       "attack.range": attack.range,
       "attack.bonuses": attack.bonuses,
     };
+  } else {
+    const attack = trialAttack(unit, "RangedAttack");
+    const projectileName = childValues(unit, "projectileprotounit")[0]?.value;
+    const projectile = proto.children.find(
+      (candidate) => candidate.name === "unit" && candidate.attributes.name === projectileName,
+    );
+    if (projectile === undefined) {
+      throw new Error(`${unit.attributes.name} has no Trial projectile proto ${projectileName}.`);
+    }
+
+    primary = {
+      ...common,
+      "attack.damage": attack.damage,
+      "attack.range": attack.range,
+      "attack.bonuses": attack.bonuses,
+      "attack.accuracy": attack.numericParameter("Accuracy"),
+      "attack.accuracyReductionFactor": attack.numericParameter("AccuracyReductionFactor"),
+      "attack.aimBonus": attack.numericParameter("AimBonus"),
+      "attack.spreadFactor": attack.numericParameter("SpreadFactor"),
+      "attack.maxSpread": attack.numericParameter("MaxSpread"),
+      "attack.trackRating": attack.numericParameter("TrackRating"),
+      "attack.unintentionalDamageMultiplier": attack.numericParameter(
+        "UnintentionalDamageMultiplier",
+      ),
+      "attack.projectile.speed": numberValue(projectile, "maxvelocity"),
+      "attack.projectile.lifespanTicks": numberValue(projectile, "lifespan") * TICK_HZ,
+      "attack.projectile.collisionRadius": numberValue(projectile, "obstructionradiusx"),
+    };
   }
 
-  const attack = trialAttack(unit, "RangedAttack");
-  const projectileName = childValues(unit, "projectileprotounit")[0]?.value;
-  const projectile = proto.children.find(
-    (candidate) => candidate.name === "unit" && candidate.attributes.name === projectileName,
-  );
-  if (projectile === undefined) {
-    throw new Error(`${unit.attributes.name} has no Trial projectile proto ${projectileName}.`);
+  if (reference.family !== "myth") return primary;
+
+  const special = trialAttack(unit, "Gore");
+  const validTargets: DamageBonusTarget[] = [];
+  for (const type of special.rateTypes) {
+    let target: DamageBonusTarget;
+    if (type === "HumanSoldier" || type === "AbstractVillager") {
+      target = { kind: "classes", classes: UNIT_CLASS_HUMAN };
+    } else if (type === "MythUnitInfantry") {
+      target = {
+        kind: "classes",
+        classes: UNIT_CLASS_MYTH | UNIT_CLASS_INFANTRY,
+      };
+    } else {
+      throw new Error(`${unit.attributes.name} has unsupported Gore target ${type}.`);
+    }
+    if (!validTargets.some((candidate) => structurallyEqual(candidate, target))) {
+      validTargets.push(target);
+    }
   }
 
   return {
-    ...common,
-    "attack.damage": attack.damage,
-    "attack.range": attack.range,
-    "attack.bonuses": attack.bonuses,
-    "attack.accuracy": attack.numericParameter("Accuracy"),
-    "attack.accuracyReductionFactor": attack.numericParameter("AccuracyReductionFactor"),
-    "attack.aimBonus": attack.numericParameter("AimBonus"),
-    "attack.spreadFactor": attack.numericParameter("SpreadFactor"),
-    "attack.maxSpread": attack.numericParameter("MaxSpread"),
-    "attack.trackRating": attack.numericParameter("TrackRating"),
-    "attack.unintentionalDamageMultiplier": attack.numericParameter(
-      "UnintentionalDamageMultiplier",
-    ),
-    "attack.projectile.speed": numberValue(projectile, "maxvelocity"),
-    "attack.projectile.lifespanTicks": numberValue(projectile, "lifespan") * TICK_HZ,
-    "attack.projectile.collisionRadius": numberValue(projectile, "obstructionradiusx"),
+    ...primary,
+    "specialAttack.damage": special.damage,
+    "specialAttack.range": special.range,
+    "specialAttack.bonuses": special.bonuses,
+    "specialAttack.rechargeTicks": numberValue(unit, "rechargetime") * TICK_HZ,
+    "specialAttack.validTargets": validTargets,
   };
 }
 
@@ -367,6 +409,24 @@ for (const reference of UNIT_REFERENCE_SPECS) {
     }
     if (fraction !== release.fraction) {
       throw new Error(`${reference.key} attack release tag does not match its pinned source.`);
+    }
+  }
+  if (reference.family === "myth") {
+    const impact = reference.source.assetInventory.specialImpact;
+    const animationPath = resolve(
+      animationRoots[reference.source.culture],
+      reference.source.assetInventory.rootAnimation,
+    );
+    if (!existsSync(animationPath) || sha256(animationPath) !== impact.sha256) {
+      throw new Error(`${reference.key} special animation hash does not match its pinned source.`);
+    }
+    const fraction = animationTagFraction(
+      readFileSync(animationPath, "utf8"),
+      impact.action,
+      impact.tag,
+    );
+    if (fraction !== impact.fraction) {
+      throw new Error(`${reference.key} special impact tag does not match its pinned source.`);
     }
   }
 }

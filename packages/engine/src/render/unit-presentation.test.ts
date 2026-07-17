@@ -19,6 +19,7 @@ import {
   TYPE_HOPLITE,
   TYPE_JASON,
   TYPE_MILITIA,
+  TYPE_MINOTAUR,
   TYPE_SPEARMAN,
   TYPE_TOXOTES,
   TYPE_TREE,
@@ -288,5 +289,20 @@ describe("unit presentation", () => {
     expect(modelKey(resolveModelDeathPresentation(TYPE_TOXOTES, packId(0, 0)))).toBe(
       "greekToxotesDeath",
     );
+  });
+
+  test("drives the Minotaur gore clip from authoritative charged-action time", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_MINOTAUR;
+
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekMinotaurIdle");
+    snapshot.specialActionRemaining[0] = 40;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekMinotaurGore");
+
+    snapshot.specialActionRemaining[0] = 21;
+    const presentation = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelAnimationTime(presentation, snapshot, 0, 0, 2)).toBeCloseTo(0.95, 8);
   });
 });

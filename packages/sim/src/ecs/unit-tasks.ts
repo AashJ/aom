@@ -1,5 +1,6 @@
 import { clearAttackOrder } from "./attack-state";
 import { NO_TARGET } from "./id";
+import { clearSpecialAttack } from "./special-attacks";
 import type { World } from "./world";
 
 // One namespace owns every mode stored in World.mode. New task families extend
@@ -28,6 +29,7 @@ export function clearUnitTask(world: World, index: number): void {
   world.taskTarget[index] = NO_TARGET;
   world.gatherPosX[index] = 0;
   world.gatherPosZ[index] = 0;
+  clearSpecialAttack(world, index);
   clearAttackOrder(world, index);
 }
 

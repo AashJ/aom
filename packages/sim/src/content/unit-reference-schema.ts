@@ -5,9 +5,11 @@ import {
   type Attack,
   type ArmorProfile,
   type DamageBonus,
+  type DamageBonusTarget,
   type HeroTraits,
   type MeleeAttack,
   type ProjectileAttack,
+  type SpecialAttack,
   type TypeCommandRelationship,
   type UnitTypeStats,
 } from "./unit-type-schema";
@@ -34,6 +36,11 @@ export type TrialComparableField =
   | "attack.projectile.speed"
   | "attack.projectile.lifespanTicks"
   | "attack.projectile.collisionRadius"
+  | "specialAttack.damage"
+  | "specialAttack.range"
+  | "specialAttack.bonuses"
+  | "specialAttack.rechargeTicks"
+  | "specialAttack.validTargets"
   | "bodyRadius"
   | "collidesWithProjectiles"
   | "cost"
@@ -46,7 +53,8 @@ export type TrialComparableValue =
   | number
   | boolean
   | readonly number[]
-  | readonly DamageBonus[];
+  | readonly DamageBonus[]
+  | readonly DamageBonusTarget[];
 
 export interface TrialFidelityDelta {
   readonly field: TrialComparableField;
@@ -66,6 +74,10 @@ export interface ProjectileReleaseEvidence {
   readonly action: string;
   readonly tag: "Attack";
   readonly fraction: number;
+}
+
+export interface SpecialImpactEvidence extends ProjectileReleaseEvidence {
+  readonly durationTicks: number;
 }
 
 interface UnitReferenceSourceCommon<A extends UnitAssetInventoryEvidence> {
@@ -98,11 +110,18 @@ export type ProjectileUnitReferenceSource = UnitReferenceSource<
   }
 >;
 
+export type SpecialUnitReferenceSource = UnitReferenceSource<
+  UnitAssetInventoryEvidence & {
+    readonly specialImpact: SpecialImpactEvidence;
+  }
+>;
+
 interface UnitReferenceCommonExpected {
   readonly label: string;
   readonly culture: number;
   readonly classes: number;
   readonly hero: HeroTraits | null;
+  readonly specialAttack: SpecialAttack | null;
   readonly maxHp: number;
   readonly lineOfSight: number;
   readonly movementSpeed: number;
@@ -144,6 +163,7 @@ export type HeroUnitReferenceExpected<A extends Attack = Attack> = Omit<
 type OrdinaryExpectedInput<A extends Attack> = Omit<
   OrdinaryUnitReferenceExpected<A>,
   | "hero"
+  | "specialAttack"
   | "workRange"
   | "isStatic"
   | "resource"
@@ -161,6 +181,7 @@ export function ordinaryUnitExpected<A extends Attack>(
   return {
     ...expected,
     hero: null,
+    specialAttack: null,
     workRange: null,
     isStatic: false,
     resource: -1,
@@ -175,6 +196,7 @@ export function ordinaryUnitExpected<A extends Attack>(
 
 type HeroExpectedInput<A extends Attack> = Omit<
   HeroUnitReferenceExpected<A>,
+  | "specialAttack"
   | "workRange"
   | "isStatic"
   | "resource"
@@ -191,6 +213,7 @@ export function heroUnitExpected<A extends Attack>(
 ): HeroUnitReferenceExpected<A> {
   return {
     ...expected,
+    specialAttack: null,
     workRange: null,
     isStatic: false,
     resource: -1,
@@ -239,10 +262,57 @@ export interface ProjectileHeroUnitReferenceSpec extends HeroUnitReferenceSpecBa
 
 export type HeroUnitReferenceSpec = MeleeHeroUnitReferenceSpec | ProjectileHeroUnitReferenceSpec;
 
+export type MythUnitReferenceExpected = Omit<
+  OrdinaryUnitReferenceExpected<MeleeAttack>,
+  "specialAttack"
+> & {
+  readonly specialAttack: SpecialAttack;
+};
+
+export interface MythUnitReferenceSpec {
+  readonly family: "myth";
+  readonly attackKind: "melee";
+  readonly id: number;
+  readonly key: string;
+  readonly source: SpecialUnitReferenceSource;
+  readonly expected: MythUnitReferenceExpected;
+}
+
+type MythExpectedInput = Omit<
+  MythUnitReferenceExpected,
+  | "hero"
+  | "workRange"
+  | "isStatic"
+  | "resource"
+  | "collidesWithProjectiles"
+  | "footprint"
+  | "popBonus"
+  | "trainExitOffset"
+  | "isDropsite"
+  | "builtBy"
+>;
+
+export function mythUnitExpected(expected: MythExpectedInput): MythUnitReferenceExpected {
+  return {
+    ...expected,
+    hero: null,
+    workRange: null,
+    isStatic: false,
+    resource: -1,
+    collidesWithProjectiles: true,
+    footprint: 0,
+    popBonus: 0,
+    trainExitOffset: 0,
+    isDropsite: false,
+    builtBy: [],
+  };
+}
+
 export type UnitReferenceSpec =
   | MeleeUnitReferenceSpec
   | ProjectileUnitReferenceSpec
-  | HeroUnitReferenceSpec;
+  | HeroUnitReferenceSpec
+  | MythUnitReferenceSpec;
 
 export function structurallyEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
@@ -297,19 +367,33 @@ export function trialComparableExpected(
     "attack.bonuses": attack.bonuses,
   };
 
-  if (reference.expected.attack.kind === "melee") return attackFields;
+  const primaryFields =
+    reference.expected.attack.kind === "melee"
+      ? attackFields
+      : {
+          ...attackFields,
+          "attack.accuracy": reference.expected.attack.accuracy,
+          "attack.accuracyReductionFactor": reference.expected.attack.accuracyReductionFactor,
+          "attack.aimBonus": reference.expected.attack.aimBonus,
+          "attack.spreadFactor": reference.expected.attack.spreadFactor,
+          "attack.maxSpread": reference.expected.attack.maxSpread,
+          "attack.trackRating": reference.expected.attack.trackRating,
+          "attack.unintentionalDamageMultiplier":
+            reference.expected.attack.unintentionalDamageMultiplier,
+          "attack.projectile.speed": reference.expected.attack.projectile.speed,
+          "attack.projectile.lifespanTicks": reference.expected.attack.projectile.lifespanTicks,
+          "attack.projectile.collisionRadius": reference.expected.attack.projectile.collisionRadius,
+        };
+
+  const special = reference.expected.specialAttack;
+  if (special === null) return primaryFields;
   return {
-    ...attackFields,
-    "attack.accuracy": reference.expected.attack.accuracy,
-    "attack.accuracyReductionFactor": reference.expected.attack.accuracyReductionFactor,
-    "attack.aimBonus": reference.expected.attack.aimBonus,
-    "attack.spreadFactor": reference.expected.attack.spreadFactor,
-    "attack.maxSpread": reference.expected.attack.maxSpread,
-    "attack.trackRating": reference.expected.attack.trackRating,
-    "attack.unintentionalDamageMultiplier": reference.expected.attack.unintentionalDamageMultiplier,
-    "attack.projectile.speed": reference.expected.attack.projectile.speed,
-    "attack.projectile.lifespanTicks": reference.expected.attack.projectile.lifespanTicks,
-    "attack.projectile.collisionRadius": reference.expected.attack.projectile.collisionRadius,
+    ...primaryFields,
+    "specialAttack.damage": special.damage,
+    "specialAttack.range": special.range,
+    "specialAttack.bonuses": special.bonuses,
+    "specialAttack.rechargeTicks": special.rechargeTicks,
+    "specialAttack.validTargets": special.validTargets,
   };
 }
 
@@ -373,6 +457,23 @@ export function validateUnitReferences(
         throw new Error(`${reference.key} release evidence does not match launchDelayTicks.`);
       }
     }
+    if (reference.family === "myth") {
+      const impact = reference.source.assetInventory.specialImpact;
+      if (
+        !/^[0-9a-f]{64}$/.test(impact.sha256) ||
+        impact.action.trim().length === 0 ||
+        !Number.isInteger(impact.durationTicks) ||
+        impact.durationTicks < 1 ||
+        !Number.isFinite(impact.fraction) ||
+        impact.fraction < 0 ||
+        impact.fraction >= 1 ||
+        Math.round(impact.fraction * impact.durationTicks) !==
+          reference.expected.specialAttack.impactDelayTicks ||
+        impact.durationTicks !== reference.expected.specialAttack.actionTicks
+      ) {
+        throw new Error(`${reference.key} has invalid special-impact evidence.`);
+      }
+    }
 
     const lane = rosterByKey.get(reference.key);
     if (lane === undefined) throw new Error(`Unit reference ${reference.key} has no roster lane.`);
@@ -413,6 +514,7 @@ function definitionSnapshot(definition: UnitTypeStats): OrdinaryUnitReferenceExp
     culture: definition.culture,
     classes: definition.classes,
     hero: definition.hero ?? null,
+    specialAttack: definition.specialAttack ?? null,
     maxHp: definition.maxHp,
     lineOfSight: definition.lineOfSight,
     movementSpeed: definition.movementSpeed,
@@ -468,6 +570,12 @@ export function validateDefinitionAgainstReference(
     case "ordinary-projectile": {
       if (definition.attack?.kind !== "projectile") {
         throw new Error(`${definition.key} reference requires a projectile attack.`);
+      }
+      break;
+    }
+    case "myth": {
+      if (definition.attack?.kind !== "melee" || definition.specialAttack === undefined) {
+        throw new Error(`${definition.key} reference requires a charged melee myth unit.`);
       }
       break;
     }

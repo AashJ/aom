@@ -42,7 +42,7 @@ import {
   VISIBILITY_TILES,
 } from "../visibility";
 import { idGeneration, idIndex, stableIdAt } from "./id";
-import { resolveMeleeDamage } from "./combat";
+import { resolveDamage, resolveMeleeDamage } from "./combat";
 import { clearAttackOrder } from "./attack-state";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
@@ -81,6 +81,13 @@ import {
   gridCoordinateForPosition,
   rebuildUnitSpatialGrid,
 } from "./spatial-grid";
+import {
+  advanceSpecialAttack,
+  beginSpecialAttack,
+  clearSpecialAttack,
+  isValidSpecialTarget,
+  tickSpecialRecharge,
+} from "./special-attacks";
 import {
   cancelBuildingResearch,
   isBuildingResearching,
@@ -223,6 +230,10 @@ export interface World {
   attackOrdered: Uint8Array;
   attackAimTarget: Uint32Array;
   attackAimShots: Uint16Array;
+  specialRecharge: Uint16Array;
+  specialActionRemaining: Uint16Array;
+  specialActionTarget: Uint32Array;
+  specialActionImpactPending: Uint8Array;
   projectiles: ProjectileStore;
   mode: Uint8Array;
   carried: Uint16Array;
@@ -338,6 +349,10 @@ export function createWorld(seed: number): World {
     attackOrdered: new Uint8Array(MAX_UNITS),
     attackAimTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     attackAimShots: new Uint16Array(MAX_UNITS),
+    specialRecharge: new Uint16Array(MAX_UNITS),
+    specialActionRemaining: new Uint16Array(MAX_UNITS),
+    specialActionTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    specialActionImpactPending: new Uint8Array(MAX_UNITS),
     projectiles: createProjectileStore(),
     mode: new Uint8Array(MAX_UNITS),
     carried: new Uint16Array(MAX_UNITS),
@@ -524,6 +539,8 @@ export function spawnUnit(
   world.researchChoice[index] = NO_GOD;
   world.researchRemaining[index] = 0;
   world.attackCooldown[index] = 0;
+  world.specialRecharge[index] = 0;
+  clearSpecialAttack(world, index);
   world.carried[index] = 0;
   world.carriedResource[index] = 0;
   clearUnitTask(world, index);
@@ -1017,6 +1034,7 @@ export function tickWorld(world: World): void {
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
     const attack = stats.attack;
+    const special = stats.specialAttack;
 
     if (stats.isStatic || attack === null) {
       // Static and unarmed rows never auto-acquire or strike.
@@ -1025,6 +1043,52 @@ export function tickWorld(world: World): void {
 
     if (world.attackCooldown[i]! > 0) {
       world.attackCooldown[i] = world.attackCooldown[i]! - 1;
+    }
+    if (special !== undefined) tickSpecialRecharge(world, i);
+
+    if (world.specialActionRemaining[i]! > 0) {
+      // A charged action owns the unit's position until it completes or is
+      // interrupted. Movement, tasks, and the later separation pass must not
+      // make the attacker slide through its authored animation.
+      world.moving[i] = 0;
+      world.unitField[i] = null;
+
+      if (special === undefined) {
+        clearSpecialAttack(world, i);
+      } else if (world.specialActionImpactPending[i] === 1) {
+        const target = resolveId(world, world.specialActionTarget[i]!);
+        const targetStats = target >= 0 ? UNIT_TYPES[world.unitType[target]!]! : null;
+        const targetVisible = target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
+        const dx = target >= 0 ? world.posX[target]! - world.posX[i]! : 0;
+        const dz = target >= 0 ? world.posZ[target]! - world.posZ[i]! : 0;
+        const reach = targetStats === null ? 0 : special.range + targetStats.bodyRadius;
+
+        if (
+          targetStats === null ||
+          world.dying[target] === 1 ||
+          world.hp[target] === 0 ||
+          !targetVisible ||
+          !isValidSpecialTarget(special, targetStats) ||
+          dx * dx + dz * dz > reach * reach
+        ) {
+          // Classic cancels a charged melee wind-up when its target escapes.
+          // The charge is consumed only on the authored impact tag, so the unit
+          // may immediately pursue and retry instead of losing the recharge.
+          clearSpecialAttack(world, i);
+          world.attackCooldown[i] = 0;
+        } else {
+          setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
+          const phase = advanceSpecialAttack(world, i, special);
+          if (phase === "impact") {
+            dealDamage(world, target, resolveDamage(special, targetStats));
+          }
+          continue;
+        }
+      } else {
+        // Recovery no longer depends on the target remaining alive or visible.
+        advanceSpecialAttack(world, i, special);
+        continue;
+      }
     }
 
     if (world.attackTarget[i] !== NO_TARGET) {
@@ -1067,7 +1131,14 @@ export function tickWorld(world: World): void {
           setFacingToward(world, i, targetX, targetZ);
 
           if (world.attackCooldown[i] === 0) {
-            if (attack.kind === "melee") {
+            if (
+              special !== undefined &&
+              world.specialRecharge[i] === 0 &&
+              isValidSpecialTarget(special, targetStats)
+            ) {
+              beginSpecialAttack(world, i, unitIdAt(world, target), special);
+              world.attackCooldown[i] = special.actionTicks;
+            } else if (attack.kind === "melee") {
               dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
               world.attackCooldown[i] = attack.cooldownTicks;
             } else {
@@ -1748,6 +1819,18 @@ export function tickWorld(world: World): void {
             continue;
           }
 
+          // Charged actions lock their attacker in place. Suppress separation
+          // for the attacker and between it and its assigned victim; otherwise
+          // the generic crowd solver visibly slides the pair apart during the
+          // wind-up and can move an idle victim beyond the authored hit range.
+          if (
+            world.specialActionRemaining[i]! > 0 ||
+            (world.specialActionRemaining[j]! > 0 &&
+              world.specialActionTarget[j] === unitIdAt(world, i))
+          ) {
+            continue;
+          }
+
           let dx = x - world.posX[j]!;
           let dz = z - world.posZ[j]!;
           let distSq = dx * dx + dz * dz;
@@ -1954,6 +2037,10 @@ function applyDeaths(world: World): void {
       world.attackOrdered[i] = world.attackOrdered[last]!;
       world.attackAimTarget[i] = world.attackAimTarget[last]!;
       world.attackAimShots[i] = world.attackAimShots[last]!;
+      world.specialRecharge[i] = world.specialRecharge[last]!;
+      world.specialActionRemaining[i] = world.specialActionRemaining[last]!;
+      world.specialActionTarget[i] = world.specialActionTarget[last]!;
+      world.specialActionImpactPending[i] = world.specialActionImpactPending[last]!;
       world.mode[i] = world.mode[last]!;
       world.carried[i] = world.carried[last]!;
       world.carriedResource[i] = world.carriedResource[last]!;

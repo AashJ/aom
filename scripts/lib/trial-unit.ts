@@ -1,6 +1,6 @@
 import type { XmbNode } from "./xmb";
 
-export type TrialAttackActionName = "HandAttack" | "RangedAttack";
+export type TrialAttackActionName = "HandAttack" | "RangedAttack" | "Gore";
 
 export interface TrialActionReader {
   readonly parameters: readonly XmbNode[];
