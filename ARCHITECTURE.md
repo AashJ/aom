@@ -601,7 +601,7 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 ### Sequential build order
 
 1. **Four-resource ledger (complete).** Gold/Favor ids, cost columns, stockpiles, carrying, hashing, snapshots, and HUD counters now preserve the existing Food/Wood behavior while establishing the full ledger. _Verified: existing economy tests remain unchanged in meaning; non-contiguous player ids receive isolated four-resource rows; Gold changes affect the hash._
-2. **Gold Mines (complete).** Seeded, map-profiled starting/medium/far mines now use the resource-node path, with profile-owned Gold Mine spacing and a separate two-tile tree/berry gap. _Verified: seed 1337 gives each player all required slots without mirrored coordinates; mine spacing and resource-node non-overlap hold; villagers mine, haul, deposit, deplete, and retarget through the existing deterministic loop._
+2. **Gold Mines (complete).** Seeded, map-profiled starting/medium/far mines now use the resource-node path, with profile-owned Gold Mine spacing and a separate two-tile tree/berry gap. Match setup deterministically regenerates an invalid terrain seed before play. _Verified: seed 1337 gives each player all required slots without mirrored coordinates; a sealed three-player seed advances identically on separate clients; mine spacing and resource-node non-overlap hold; villagers mine, haul, deposit, deplete, and retarget through the existing deterministic loop._
 3. **Player progression state (complete).** Active players now receive owner-id-indexed Archaic age, Greek major-god, and age-keyed minor-god state; progression joins the deterministic hash and viewing-player snapshot. _Verified: equal worlds initialize and hash identically; every progression field changes the hash; non-contiguous player ids retain independent state and viewer snapshots regardless of dense visibility slots._
 4. **Availability rules (complete).** Content rows now declare required age and completed-building prerequisites; one sim-owned query gates authoritative Place/Train handling, engine previews/actions, and command-menu disabled state from viewer snapshots. _Verified: forged Archaic Barracks and Militia orders are no-ops without cost; the same orders become legal in Classical; incomplete prerequisites remain locked in viewer snapshots and completed ones unlock._
 
@@ -612,7 +612,6 @@ Scope: establish the shared simulation state required for an original-AoM-style 
 - Villager prayer at the Greek Temple as the first Favor-generation mechanic.
 - The first Classical human unit, Greek hero, myth unit, and single-use god power.
 - Infantry/cavalry/archer counters, armor and damage classes, and deterministic ranged projectiles.
-- Map-seed validation/regeneration for starts whose reachable terrain component cannot satisfy a required resource band; placement currently rejects such a seed rather than spawning unreachable or out-of-profile mines.
 
 ---
 

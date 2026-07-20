@@ -190,6 +190,14 @@ const CURRENT_MAP_GOLD_PLACEMENTS = [
   { perPlayer: 1, minDistance: 50, maxDistance: 75, goldMineSpacing: 10 },
   { perPlayer: 1, minDistance: 90, maxDistance: 115, goldMineSpacing: 12 },
 ] as const;
+const MAX_PLAYABLE_MAP_SEED_ATTEMPTS = 256;
+
+export class RequiredGoldMinePlacementError extends RangeError {
+  constructor(readonly playerIndex: number) {
+    super(`Unable to place required gold mine for player ${playerIndex}`);
+  }
+}
+
 export interface World {
   tick: number;
   count: number;
@@ -675,6 +683,11 @@ export interface StartingUnitTypesByCulture {
   readonly [culture: number]: readonly number[] | undefined;
 }
 
+export interface MatchPlayerSetup {
+  readonly id: number;
+  readonly majorGod: number;
+}
+
 function spawnMobileUnitNearStart(
   world: World,
   centerX: number,
@@ -919,7 +932,7 @@ function spawnGoldMines(world: World, startFields: readonly FlowField[]): void {
         );
 
         if (spot === null) {
-          throw new RangeError(`Unable to place required gold mine for player ${playerIndex}`);
+          throw new RequiredGoldMinePlacementError(playerIndex);
         }
 
         spawnUnit(world, spot[0], spot[1], 0, 0, NEUTRAL_OWNER, TYPE_GOLD_MINE);
@@ -1029,6 +1042,43 @@ export function spawnResourceNodes(world: World): void {
   // Gold is placed after existing resources so its clearance constraints cannot
   // perturb the established forest and berry layouts for the same seed.
   spawnGoldMines(world, startFields);
+}
+
+// Random terrain can occasionally seal a start into a component too small for
+// its required starting/medium/far mine bands. Match setup deterministically
+// advances the shared seed and rebuilds the whole initial world, so every peer
+// chooses the same playable map without moving a mine outside its profile or
+// making an unreachable mine gatherable by fiat.
+export function createPlayableWorld(
+  seed: number,
+  unitCount: number,
+  players: readonly MatchPlayerSetup[],
+  startingUnitTypesByCulture?: StartingUnitTypesByCulture,
+): World {
+  const ownerIds = players.map((player) => player.id);
+
+  for (let attempt = 0; attempt < MAX_PLAYABLE_MAP_SEED_ATTEMPTS; attempt += 1) {
+    const world = createWorld((seed + attempt) >>> 0);
+
+    for (const player of players) {
+      registerPlayer(world, player.id, player.majorGod);
+    }
+
+    spawnUnits(world, unitCount, ownerIds, startingUnitTypesByCulture);
+
+    try {
+      spawnResourceNodes(world);
+      return world;
+    } catch (error) {
+      if (!(error instanceof RequiredGoldMinePlacementError)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new RangeError(
+    `Unable to generate a playable map after ${MAX_PLAYABLE_MAP_SEED_ATTEMPTS} seeds.`,
+  );
 }
 
 export function tickWorld(world: World): void {

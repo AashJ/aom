@@ -41,6 +41,7 @@ import { createPcg32, nextFloat, nextU32 } from "./math/prng";
 import {
   canPlaceBuilding,
   clearSelection,
+  createPlayableWorld,
   createWorld,
   killUnit,
   MATCH_DRAW,
@@ -778,6 +779,26 @@ describe("death and swap-remove", () => {
 });
 
 describe("resources and nodes", () => {
+  test("multiplayer deterministically regenerates terrain that cannot fit required mines", () => {
+    const players = [
+      { id: 0, majorGod: GOD_ZEUS },
+      { id: 1, majorGod: GOD_ZEUS },
+      { id: 2, majorGod: GOD_ZEUS },
+    ] as const;
+    // Seed 8 seals player 2's northeast start into a tiny walkable pocket. It
+    // used to throw before a three-player match could finish loading.
+    const a = createPlayableWorld(8, 9, players);
+    const b = createPlayableWorld(8, 9, players);
+    let goldMines = 0;
+
+    for (let i = 0; i < a.count; i += 1) {
+      if (a.unitType[i] === TYPE_GOLD_MINE) goldMines += 1;
+    }
+
+    expect(goldMines).toBe(9);
+    expect(hashWorld(a)).toBe(hashWorld(b));
+  });
+
   test("node placement is seeded, with mirrored forests and map-profiled gold", () => {
     const a = createWorld(1337);
     const b = createWorld(1337);

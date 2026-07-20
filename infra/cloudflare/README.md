@@ -80,6 +80,14 @@ The API token will also need permission to manage that zone. Terraform keeps
 the `workers.dev` route enabled as a fallback and makes the custom hostname the
 reported `relay_websocket_url`.
 
-The initial `v1` migration creates `GameRoom` with SQLite-backed storage. Future
-Durable Object class changes must append a migration in both `wrangler.jsonc`
-and `main.tf`; never rewrite an applied migration tag.
+The initial `v1` migration created `GameRoom` with SQLite-backed storage.
+`wrangler.jsonc` retains the full migration history for local/Wrangler tooling,
+while Terraform's direct-upload API describes only the next transition. At
+steady state, `main.tf` asserts `old_tag = "v1"` and `new_tag = "v1"` with no
+migration operations, preventing ordinary code or web deploys from replaying
+the initial class creation.
+
+For a future `v2` migration, first set Terraform's `old_tag` to `v1`, `new_tag`
+to `v2`, and add only the new operations; append the matching `v2` entry to
+`wrangler.jsonc`. After it applies successfully, leave both Terraform tags at
+`v2` and remove the already-applied operations from `main.tf`.

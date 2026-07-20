@@ -32,8 +32,8 @@ resource "cloudflare_workers_script" "relay" {
   ]
 
   migrations = {
-    new_tag            = "v1"
-    new_sqlite_classes = ["GameRoom"]
+    old_tag = "v1"
+    new_tag = "v1"
   }
 
   observability = {

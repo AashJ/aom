@@ -8,8 +8,8 @@ import {
   CHEAT_REVEAL_MAP,
   CULTURE_GREEK,
   cultureForMajorGod,
+  createPlayableWorld,
   createSnapshot,
-  createWorld,
   FAVOR,
   FOOD,
   GOLD,
@@ -21,10 +21,7 @@ import {
   MAX_UNITS,
   MODE_PRAYING,
   RESOURCE_COUNT,
-  registerPlayer,
   resolveId,
-  spawnResourceNodes,
-  spawnUnits,
   tickWorld,
   townCenterTypeForCulture,
   TRAIN_OPTIONS_BY_PRODUCER,
@@ -243,23 +240,18 @@ export async function createGame(
   let gpu = await initGPU(canvas, handleDeviceLost);
   const camera = createCamera();
   const selfPlayerId = beginInfo ? beginInfo.selfId : 0;
-  // Init handoff: createWorld(seed) derives terrain from the same seed the sim owns,
-  // so rendering receives identical heights without a per-tick channel.
+  // Init handoff: the sim derives terrain from the shared seed (or the same
+  // deterministic playable successor), so rendering receives identical heights
+  // without a per-tick channel.
   const ownerIds = beginInfo ? beginInfo.players.map((player) => player.id) : [0];
-  const world = createWorld(beginInfo ? beginInfo.seed : 1337);
-  const sink = session ? session.sink : createLoopbackSink(world);
-  const heights = world.heights;
-
-  for (let ownerIndex = 0; ownerIndex < ownerIds.length; ownerIndex += 1) {
-    registerPlayer(world, ownerIds[ownerIndex]!, session ? GOD_ZEUS : soloMajorGod);
-  }
-
-  spawnUnits(
-    world,
+  const world = createPlayableWorld(
+    beginInfo ? beginInfo.seed : 1337,
     3 * ownerIds.length,
-    ownerIds,
+    ownerIds.map((id) => ({ id, majorGod: session ? GOD_ZEUS : soloMajorGod })),
     session ? { [CULTURE_GREEK]: [TYPE_NEMEAN_LION] } : undefined,
   );
+  const sink = session ? session.sink : createLoopbackSink(world);
+  const heights = world.heights;
   const selfCulture = cultureForMajorGod(world.playerMajorGod[selfPlayerId]!);
   const selfTownCenterType = townCenterTypeForCulture(selfCulture);
   const selfWorkerType = workerTypeForCulture(selfCulture);
@@ -272,7 +264,6 @@ export async function createGame(
     break;
   }
 
-  spawnResourceNodes(world); // Fixed call order after armies - rng stream and handle ids must match on every client.
   updateVisibility(world);
   let prevSnap = createSnapshot(MAX_UNITS);
   let currSnap = createSnapshot(MAX_UNITS);
