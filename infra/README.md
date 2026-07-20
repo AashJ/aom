@@ -105,6 +105,21 @@ doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare p
 `VITE_*` values are public and baked into the browser bundle even though they
 are transported through Doppler.
 
+## Redeploy production
+
+Run one of these commands from the repository root:
+
+```bash
+bun run deploy:web     # site only
+bun run deploy:server  # relay only
+bun run deploy         # site and relay
+```
+
+Each command builds the relevant application before running Terraform. Review
+the Terraform plan before entering `yes`. `deploy:server` and `deploy` update
+the relay Worker, so running either during an active match will disconnect that
+match until relay draining and reconnect/resume support are in place.
+
 ## Terraform state warning
 
 The Doppler Terraform provider stores managed secret values in Terraform state.

@@ -172,13 +172,41 @@ const GOAL_REMAP_RADIUS = 8;
 export const SEPARATION_RADIUS = 0.8;
 // Slightly under the 0.15 move step so movers still make net progress through a crowd.
 const SEPARATION_MAX_STEP = 0.12;
-// Opposite corners for 1v1, the classic RTS start.
-const START_CORNERS = [
-  [40, 40],
-  [216, 216],
-  [216, 40],
-  [40, 216],
-] as const;
+type StartLocation = readonly [number, number];
+
+// Classic random maps distribute starts around the map rather than filling a
+// square corner-by-corner. In particular, the three-player layout must not give
+// one player the long diagonal while the other two begin a side apart.
+const START_LOCATIONS_BY_PLAYER_COUNT: readonly (readonly StartLocation[])[] = [
+  [],
+  [[40, 40]],
+  [
+    [40, 40],
+    [216, 216],
+  ],
+  [
+    [128, 40],
+    [204, 172],
+    [52, 172],
+  ],
+  [
+    [40, 40],
+    [216, 216],
+    [216, 40],
+    [40, 216],
+  ],
+];
+
+function startLocationsForPlayerCount(playerCount: number): readonly StartLocation[] {
+  const locations = START_LOCATIONS_BY_PLAYER_COUNT[playerCount];
+
+  if (locations === undefined || locations.length !== playerCount) {
+    throw new RangeError(`Current map does not support ${playerCount} players.`);
+  }
+
+  return locations;
+}
+
 const GOLD_PLACEMENT_ATTEMPTS = 64;
 const INV_SQRT2 = 1 / Math.sqrt(2);
 const sampledFlowDirection = new Float64Array(2);
@@ -192,9 +220,17 @@ const CURRENT_MAP_GOLD_PLACEMENTS = [
 ] as const;
 const MAX_PLAYABLE_MAP_SEED_ATTEMPTS = 256;
 
-export class RequiredGoldMinePlacementError extends RangeError {
+class RequiredMapObjectPlacementError extends RangeError {}
+
+export class RequiredGoldMinePlacementError extends RequiredMapObjectPlacementError {
   constructor(readonly playerIndex: number) {
     super(`Unable to place required gold mine for player ${playerIndex}`);
+  }
+}
+
+class RequiredBerryPatchPlacementError extends RequiredMapObjectPlacementError {
+  constructor(readonly playerIndex: number) {
+    super(`Unable to place required berry patch for player ${playerIndex}`);
   }
 }
 
@@ -694,9 +730,11 @@ function spawnMobileUnitNearStart(
   centerZ: number,
   owner: number,
   type: number,
+  startField: FlowField,
 ): void {
   let x = 0;
   let z = 0;
+  let placed = false;
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const rawX = centerX - 28 + nextFloat(world.rng) * 56;
@@ -705,9 +743,15 @@ function spawnMobileUnitNearStart(
     x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
     z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
 
-    if (world.walkable[cellOf(x, z)] === 1) {
+    if (world.walkable[cellOf(x, z)] === 1 && reachableIn(startField, x, z)) {
+      placed = true;
       break;
     }
+  }
+
+  if (!placed) {
+    x = (startField.goalCell & (MAP_TILES - 1)) + 0.5;
+    z = (startField.goalCell >>> 8) + 0.5;
   }
 
   // Spawn retry consumes a seed-derived, deterministic number of rng draws.
@@ -728,6 +772,8 @@ export function spawnUnits(
   if (ownerCount === 0) {
     return;
   }
+
+  const startLocations = startLocationsForPlayerCount(ownerCount);
 
   for (let ownerIndex = 0; ownerIndex < ownerCount; ownerIndex += 1) {
     registerPlayer(world, ownerIds[ownerIndex]!);
@@ -760,7 +806,7 @@ export function spawnUnits(
 
   for (let ownerIndex = 0; ownerIndex < ownerCount; ownerIndex += 1) {
     const owner = ownerIds[ownerIndex]!;
-    const [centerX, centerZ] = START_CORNERS[ownerIndex]!;
+    const [centerX, centerZ] = startLocations[ownerIndex]!;
     const unitsForOwner = baseCount + (ownerIndex < extraCount ? 1 : 0);
     const culture = cultureForMajorGod(world.playerMajorGod[owner]!);
     const townCenterType = townCenterTypeForCulture(culture);
@@ -769,15 +815,18 @@ export function spawnUnits(
     // Placed before units so the walkable-resample naturally keeps the army off the footprint;
     // deterministic order is preserved.
     spawnBuilding(world, centerX - 2, centerZ - 2, owner, townCenterType);
+    const inwardX = centerX + (centerX < SIM_MAP_SIZE * 0.5 ? 6 : -6);
+    const inwardZ = centerZ + (centerZ < SIM_MAP_SIZE * 0.5 ? 6 : -6);
+    const startField = buildFlowField(world.walkable, walkableCellNear(world, inwardX, inwardZ));
 
     for (let i = 0; i < unitsForOwner; i += 1) {
       // Drift was M1 scaffolding to exercise interpolation; M3 units stand still until commanded.
-      spawnMobileUnitNearStart(world, centerX, centerZ, owner, workerType);
+      spawnMobileUnitNearStart(world, centerX, centerZ, owner, workerType, startField);
     }
 
     const additionalTypes = startingUnitTypesByCulture?.[culture] ?? [];
     for (let i = 0; i < additionalTypes.length; i += 1) {
-      spawnMobileUnitNearStart(world, centerX, centerZ, owner, additionalTypes[i]!);
+      spawnMobileUnitNearStart(world, centerX, centerZ, owner, additionalTypes[i]!, startField);
     }
   }
 }
@@ -916,11 +965,15 @@ function findConstrainedGoldSpot(
   return null;
 }
 
-function spawnGoldMines(world: World, startFields: readonly FlowField[]): void {
+function spawnGoldMines(
+  world: World,
+  startLocations: readonly StartLocation[],
+  startFields: readonly FlowField[],
+): void {
   for (const placement of CURRENT_MAP_GOLD_PLACEMENTS) {
     for (let copy = 0; copy < placement.perPlayer; copy += 1) {
       for (let playerIndex = 0; playerIndex < world.playerCount; playerIndex += 1) {
-        const [startX, startZ] = START_CORNERS[playerIndex]!;
+        const [startX, startZ] = startLocations[playerIndex]!;
         const spot = findConstrainedGoldSpot(
           world,
           startX,
@@ -943,13 +996,14 @@ function spawnGoldMines(world: World, startFields: readonly FlowField[]): void {
 
 export function spawnResourceNodes(world: World): void {
   // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
-  // Keep the two legacy tree fields in solo play; the forests are point-symmetric even
-  // without an opponent. Additional player fields support their map-profile gold slots.
+  // Keep the two legacy resource fields in solo play; forests and berry patches remain
+  // available on both halves of the map. Multiplayer adds one field per active start.
   const startFieldCount = Math.max(2, world.playerCount);
+  const startLocations = startLocationsForPlayerCount(startFieldCount);
   const startFields: FlowField[] = [];
 
   for (let playerIndex = 0; playerIndex < startFieldCount; playerIndex += 1) {
-    const [startX, startZ] = START_CORNERS[playerIndex]!;
+    const [startX, startZ] = startLocations[playerIndex]!;
     const inwardX = startX + (startX < SIM_MAP_SIZE * 0.5 ? 6 : -6);
     const inwardZ = startZ + (startZ < SIM_MAP_SIZE * 0.5 ? 6 : -6);
     startFields.push(buildFlowField(world.walkable, walkableCellNear(world, inwardX, inwardZ)));
@@ -964,13 +1018,23 @@ export function spawnResourceNodes(world: World): void {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       centerX = 30 + nextFloat(world.rng) * 196;
       centerZ = 30 + nextFloat(world.rng) * 196;
+      const mirrorCenterX = SIM_MAP_SIZE - centerX;
+      const mirrorCenterZ = SIM_MAP_SIZE - centerZ;
+      let clearOfStarts = true;
 
-      const dxA = centerX - 40;
-      const dzA = centerZ - 40;
-      const dxB = centerX - 216;
-      const dzB = centerZ - 216;
+      for (const [startX, startZ] of startLocations) {
+        const dx = centerX - startX;
+        const dz = centerZ - startZ;
+        const mirrorDx = mirrorCenterX - startX;
+        const mirrorDz = mirrorCenterZ - startZ;
 
-      if (dxA * dxA + dzA * dzA >= 45 * 45 && dxB * dxB + dzB * dzB >= 45 * 45) {
+        if (dx * dx + dz * dz < 45 * 45 || mirrorDx * mirrorDx + mirrorDz * mirrorDz < 45 * 45) {
+          clearOfStarts = false;
+          break;
+        }
+      }
+
+      if (clearOfStarts) {
         break;
       }
     }
@@ -987,15 +1051,27 @@ export function spawnResourceNodes(world: World): void {
         const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
         const mirrorX = SIM_MAP_SIZE - x;
         const mirrorZ = SIM_MAP_SIZE - z;
+        let reachableForAdditionalPlayers = true;
+
+        for (let playerIndex = 2; playerIndex < startFields.length; playerIndex += 1) {
+          const field = startFields[playerIndex]!;
+
+          if (!reachableIn(field, x, z) && !reachableIn(field, mirrorX, mirrorZ)) {
+            reachableForAdditionalPlayers = false;
+            break;
+          }
+        }
 
         // Terrain is NOT symmetric: a fine spot can have an on-rock mirror.
         // Place the pair only when BOTH ends are gatherable; skipping the pair
-        // (not just one end) is what keeps the halves fair.
+        // (not just one end) is what keeps the halves fair. Every additional
+        // player must be able to reach at least one end of the pair.
         if (
           isNodeSpotOpen(world, x, z) &&
           isNodeSpotOpen(world, mirrorX, mirrorZ) &&
           reachableIn(fieldA, x, z) &&
-          reachableIn(fieldB, mirrorX, mirrorZ)
+          reachableIn(fieldB, mirrorX, mirrorZ) &&
+          reachableForAdditionalPlayers
         ) {
           spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
           spawnUnit(world, mirrorX, mirrorZ, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
@@ -1013,10 +1089,11 @@ export function spawnResourceNodes(world: World): void {
     [16, 20],
   ] as const;
 
-  for (let cornerIndex = 0; cornerIndex < 2; cornerIndex += 1) {
-    const [cornerX, cornerZ] = START_CORNERS[cornerIndex]!;
+  for (let cornerIndex = 0; cornerIndex < startFieldCount; cornerIndex += 1) {
+    const [cornerX, cornerZ] = startLocations[cornerIndex]!;
     const dirX = cornerX < SIM_MAP_SIZE * 0.5 ? 1 : -1;
     const dirZ = cornerZ < SIM_MAP_SIZE * 0.5 ? 1 : -1;
+    let placedBerries = 0;
 
     for (let bush = 0; bush < berryOffsets.length; bush += 1) {
       const [offsetX, offsetZ] = berryOffsets[bush]!;
@@ -1031,17 +1108,24 @@ export function spawnResourceNodes(world: World): void {
         const x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
         const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
 
-        if (isNodeSpotOpen(world, x, z) && reachableIn(cornerIndex === 0 ? fieldA : fieldB, x, z)) {
+        if (isNodeSpotOpen(world, x, z) && reachableIn(startFields[cornerIndex]!, x, z)) {
           spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
           placed = true;
+          placedBerries += 1;
         }
       }
+    }
+
+    // The second solo patch is legacy map content, but every active player patch
+    // is required economy. Reject the terrain instead of starting someone without food.
+    if (cornerIndex < world.playerCount && placedBerries !== berryOffsets.length) {
+      throw new RequiredBerryPatchPlacementError(cornerIndex);
     }
   }
 
   // Gold is placed after existing resources so its clearance constraints cannot
   // perturb the established forest and berry layouts for the same seed.
-  spawnGoldMines(world, startFields);
+  spawnGoldMines(world, startLocations, startFields);
 }
 
 // Random terrain can occasionally seal a start into a component too small for
@@ -1070,7 +1154,7 @@ export function createPlayableWorld(
       spawnResourceNodes(world);
       return world;
     } catch (error) {
-      if (!(error instanceof RequiredGoldMinePlacementError)) {
+      if (!(error instanceof RequiredMapObjectPlacementError)) {
         throw error;
       }
     }

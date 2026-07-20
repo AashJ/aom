@@ -28,6 +28,9 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "deploy:server": "bun run --cwd apps/server build && doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare init && doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare apply -target=cloudflare_workers_script.relay -target=cloudflare_workers_script_subdomain.relay",
+    "deploy:web": "doppler run --project web --config prod -- bun run --cwd apps/web build && doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare init && doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare apply -target=cloudflare_workers_script.web -target=cloudflare_workers_script_subdomain.web",
+    "deploy": "bun run --cwd apps/server build && doppler run --project web --config prod -- bun run --cwd apps/web build && doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare init && doppler run --project infra --config prod -- terraform -chdir=infra/cloudflare apply",
     "check-types": "turbo run check-types",
     "dev:web": "turbo run dev -F web",
     "generate:unit-catalogs": "bun scripts/generate-unit-catalogs.ts",

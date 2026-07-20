@@ -64,7 +64,13 @@ import {
 } from "./ecs/world";
 import { hashWorld } from "./hash";
 import { createSnapshot, writeSnapshot } from "./snapshot";
-import { computeWalkable, MAP_TILES, VERTS_PER_ROW, WALKABLE_MAX_SLOPE } from "./terrain";
+import {
+  computeWalkable,
+  generateHeightmap,
+  MAP_TILES,
+  VERTS_PER_ROW,
+  WALKABLE_MAX_SLOPE,
+} from "./terrain";
 import { updateVisibility, VIS_EXPLORED, VIS_VISIBLE } from "./visibility";
 
 function distance(world: World, a: number, b: number): number {
@@ -300,6 +306,26 @@ describe("walkability", () => {
     // their meaning silently.
     expect(WALKABLE_MAX_SLOPE).toBeGreaterThan(0.5);
     expect(WALKABLE_MAX_SLOPE).toBeLessThan(0.75);
+  });
+
+  test("generated mountains stay sparse but form real impassable ranges", () => {
+    const heights = generateHeightmap(1337);
+    const walkable = computeWalkable(heights);
+    let blockedTiles = 0;
+    let peak = Number.NEGATIVE_INFINITY;
+
+    for (const tile of walkable) {
+      if (tile === 0) blockedTiles += 1;
+    }
+
+    for (const height of heights) {
+      peak = Math.max(peak, height);
+    }
+
+    const blockedRatio = blockedTiles / walkable.length;
+    expect(blockedRatio).toBeGreaterThan(0.03);
+    expect(blockedRatio).toBeLessThan(0.07);
+    expect(peak).toBeGreaterThan(15);
   });
 
   test("flat terrain is fully walkable", () => {
@@ -779,16 +805,16 @@ describe("death and swap-remove", () => {
 });
 
 describe("resources and nodes", () => {
-  test("multiplayer deterministically regenerates terrain that cannot fit required mines", () => {
+  test("three-player maps regenerate terrain and provide complete starting resources", () => {
     const players = [
       { id: 0, majorGod: GOD_ZEUS },
       { id: 1, majorGod: GOD_ZEUS },
       { id: 2, majorGod: GOD_ZEUS },
     ] as const;
-    // Seed 8 seals player 2's northeast start into a tiny walkable pocket. It
-    // used to throw before a three-player match could finish loading.
-    const a = createPlayableWorld(8, 9, players);
-    const b = createPlayableWorld(8, 9, players);
+    // Seed 45 cannot fit player 2's required gold profile. It used to throw
+    // before a three-player match could finish loading.
+    const a = createPlayableWorld(45, 9, players);
+    const b = createPlayableWorld(45, 9, players);
     let goldMines = 0;
 
     for (let i = 0; i < a.count; i += 1) {
@@ -796,17 +822,55 @@ describe("resources and nodes", () => {
     }
 
     expect(goldMines).toBe(9);
+    const starts = [
+      [128, 40],
+      [204, 172],
+      [52, 172],
+    ] as const;
+
+    for (let playerId = 0; playerId < players.length; playerId += 1) {
+      const [startX, startZ] = starts[playerId]!;
+      let foundTownCenter = false;
+
+      for (let i = 0; i < a.count; i += 1) {
+        if (
+          a.owner[i] === playerId &&
+          a.unitType[i] === TYPE_TOWN_CENTER &&
+          a.posX[i] === startX &&
+          a.posZ[i] === startZ
+        ) {
+          foundTownCenter = true;
+          break;
+        }
+      }
+
+      expect(foundTownCenter).toBe(true);
+    }
+
+    for (const [startX, startZ] of starts) {
+      let nearbyBerries = 0;
+
+      for (let i = 0; i < a.count; i += 1) {
+        if (a.unitType[i] !== TYPE_BERRY) continue;
+
+        const dx = a.posX[i]! - startX;
+        const dz = a.posZ[i]! - startZ;
+        if (dx * dx + dz * dz <= 45 * 45) nearbyBerries += 1;
+      }
+
+      expect(nearbyBerries).toBe(5);
+    }
+
     expect(hashWorld(a)).toBe(hashWorld(b));
   });
 
   test("node placement is seeded, with mirrored forests and map-profiled gold", () => {
-    const a = createWorld(1337);
-    const b = createWorld(1337);
-
-    spawnUnits(a, 10, [0, 1]);
-    spawnUnits(b, 10, [0, 1]);
-    spawnResourceNodes(a);
-    spawnResourceNodes(b);
+    const players = [
+      { id: 0, majorGod: GOD_ZEUS },
+      { id: 1, majorGod: GOD_ZEUS },
+    ] as const;
+    const a = createPlayableWorld(1337, 10, players);
+    const b = createPlayableWorld(1337, 10, players);
 
     expect(hashWorld(a)).toBe(hashWorld(b));
 
@@ -853,11 +917,7 @@ describe("resources and nodes", () => {
     }
 
     expect(trees).toBeGreaterThan(50);
-    // Placement may SKIP nodes whose spot is rocky or unreachable (sealed
-    // walkable pockets exist in this terrain) — an exact count would pin the
-    // map, not the rule. Most of both patches must survive placement.
-    expect(berries).toBeGreaterThanOrEqual(8);
-    expect(berries).toBeLessThanOrEqual(10);
+    expect(berries).toBe(10);
 
     // This map profile gives both players one starting, medium, and far mine.
     expect(goldMines).toHaveLength(6);
@@ -1306,10 +1366,10 @@ describe("gathering", () => {
     // rock, nodes in sealed walkable pockets, straight-line chases stalling on
     // mountains, and returners retargeting from the dropsite instead of the
     // patch. The assertion is the end state: the patch gets FULLY consumed.
-    const world = createWorld(1337);
-
-    spawnUnits(world, 60, [0, 1]);
-    spawnResourceNodes(world);
+    const world = createPlayableWorld(1337, 60, [
+      { id: 0, majorGod: GOD_ZEUS },
+      { id: 1, majorGod: GOD_ZEUS },
+    ]);
 
     const villagers: number[] = [];
     let firstBush = -1;
@@ -2189,6 +2249,23 @@ describe("combat", () => {
     }
 
     expect(world.winner).toBe(-1);
+  });
+
+  test("a three-player match continues after one elimination and names the last survivor", () => {
+    const world = flatWorld(42, [0, 1, 2]);
+    spawnUnit(world, 80, 80, 0, 0, 0);
+    spawnUnit(world, 128, 128, 0, 0, 1);
+    spawnUnit(world, 176, 176, 0, 0, 2);
+    world.contested = true;
+
+    killUnit(world, 1);
+    tickWorld(world);
+    expect(world.winner).toBe(-1);
+
+    // Owner 2 moved into dense slot 1 when owner 1 was removed.
+    killUnit(world, 1);
+    tickWorld(world);
+    expect(world.winner).toBe(0);
   });
 
   test("a 500v500 war stays hash-identical and someone wins", () => {

@@ -33,13 +33,14 @@ export const TERRAIN_MATERIAL_COUNT = TERRAIN_MATERIAL_IDS.length;
 // the overlay lands.
 export const WALKABLE_MAX_SLOPE = 0.65;
 
-// Shaping constants, tuned by parameter sweep (2026-07-04): ~10.6% of tiles
-// unwalkable on seed 1337, peaks ~20 units, steepest slope ~2.7/tile.
+// Shaping constants, retuned for multiplayer map connectivity (2026-07-19):
+// ~4.6% of tiles are unwalkable on seed 1337, peaks reach ~18 units, and the
+// steepest slope remains a clearly impassable ~2.3 units/tile.
 // PLAINS_AMPLITUDE keeps the lowlands gently rolling and buildable; the
 // mountain mask turns the top of the noise range into steep impassable ranges.
 const FBM_MAX = 13.125; // sum of octave amplitudes 7 + 3.5 + 1.75 + 0.875
 const PLAINS_AMPLITUDE = 5;
-const MOUNTAIN_START = 0.58;
+const MOUNTAIN_START = 0.62;
 const MOUNTAIN_RANGE = 0.24;
 const MOUNTAIN_AMPLITUDE = 16;
 

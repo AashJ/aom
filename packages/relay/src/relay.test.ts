@@ -59,6 +59,33 @@ describe("sequencer", () => {
 });
 
 describe("room", () => {
+  test("starts with three players in stable join order", () => {
+    const room = createRoom("trio", 8);
+
+    expect(addPlayer(room, "host")!.player.id).toBe(0);
+    expect(addPlayer(room, "second")!.player.id).toBe(1);
+    const third = addPlayer(room, "third");
+
+    expect(third!.player.id).toBe(2);
+    expect(third!.joined).toMatchObject({
+      kind: "joined",
+      playerId: 2,
+      players: [
+        { id: 0, name: "host" },
+        { id: 1, name: "second" },
+        { id: 2, name: "third" },
+      ],
+    });
+    expect(startRoom(room, 20)).toMatchObject({
+      kind: "begin",
+      players: [
+        { id: 0, name: "host" },
+        { id: 1, name: "second" },
+        { id: 2, name: "third" },
+      ],
+    });
+  });
+
   test("join, host migration, start, and the closed-after-start rule", () => {
     const room = createRoom("abc", 1337);
 
@@ -92,6 +119,22 @@ describe("room", () => {
 });
 
 describe("hash tracker", () => {
+  test("waits for all three players before comparing a tick", () => {
+    const tracker = createHashTracker();
+
+    expect(tracker.report(0, 20, 12345, [0, 1, 2])).toBeNull();
+    expect(tracker.report(1, 20, 12345, [0, 1, 2])).toBeNull();
+    expect(tracker.report(2, 20, 99999, [0, 1, 2])).toMatchObject({
+      kind: "desync",
+      tick: 20,
+      reports: [
+        { playerId: 0, value: 12345 },
+        { playerId: 1, value: 12345 },
+        { playerId: 2, value: 99999 },
+      ],
+    });
+  });
+
   test("stays silent while reports are pending or matching", () => {
     const tracker = createHashTracker();
 
