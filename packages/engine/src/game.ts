@@ -6,6 +6,7 @@ import {
   CHEAT_ADD_WOOD,
   CHEAT_FULL_FAVOR,
   CHEAT_REVEAL_MAP,
+  CULTURE_GREEK,
   cultureForMajorGod,
   createSnapshot,
   createWorld,
@@ -27,6 +28,7 @@ import {
   tickWorld,
   townCenterTypeForCulture,
   TRAIN_OPTIONS_BY_PRODUCER,
+  TYPE_NEMEAN_LION,
   unitIdAt,
   UNIT_TYPES,
   UNIT_CLASS_HUMAN,
@@ -252,7 +254,12 @@ export async function createGame(
     registerPlayer(world, ownerIds[ownerIndex]!, session ? GOD_ZEUS : soloMajorGod);
   }
 
-  spawnUnits(world, 3 * ownerIds.length, ownerIds);
+  spawnUnits(
+    world,
+    3 * ownerIds.length,
+    ownerIds,
+    session ? { [CULTURE_GREEK]: [TYPE_NEMEAN_LION] } : undefined,
+  );
   const selfCulture = cultureForMajorGod(world.playerMajorGod[selfPlayerId]!);
   const selfTownCenterType = townCenterTypeForCulture(selfCulture);
   const selfWorkerType = workerTypeForCulture(selfCulture);

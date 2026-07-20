@@ -2,6 +2,8 @@
   "extends": "@aom/config/tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ESNext"],
-    "types": ["bun"]
-  }
+    "moduleDetection": "legacy",
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src/**/*.ts"]
 }

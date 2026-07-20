@@ -1,15 +1,47 @@
+output "aom_web_doppler_project" {
+  description = "Doppler project name for the browser build."
+  value       = doppler_project.aom_web.name
+}
+
+output "aom_web_doppler_configs" {
+  description = "Doppler config slugs for the browser build."
+  value       = local.aom_web_configs
+}
+
+output "aom_relay_doppler_project" {
+  description = "Doppler project name for the Cloudflare relay Worker."
+  value       = doppler_project.aom_relay.name
+}
+
+output "aom_relay_doppler_configs" {
+  description = "Doppler config slugs for the Cloudflare relay Worker."
+  value       = local.aom_relay_configs
+}
+
+output "aom_infra_doppler_project" {
+  description = "Doppler project name for Terraform provider credentials."
+  value       = doppler_project.aom_infra.name
+}
+
+output "aom_infra_doppler_configs" {
+  description = "Doppler config slugs for Terraform provider credentials."
+  value       = local.aom_infra_configs
+}
+
 output "projects" {
-  description = "Doppler project names managed by this stack."
+  description = "All Doppler project names managed by this stack."
   value = {
-    for project_key, project in doppler_project.project :
-    project_key => project.name
+    web   = doppler_project.aom_web.name
+    relay = doppler_project.aom_relay.name
+    infra = doppler_project.aom_infra.name
   }
 }
 
 output "configs" {
-  description = "Doppler root config slugs managed by this stack."
+  description = "All Doppler config slugs managed by this stack."
   value = {
-    for instance_key, environment in doppler_environment.environment :
-    instance_key => environment.slug
+    web   = local.aom_web_configs
+    relay = local.aom_relay_configs
+    infra = local.aom_infra_configs
   }
 }

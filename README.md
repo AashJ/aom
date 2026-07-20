@@ -5,7 +5,7 @@ A recreation of *Age of Mythology* in the browser. It is an experiment in using 
 ## Architecture
 
 - `apps/web` — browser shell and HUD
-- `apps/server` — multiplayer room server
+- `apps/server` — Cloudflare Worker multiplayer relay with one Durable Object per room
 - `packages/engine` — renderer, input, and game loop
 - `packages/sim` — deterministic 20 Hz simulation
 - `packages/relay` — lockstep networking and desync detection

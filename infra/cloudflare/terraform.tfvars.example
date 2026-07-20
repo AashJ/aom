@@ -1,4 +1,6 @@
 cloudflare_account_id = "REPLACE_ME"
-cloudflare_zone_id    = "REPLACE_ME"
-web_hostname          = "play.example.com"
-relay_hostname        = "relay.example.com"
+workers_dev_subdomain = "REPLACE_ME"
+
+# Add these together later when you move to a custom domain:
+# cloudflare_zone_id = "REPLACE_ME"
+# relay_hostname     = "relay.example.com"

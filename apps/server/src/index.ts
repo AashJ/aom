@@ -1,30 +1,31 @@
 import { PROTOCOL_VERSION } from "@aom/relay";
 import { Hono } from "hono";
-import { handleClose, handleMessage, type SocketData } from "./rooms";
+import { GameRoom } from "./game-room";
+import { roomCodeFromRequest } from "./room-code";
 
-const app = new Hono();
+export interface Env {
+  GAMES: DurableObjectNamespace<GameRoom>;
+}
+
+const app = new Hono<{ Bindings: Env }>();
 
 app.get("/health", (c) => {
-  // Hono owns all HTTP; this surface grows later: saves, accounts, lobby lists, without touching the socket path.
   return c.json({ ok: true, version: PROTOCOL_VERSION });
 });
 
-const server: Bun.Server<SocketData> = Bun.serve<SocketData>({
-  port: Number(process.env.PORT ?? 3002),
-  fetch(req, server) {
-    if (
-      new URL(req.url).pathname === "/ws" &&
-      server.upgrade(req, { data: { room: "", playerId: -1, name: "" } })
-    ) {
-      return;
-    }
+app.get("/ws", async (c) => {
+  if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") {
+    return c.text("expected a WebSocket upgrade", 426);
+  }
 
-    return app.fetch(req);
-  },
-  websocket: {
-    message: (ws, raw) => handleMessage(server, ws, raw),
-    close: (ws) => handleClose(server, ws),
-  },
+  const roomCode = roomCodeFromRequest(c.req.raw);
+  if (roomCode === null) {
+    return c.text("a valid room query parameter is required", 400);
+  }
+
+  const room = c.env.GAMES.get(c.env.GAMES.idFromName(roomCode));
+  return room.fetch(c.req.raw);
 });
 
-console.log(`relay listening on :${server.port}`);
+export { GameRoom };
+export default app;

@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "aom-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-17",
+  "durable_objects": {
+    "bindings": [{ "name": "GAMES", "class_name": "GameRoom" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }],
+  "observability": { "enabled": true },
+}

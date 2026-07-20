@@ -168,7 +168,7 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
 }
 
 export function connectToRelay(url: string, room: string, name: string): NetSession {
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(relayUrlForRoom(url, room));
   const subscribers = new Set<(e: NetEvent) => void>();
   const buffer = createTurnBuffer();
   let roster: PlayerInfo[] = [];
@@ -353,4 +353,10 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
       ws.close();
     },
   };
+}
+
+export function relayUrlForRoom(url: string, room: string): string {
+  const relayUrl = new URL(url);
+  relayUrl.searchParams.set("room", room);
+  return relayUrl.toString();
 }

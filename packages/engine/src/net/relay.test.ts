@@ -12,7 +12,18 @@ import {
   GOD_HERMES,
 } from "@aom/sim";
 import { PROTOCOL_VERSION, type ClientMessage } from "@aom/relay";
-import { createRelaySink } from "./relay";
+import { createRelaySink, relayUrlForRoom } from "./relay";
+
+describe("relay connection URL", () => {
+  test("routes the WebSocket to the room's Durable Object", () => {
+    expect(relayUrlForRoom("wss://relay.example.com/ws", "duel-a/b c")).toBe(
+      "wss://relay.example.com/ws?room=duel-a%2Fb+c",
+    );
+    expect(relayUrlForRoom("ws://localhost:3002/ws?trace=1", "duel-local")).toBe(
+      "ws://localhost:3002/ws?trace=1&room=duel-local",
+    );
+  });
+});
 
 describe("relay sink", () => {
   test("submitMove sends one versioned, tickless commands message", () => {

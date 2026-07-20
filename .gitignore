@@ -36,6 +36,39 @@ coverage/
 .wrangler/
 .dev.vars*
 
+# Terraform local state, caches, plans, variables, and overrides
+.terraform/
+.terraform.d/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+*.tfplan
+*.tfplan.*
+tfplan
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+backend.hcl
+*.backend.hcl
+!*.backend.hcl.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+crash.log
+crash.*.log
+
+# Plaintext SOPS working files and exported local age identities
+secrets.decrypted.*
+*.decrypted.yaml
+*.decrypted.yml
+*.decrypted.json
+*.decrypted.env
+infra/**/age-identity.txt
+infra/**/keys.txt
+infra/**/.sops-age-key
+
 # IDEs and editors
 .vscode/*
 !.vscode/settings.json

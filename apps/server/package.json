@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
-    "check-types": "tsc --noEmit"
+    "dev": "wrangler dev --port 3002",
+    "start": "wrangler dev --port 3002",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json"
   },
   "dependencies": {
     "@aom/relay": "workspace:*",
@@ -14,7 +16,11 @@
   },
   "devDependencies": {
     "@aom/config": "workspace:*",
-    "@types/bun": "catalog:",
-    "typescript": "catalog:"
+    "@aom/sim": "workspace:*",
+    "@cloudflare/vitest-pool-workers": "^0.18.6",
+    "@cloudflare/workers-types": "^5.20260717.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.112.0"
   }
 }
