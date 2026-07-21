@@ -24,7 +24,9 @@ function duel() {
   registerPlayer(world, 0);
   registerPlayer(world, 1);
   const minotaur = spawnUnit(world, 20, 20, 0, 0, 0, TYPE_MINOTAUR);
-  const hoplite = spawnUnit(world, 20.5, 20, 0, 0, 1, TYPE_HOPLITE);
+  // The 1.5 center gap is inside Gore's 1.58 edge-to-edge reach without
+  // overlapping the participants' 1.48 combined obstruction bodies.
+  const hoplite = spawnUnit(world, 21.5, 20, 0, 0, 1, TYPE_HOPLITE);
   enqueueCommand(world, {
     tick: 0,
     issuer: 0,

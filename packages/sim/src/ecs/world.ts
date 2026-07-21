@@ -42,14 +42,15 @@ import {
   VISIBILITY_TILES,
 } from "../visibility";
 import { resolveStableId, stableIdAt } from "./id";
-import { resolveDamage, resolveMeleeDamage } from "./combat";
+import { centerDistanceForEdgeRange, resolveDamage, resolveMeleeDamage } from "./combat";
+import { integrateGroundMotion } from "./ground-contact";
 import { clearAttackOrder } from "./attack-state";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickGreekFavor } from "./favor";
 import { countLiveOrQueuedUnitType } from "./hero-lifecycle";
 import { registerPlayer } from "./players";
-import { assignFieldGoal, setFacingToward } from "./navigation";
+import { assignFieldGoal, isWalkableStep, setFacingToward } from "./navigation";
 import { MAX_PROJECTILE_BODY_RADIUS, MAX_TARGET_BODY_RADIUS } from "./unit-catalog-bounds";
 import { AGE_COUNT, NO_GOD } from "./progression";
 import {
@@ -170,7 +171,7 @@ export const MATCH_DRAW = -2;
 const FINAL_APPROACH_DIST = 2;
 const GOAL_REMAP_RADIUS = 8;
 export const SEPARATION_RADIUS = 0.8;
-// Slightly under the 0.15 move step so movers still make net progress through a crowd.
+// Caps crowd pressure independently of authored movement speed.
 const SEPARATION_MAX_STEP = 0.12;
 type StartLocation = readonly [number, number];
 
@@ -491,44 +492,6 @@ function isTypeAvailableToPlayer(
       return false;
     },
   });
-}
-
-function isWalkableStep(
-  world: World,
-  fromX: number,
-  fromZ: number,
-  toX: number,
-  toZ: number,
-): boolean {
-  const fromTile = cellOf(fromX, fromZ);
-  const toTile = cellOf(toX, toZ);
-
-  // Units spawned on an obstructed tile must be able to move within it until
-  // they cross onto walkable ground.
-  if (toTile === fromTile) {
-    return true;
-  }
-
-  if (world.walkable[toTile] !== 1) {
-    return false;
-  }
-
-  const fromTileX = fromTile & (MAP_TILES - 1);
-  const fromTileZ = fromTile >>> 8;
-  const toTileX = toTile & (MAP_TILES - 1);
-  const toTileZ = toTile >>> 8;
-
-  if (fromTileX === toTileX || fromTileZ === toTileZ) {
-    return true;
-  }
-
-  // A combined seek + separation push is shorter than one tile on each axis,
-  // so a diagonal transition can only cross these two orthogonal side tiles.
-  // Requiring both prevents the final blended vector from cutting a corner
-  // even when its destination tile is itself walkable.
-  const xSideTile = fromTileZ * MAP_TILES + toTileX;
-  const zSideTile = toTileZ * MAP_TILES + fromTileX;
-  return world.walkable[xSideTile] === 1 && world.walkable[zSideTile] === 1;
 }
 
 function hasWalkableDirectPath(
@@ -1237,7 +1200,8 @@ export function tickWorld(world: World): void {
         const targetVisible = target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
         const dx = target >= 0 ? world.posX[target]! - world.posX[i]! : 0;
         const dz = target >= 0 ? world.posZ[target]! - world.posZ[i]! : 0;
-        const reach = targetStats === null ? 0 : special.range + targetStats.bodyRadius;
+        const reach =
+          targetStats === null ? 0 : centerDistanceForEdgeRange(special.range, stats, targetStats);
 
         if (
           targetStats === null ||
@@ -1315,15 +1279,18 @@ export function tickWorld(world: World): void {
         const dz = targetZ - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
         const targetStats = UNIT_TYPES[world.unitType[target]!]!;
-        const surfaceAttackRange = attack.range + targetStats.bodyRadius;
+        const surfaceAttackRange =
+          attack.kind === "melee"
+            ? centerDistanceForEdgeRange(attack.range, stats, targetStats)
+            : attack.range + targetStats.bodyRadius;
         const attackRangeSq = surfaceAttackRange * surfaceAttackRange;
 
         // Always refresh the memory while visible, including while already in strike range.
         world.moveTargetX[i] = targetX;
         world.moveTargetZ[i] = targetZ;
 
-        // Range checks use target surface reach; large footprints are unwalkable, so center-range
-        // melee would stop outside valid strike distance and orbit.
+        // Melee range is edge-to-edge across both obstruction bodies. Large footprints are
+        // unwalkable, so center-range melee would stop outside valid strike distance and orbit.
         if (distSq <= attackRangeSq) {
           world.moving[i] = 0;
           world.unitField[i] = null;
@@ -2102,38 +2069,9 @@ export function tickWorld(world: World): void {
     world.pushZ[i] = pushZ + separationZ;
   }
 
-  // 10. Apply pushes and clamp back into map bounds; separation can push units outward where seek never could.
-  for (let i = 0; i < world.count; i += 1) {
-    if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
-      // Mobile units flowed around static sources during compute; the source itself never moves.
-      continue;
-    }
-
-    const oldX = world.posX[i]!;
-    const oldZ = world.posZ[i]!;
-    const x = oldX + world.pushX[i]!;
-    const z = oldZ + world.pushZ[i]!;
-    const nx = x < 0 ? 0 : x > SIM_MAP_SIZE ? SIM_MAP_SIZE : x;
-    const nz = z < 0 ? 0 : z > SIM_MAP_SIZE ? SIM_MAP_SIZE : z;
-    if (isWalkableStep(world, oldX, oldZ, nx, nz)) {
-      world.posX[i] = nx;
-      world.posZ[i] = nz;
-      continue;
-    }
-
-    // Axis sliding turns head-on wall hits into smooth wall-following; the x-then-z
-    // preference is arbitrary but fixed for determinism.
-    if (nx !== oldX && isWalkableStep(world, oldX, oldZ, nx, oldZ)) {
-      world.posX[i] = nx;
-      world.posZ[i] = oldZ;
-      continue;
-    }
-
-    if (nz !== oldZ && isWalkableStep(world, oldX, oldZ, oldX, nz)) {
-      world.posX[i] = oldX;
-      world.posZ[i] = nz;
-    }
-  }
+  // 10. Resolve terrain and the complete direct-combat contact graph against
+  // one candidate snapshot, then commit every mobile position together.
+  integrateGroundMotion(world, hasActiveTargetReactions);
 
   // Contained relic positions follow their carrier/Temple only after movement
   // has committed, keeping their authoritative coordinates deterministic.

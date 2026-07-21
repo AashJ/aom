@@ -23,6 +23,19 @@ interface DamageSource {
   readonly bonuses: readonly DamageBonus[];
 }
 
+interface RadialBody {
+  readonly bodyRadius: number;
+}
+
+/** Converts Classic's edge-to-edge action range into a center-distance check. */
+export function centerDistanceForEdgeRange(
+  edgeRange: number,
+  source: RadialBody,
+  target: RadialBody,
+): number {
+  return source.bodyRadius + edgeRange + target.bodyRadius;
+}
+
 export function resolveDamage(source: DamageSource, targetStats: UnitTypeStats): number {
   let damage = 0;
 

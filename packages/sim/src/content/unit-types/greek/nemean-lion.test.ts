@@ -18,7 +18,9 @@ function attackWorld() {
   registerPlayer(world, 0);
   registerPlayer(world, 1);
   const lion = spawnUnit(world, 20, 20, 0, 0, 0, TYPE_NEMEAN_LION);
-  const target = spawnUnit(world, 20.5, 20, 0, 0, 1, TYPE_HOPLITE);
+  // A valid surface-to-surface starting pose keeps this special-attack fixture
+  // independent of the ground-contact repair covered by ground-contact.test.ts.
+  const target = spawnUnit(world, 20, 21.5, 0, 0, 1, TYPE_HOPLITE);
   enqueueCommand(world, {
     tick: 0,
     issuer: 0,
@@ -82,7 +84,7 @@ describe("Greek Nemean Lion unit pack", () => {
     tickWorld(world);
     expect(world.specialActionRemaining[0]).toBe(36);
     expect(world.specialRecharge[0]).toBe(400);
-    expect(world.hp[1]).toBeCloseTo(startingHp[1]! - 12 * 0.65 * 0.95, 10);
+    expect(world.hp[1]).toBeCloseTo(startingHp[1]! - 12 * 0.65 * 0.85, 10);
     expect(world.hp[2]).toBeCloseTo(startingHp[2]! - 12 * 0.65 * 0.5, 10);
     expect(world.hp[3]).toBeCloseTo(startingHp[3]! - 12 * 0.75 * 0.01 * 0.8, 10);
     expect(world.hp[4]).toBe(startingHp[4]);

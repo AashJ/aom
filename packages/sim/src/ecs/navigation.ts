@@ -4,6 +4,38 @@ import type { World } from "./world";
 
 const FIELD_CACHE_SIZE = 8;
 
+export interface WalkableGroundState {
+  readonly walkable: Uint8Array;
+}
+
+export function isWalkableStep(
+  world: WalkableGroundState,
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+): boolean {
+  const fromTile = cellOf(fromX, fromZ);
+  const toTile = cellOf(toX, toZ);
+
+  // Units spawned on an obstructed tile must be able to move within it until
+  // they cross onto walkable ground.
+  if (toTile === fromTile) return true;
+  if (world.walkable[toTile] !== 1) return false;
+
+  const fromTileX = fromTile & (MAP_TILES - 1);
+  const fromTileZ = fromTile >>> 8;
+  const toTileX = toTile & (MAP_TILES - 1);
+  const toTileZ = toTile >>> 8;
+  if (fromTileX === toTileX || fromTileZ === toTileZ) return true;
+
+  // A combined seek + separation push is shorter than one tile on each axis,
+  // so requiring both orthogonal side tiles prevents diagonal corner cutting.
+  const xSideTile = fromTileZ * MAP_TILES + toTileX;
+  const zSideTile = toTileZ * MAP_TILES + fromTileX;
+  return world.walkable[xSideTile] === 1 && world.walkable[zSideTile] === 1;
+}
+
 export function setFacingToward(
   world: World,
   index: number,

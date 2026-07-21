@@ -2050,6 +2050,27 @@ describe("combat", () => {
     expect(winnerAt).toBeGreaterThan(100);
   });
 
+  test("ordinary melee range is measured edge-to-edge", () => {
+    const world = flatWorld(42, [0, 1]);
+    const attacker = spawnUnit(world, 100, 100, 0, 0, 0, TYPE_HOPLITE);
+    const target = spawnUnit(world, 101.2, 100, 0, 0, 1, TYPE_HOPLITE);
+    const targetHp = world.hp[1]!;
+
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_ATTACK,
+      unitIds: [attacker],
+      targetId: target,
+    });
+    tickWorld(world);
+
+    // 1.2 is outside the old target-radius-only reach (0.79), but inside
+    // 0.49 attacker radius + 0.3 range + 0.49 target radius.
+    expect(world.hp[1]!).toBeLessThan(targetHp);
+    expect(distance(world, 0, 1)).toBeCloseTo(1.2, 12);
+  });
+
   test("enemies outside aggro range ignore each other", () => {
     const world = flatWorld(42, [0, 1]);
     spawnUnit(world, 100, 100, 0, 0, 0);

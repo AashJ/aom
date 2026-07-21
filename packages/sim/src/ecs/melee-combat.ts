@@ -1,6 +1,6 @@
 import type { MeleeAttack, MeleeAttackCycle } from "../content/unit-type-schema";
 import { isEntityVisibleTo } from "../visibility";
-import { resolveMeleeCycleDamage } from "./combat";
+import { centerDistanceForEdgeRange, resolveMeleeCycleDamage } from "./combat";
 import { resolveStableId } from "./id";
 import { advanceMeleeAttackCycle } from "./melee-attack-cycles";
 import { setFacingToward } from "./navigation";
@@ -30,10 +30,11 @@ export function tickActiveMeleeAttack(
 
   const phase = advanceMeleeAttackCycle(world, attacker, cycle);
   if (phase === "impact" && target >= 0) {
+    const attackerStats = UNIT_TYPES[world.unitType[attacker]!]!;
     const targetStats = UNIT_TYPES[world.unitType[target]!]!;
     const dx = world.posX[target]! - world.posX[attacker]!;
     const dz = world.posZ[target]! - world.posZ[attacker]!;
-    const reach = attack.range + targetStats.bodyRadius;
+    const reach = centerDistanceForEdgeRange(attack.range, attackerStats, targetStats);
     if (
       world.dying[target] === 0 &&
       world.hp[target]! > 0 &&
