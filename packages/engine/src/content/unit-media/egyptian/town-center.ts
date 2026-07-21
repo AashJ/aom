@@ -13,7 +13,9 @@ export const definition = {
     bottomPadding: 0,
     actions: { idle: loop(["egyptianTownCenter"]) },
   },
-  models: [{ key: "egyptianTownCenter", url: modelUrl, grounded: true }],
+  // Settlement geometry contains buried vertices while its visible foundation
+  // is already authored at y=0. Do not lift those vertices onto the surface.
+  models: [{ key: "egyptianTownCenter", url: modelUrl, grounded: false }],
   icon: { url: iconUrl, columns: 1 },
   audio: { completed: AUDIO_CUES.settlement },
 } as const satisfies UnitMediaDefinition;

@@ -19,6 +19,14 @@ describe("named model registry", () => {
     }
   });
 
+  test("keeps pre-grounded Town Center foundations on the terrain", () => {
+    for (const key of ["greekTownCenter", "egyptianTownCenter"]) {
+      const config = MODEL_CONFIGS.find((candidate) => candidate.key === key);
+      expect(config).toBeDefined();
+      expect(config!.grounded).toBe(false);
+    }
+  });
+
   test("loads all four original Greek prayer clips with animation", async () => {
     const prayerFiles = [
       "villager-g-male-pray-a.glb",
