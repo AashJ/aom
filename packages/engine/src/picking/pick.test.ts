@@ -62,6 +62,9 @@ function commandInput(x: number, y: number): InputState {
     commandPending: true,
     commandX: x,
     commandY: y,
+    commandFromMinimap: false,
+    commandWorldX: 0,
+    commandWorldZ: 0,
     stopPending: false,
     corruptPending: false,
     escapePending: false,
@@ -76,14 +79,23 @@ function commandInput(x: number, y: number): InputState {
 
 // Records verbs instead of enqueueing; routing tests pin WHICH verb fired, the sim
 // pins what the verb does.
-function recordingSink(): CommandSink & { calls: string[]; targetIds: number[] } {
+function recordingSink(): CommandSink & {
+  calls: string[];
+  targetIds: number[];
+  moveTargets: number[][];
+} {
   const calls: string[] = [];
   const targetIds: number[] = [];
+  const moveTargets: number[][] = [];
 
   return {
     calls,
     targetIds,
-    submitMove: () => calls.push("move"),
+    moveTargets,
+    submitMove: (_ids, x, z) => {
+      calls.push("move");
+      moveTargets.push([x, z]);
+    },
     submitStop: () => calls.push("stop"),
     submitAttack: (_ids, targetId) => {
       calls.push("attack");
@@ -332,6 +344,41 @@ describe("pickUnit", () => {
     marqueeSelect(world, camera, px - 2, py - 2, px + 2, py + 2, prev, curr, 0, heights, canvas);
 
     expect(world.selected[0]).toBe(1);
+  });
+
+  test("right-click on the minimap moves selected units to its world position", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const snap = snapshot([32], [48]);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+    const input = commandInput(0, 0);
+    const marker = new Float32Array(2);
+
+    snap.selected[0] = 1;
+    input.commandFromMinimap = true;
+    input.commandWorldX = 192;
+    input.commandWorldZ = 64;
+
+    const issued = consumeCommandInput(
+      input,
+      sink,
+      0,
+      camera,
+      snap,
+      snap,
+      0,
+      heights,
+      canvas,
+      marker,
+    );
+
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["move"]);
+    expect(sink.moveTargets).toEqual([[192, 64]]);
+    expect(Array.from(marker)).toEqual([192, 64]);
+    expect(input.commandPending).toBeFalse();
+    expect(input.commandFromMinimap).toBeFalse();
   });
 
   test("right-click on an own blueprint routes to Build", () => {

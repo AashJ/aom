@@ -281,11 +281,31 @@ export function consumeCommandInput(
   }
 
   input.commandPending = false;
+  const commandFromMinimap = input.commandFromMinimap;
+
+  input.commandFromMinimap = false;
+
+  const selected = collectSelectedCommandUnits(curr, selfPlayerId);
+
+  if (commandFromMinimap) {
+    if (selected.ids.length === 0) {
+      return 0;
+    }
+
+    // Minimap clicks already identify a world-space point. Treat them as ground move orders;
+    // screen-space picking here would instead raycast the world hidden behind the HUD.
+    const targetX = Math.min(SIM_MAP_SIZE, Math.max(0, input.commandWorldX));
+    const targetZ = Math.min(SIM_MAP_SIZE, Math.max(0, input.commandWorldZ));
+
+    sink.submitMove(selected.ids, targetX, targetZ);
+    markerOut[0] = targetX;
+    markerOut[1] = targetZ;
+    return 1;
+  }
 
   const ndcX = (input.commandX / canvas.clientWidth) * 2 - 1;
   const ndcY = 1 - (input.commandY / canvas.clientHeight) * 2;
   const hit = pickUnit(camera, ndcX, ndcY, prev, curr, alpha, heights);
-  const selected = collectSelectedCommandUnits(curr, selfPlayerId);
   const targetCommand = classifyTargetCommand(
     curr,
     hit,

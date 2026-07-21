@@ -31,6 +31,9 @@ export interface InputState {
   commandPending: boolean;
   commandX: number;
   commandY: number;
+  commandFromMinimap: boolean;
+  commandWorldX: number;
+  commandWorldZ: number;
   stopPending: boolean;
   corruptPending: boolean;
   escapePending: boolean;
@@ -67,6 +70,9 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     commandPending: false,
     commandX: 0,
     commandY: 0,
+    commandFromMinimap: false,
+    commandWorldX: 0,
+    commandWorldZ: 0,
     stopPending: false,
     corruptPending: false,
     escapePending: false,
@@ -344,10 +350,26 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       }
 
       if (event.button === 2) {
+        updatePointerOverMinimap(event.offsetX, event.offsetY);
+
         if (rightDown && !state.dragging) {
           state.commandPending = true;
-          state.commandX = event.offsetX;
-          state.commandY = event.offsetY;
+
+          if (state.pointerOverMinimap) {
+            minimapUnitToWorld(
+              minimapPairScratch[0]!,
+              minimapPairScratch[1]!,
+              minimapPairScratch,
+              0,
+            );
+            state.commandFromMinimap = true;
+            state.commandWorldX = minimapPairScratch[0]!;
+            state.commandWorldZ = minimapPairScratch[1]!;
+          } else {
+            state.commandFromMinimap = false;
+            state.commandX = event.offsetX;
+            state.commandY = event.offsetY;
+          }
         }
 
         rightDown = false;
