@@ -25,12 +25,12 @@ output "terraform_state_bucket" {
 
 output "cloudflare_r2_access_key_id" {
   description = "Access key ID for local access to the R2 Terraform-state bucket."
-  value       = cloudflare_api_token.terraform_state.id
+  value       = cloudflare_account_token.terraform_state.id
   sensitive   = true
 }
 
 output "cloudflare_r2_secret_access_key" {
   description = "Secret access key for local access to the R2 Terraform-state bucket."
-  value       = sha256(cloudflare_api_token.terraform_state.value)
+  value       = sha256(cloudflare_account_token.terraform_state.value)
   sensitive   = true
 }

@@ -23,10 +23,10 @@ check "custom_domain_inputs" {
   }
 }
 
-data "cloudflare_api_token_permission_groups_list" "r2_bucket_item_write" {
-  name      = "Workers%20R2%20Storage%20Bucket%20Item%20Write"
-  scope     = "com.cloudflare.edge.r2.bucket"
-  max_items = 1
+data "cloudflare_account_api_token_permission_groups" "r2_bucket_item_write" {
+  account_id = var.cloudflare_account_id
+  name       = "Workers%20R2%20Storage%20Bucket%20Item%20Write"
+  scope      = "com.cloudflare.edge.r2.bucket"
 }
 
 resource "cloudflare_r2_bucket" "terraform_state" {
@@ -34,13 +34,14 @@ resource "cloudflare_r2_bucket" "terraform_state" {
   name       = var.terraform_state_bucket
 }
 
-resource "cloudflare_api_token" "terraform_state" {
-  name = "aom-terraform-state"
+resource "cloudflare_account_token" "terraform_state" {
+  account_id = var.cloudflare_account_id
+  name       = "aom-terraform-state"
 
   policies = [{
     effect = "allow"
     permission_groups = [{
-      id = one(data.cloudflare_api_token_permission_groups_list.r2_bucket_item_write.result).id
+      id = one(data.cloudflare_account_api_token_permission_groups.r2_bucket_item_write.permission_groups).id
     }]
     resources = jsonencode({
       (local.r2_bucket_resource) = "*"
@@ -94,12 +95,12 @@ resource "github_actions_environment_secret" "cloudflare_r2_access_key_id" {
   repository  = var.github_repository
   environment = github_repository_environment.production.environment
   secret_name = "CLOUDFLARE_R2_ACCESS_KEY_ID"
-  value       = cloudflare_api_token.terraform_state.id
+  value       = cloudflare_account_token.terraform_state.id
 }
 
 resource "github_actions_environment_secret" "cloudflare_r2_secret_access_key" {
   repository  = var.github_repository
   environment = github_repository_environment.production.environment
   secret_name = "CLOUDFLARE_R2_SECRET_ACCESS_KEY"
-  value       = sha256(cloudflare_api_token.terraform_state.value)
+  value       = sha256(cloudflare_account_token.terraform_state.value)
 }

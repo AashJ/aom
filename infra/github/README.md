@@ -23,8 +23,10 @@ export GITHUB_TOKEN="$(gh auth token)"
 
 The Terraform Doppler provider needs the authenticated CLI token and must be
 allowed to create service tokens in both `web/prod` and `infra/prod`. The
-Cloudflare provider reads its privileged bootstrap API token from the
-Terraform-managed `github-bootstrap/prod` Doppler config. Store that token as
+Cloudflare provider reads its privileged account-owned bootstrap API token from
+the Terraform-managed `github-bootstrap/prod` Doppler config. The token needs
+`Account API Tokens Write` and `Workers R2 Storage Write` for the target
+account. Store it as
 `aom_github_bootstrap.prod.CLOUDFLARE_API_TOKEN` in the SOPS payload and apply
 `infra/doppler` before continuing.
 
