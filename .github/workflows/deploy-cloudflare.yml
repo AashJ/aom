@@ -36,6 +36,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Extract audio assets
+        run: unzip -q packages/engine/src/assets/audio.zip -d packages/engine/src/assets
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
