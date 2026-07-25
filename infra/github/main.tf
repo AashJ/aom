@@ -14,6 +14,12 @@ locals {
   )
 
   r2_bucket_resource = "com.cloudflare.edge.r2.bucket.${var.cloudflare_account_id}_default_${cloudflare_r2_bucket.terraform_state.name}"
+  r2_bucket_item_write_permission_group_id = one([
+    for permission_group in data.cloudflare_account_api_token_permission_groups_list.all.result :
+    permission_group.id
+    if permission_group.name == "Workers R2 Storage Bucket Item Write" &&
+    contains(permission_group.scopes, "com.cloudflare.edge.r2.bucket")
+  ])
 }
 
 check "custom_domain_inputs" {
@@ -23,10 +29,9 @@ check "custom_domain_inputs" {
   }
 }
 
-data "cloudflare_account_api_token_permission_groups" "r2_bucket_item_write" {
+data "cloudflare_account_api_token_permission_groups_list" "all" {
   account_id = var.cloudflare_account_id
-  name       = "Workers%20R2%20Storage%20Bucket%20Item%20Write"
-  scope      = "com.cloudflare.edge.r2.bucket"
+  max_items  = 1000
 }
 
 resource "cloudflare_r2_bucket" "terraform_state" {
@@ -41,7 +46,7 @@ resource "cloudflare_account_token" "terraform_state" {
   policies = [{
     effect = "allow"
     permission_groups = [{
-      id = one(data.cloudflare_account_api_token_permission_groups.r2_bucket_item_write.permission_groups).id
+      id = local.r2_bucket_item_write_permission_group_id
     }]
     resources = jsonencode({
       (local.r2_bucket_resource) = "*"
