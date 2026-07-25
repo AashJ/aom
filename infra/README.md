@@ -10,6 +10,7 @@ source of truth for values written into Doppler.
 | --- | --- |
 | [`doppler/`](doppler/) | Creates explicit `web`, `server`, and `infra` projects, their `dev`/`staging`/`prod` configs, and fans the SOPS values into each config. Each project lives in its own Terraform file, matching the AIS infrastructure layout. |
 | [`cloudflare/`](cloudflare/) | Builds and deploys the static web application and relay Worker, including the per-game Durable Object binding and migration, observability, and `workers.dev` routes. Custom domains can be added later. |
+| [`github/`](github/) | Bootstraps the R2 state bucket and scoped credential, creates read-only Doppler CI tokens, and synchronizes the production Actions environment's variables and secrets. |
 
 Each directory is an independent Terraform stack and therefore has independent
 state.
@@ -21,6 +22,7 @@ Install the local tools once:
 ```bash
 brew install terraform sops age
 brew install dopplerhq/cli/doppler
+brew install gh
 ```
 
 Then authenticate Doppler:
@@ -126,11 +128,12 @@ The Doppler Terraform provider stores managed secret values in Terraform state.
 The Keychain-backed age identity protects the SOPS file; it does **not** encrypt
 Terraform state.
 
-For the initial single-developer bootstrap, local state is ignored by Git and
-must remain on a FileVault-protected, non-synced disk. Before CI, collaboration,
-or production secrets are introduced, migrate both stacks to an encrypted
-remote backend. Cloudflare R2's S3-compatible Terraform backend is a suitable
-interim option; an encrypted S3 backend can replace it later.
+The Cloudflare deployment stack uses Cloudflare R2's S3-compatible Terraform
+backend so local deploys and GitHub Actions share state. Its bucket-scoped API
+credentials stay outside Terraform configuration. The Doppler and GitHub
+bootstrap stacks still use ignored local state and must remain on a
+FileVault-protected, non-synced disk until they are moved to an encrypted remote
+backend. The GitHub stack's state contains the Actions secret values it manages.
 
 ## Moving SOPS from Keychain to AWS KMS
 

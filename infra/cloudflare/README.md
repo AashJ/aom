@@ -26,6 +26,45 @@ the local file is ignored. In the Cloudflare dashboard, find both under
 **Workers & Pages**. If the account does not have a `workers.dev` subdomain yet,
 Cloudflare prompts you to choose one there.
 
+Terraform state is stored in Cloudflare R2 so local deploys and GitHub Actions
+share the same resource history. The `infra/github` bootstrap stack creates the
+bucket, its bucket-scoped API token, and the GitHub credentials. Copy
+`backend.hcl.example` to the ignored `backend.hcl`, fill in the bucket and
+account ID, and expose the generated token's S3 credentials only to the current
+shell:
+
+```bash
+export AWS_ACCESS_KEY_ID="your-r2-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-r2-secret-access-key"
+```
+
+If this stack already has local state, migrate it once before deploying from
+CI. Do not run this command against an empty or unrelated local state file:
+
+```bash
+terraform -chdir=infra/cloudflare init -migrate-state \
+  -backend-config=backend.hcl
+```
+
+If the Workers already exist but their prior local state is unavailable, build
+both applications, initialize the empty R2 backend, and import the four existing
+resources before the first plan:
+
+```bash
+doppler run --project infra --config prod -- \
+  terraform -chdir=infra/cloudflare import \
+  cloudflare_workers_script.relay "<ACCOUNT_ID>/aom-relay"
+doppler run --project infra --config prod -- \
+  terraform -chdir=infra/cloudflare import \
+  cloudflare_workers_script_subdomain.relay "<ACCOUNT_ID>/aom-relay"
+doppler run --project infra --config prod -- \
+  terraform -chdir=infra/cloudflare import \
+  cloudflare_workers_script.web "<ACCOUNT_ID>/aom"
+doppler run --project infra --config prod -- \
+  terraform -chdir=infra/cloudflare import \
+  cloudflare_workers_script_subdomain.web "<ACCOUNT_ID>/aom"
+```
+
 Before the first deploy, put the API token at
 `aom_infra.common.CLOUDFLARE_API_TOKEN` in the SOPS payload and use the targeted
 bootstrap in `infra/README.md` to copy it into the Doppler `infra` project.
@@ -55,8 +94,9 @@ bun run --cwd apps/server build
 doppler run --project web --config prod -- \
   bun run --cwd apps/web build
 cp infra/cloudflare/terraform.tfvars.example infra/cloudflare/terraform.tfvars
+cp infra/cloudflare/backend.hcl.example infra/cloudflare/backend.hcl
 doppler run --project infra --config prod -- \
-  terraform -chdir=infra/cloudflare init
+  terraform -chdir=infra/cloudflare init -backend-config=backend.hcl
 doppler run --project infra --config prod -- \
   terraform -chdir=infra/cloudflare plan
 doppler run --project infra --config prod -- \
@@ -66,6 +106,27 @@ doppler run --project infra --config prod -- \
 After the apply, `web_url` reports the public site URL and
 `relay_websocket_url` reports the relay URL embedded by the web build. Both are
 public configuration, not secrets.
+
+## GitHub Actions
+
+`.github/workflows/deploy-cloudflare.yml` deploys every push to `main` and can
+also be run manually. The `infra/github` Terraform stack creates its
+`production` environment and manages these values:
+
+| Kind     | Name                               | Value                                                    |
+| -------- | ---------------------------------- | -------------------------------------------------------- |
+| Secret   | `DOPPLER_WEB_TOKEN`                | Read-only Doppler service token scoped to `web/prod`     |
+| Secret   | `DOPPLER_INFRA_TOKEN`              | Read-only Doppler service token scoped to `infra/prod`   |
+| Secret   | `CLOUDFLARE_R2_ACCESS_KEY_ID`      | Bucket-scoped R2 access key ID                           |
+| Secret   | `CLOUDFLARE_R2_SECRET_ACCESS_KEY`  | Bucket-scoped R2 secret access key                       |
+| Variable | `TF_STATE_BUCKET`                  | R2 bucket that stores Terraform state                    |
+| Variable | `CLOUDFLARE_ACCOUNT_ID`            | Cloudflare account ID                                    |
+| Variable | `CLOUDFLARE_WORKERS_DEV_SUBDOMAIN` | Account subdomain without `.workers.dev`                 |
+
+For a relay custom domain, also set both optional environment variables
+`CLOUDFLARE_ZONE_ID` and `RELAY_HOSTNAME`. The Doppler `infra/prod` config must
+continue to provide `CLOUDFLARE_API_TOKEN`, and `web/prod` must provide
+`VITE_RELAY_URL`.
 
 ## Add a custom domain later
 

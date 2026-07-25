@@ -1,0 +1,12 @@
+github_owner      = "AashJ"
+github_repository = "aom"
+
+cloudflare_account_id            = "REPLACE_ME"
+cloudflare_workers_dev_subdomain = "REPLACE_ME"
+
+# Optional; defaults to "aom-terraform-state".
+# terraform_state_bucket = "aom-terraform-state"
+
+# Add these together when using a relay custom domain:
+# cloudflare_zone_id = "REPLACE_ME"
+# relay_hostname     = "relay.example.com"

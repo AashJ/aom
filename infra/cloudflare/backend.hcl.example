@@ -1,0 +1,6 @@
+# The R2 bucket must already exist. Keep credentials in environment variables.
+bucket = "REPLACE_ME"
+
+endpoints = {
+  s3 = "https://REPLACE_WITH_ACCOUNT_ID.r2.cloudflarestorage.com"
+}
