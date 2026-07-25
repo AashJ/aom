@@ -28,20 +28,32 @@ output "aom_infra_doppler_configs" {
   value       = local.aom_infra_configs
 }
 
+output "aom_github_bootstrap_doppler_project" {
+  description = "Doppler project name for local GitHub and Cloudflare bootstrapping."
+  value       = doppler_project.aom_github_bootstrap.name
+}
+
+output "aom_github_bootstrap_doppler_configs" {
+  description = "Doppler config slugs for local GitHub and Cloudflare bootstrapping."
+  value       = local.aom_github_bootstrap_configs
+}
+
 output "projects" {
   description = "All Doppler project names managed by this stack."
   value = {
-    web   = doppler_project.aom_web.name
-    relay = doppler_project.aom_relay.name
-    infra = doppler_project.aom_infra.name
+    web              = doppler_project.aom_web.name
+    relay            = doppler_project.aom_relay.name
+    infra            = doppler_project.aom_infra.name
+    github_bootstrap = doppler_project.aom_github_bootstrap.name
   }
 }
 
 output "configs" {
   description = "All Doppler config slugs managed by this stack."
   value = {
-    web   = local.aom_web_configs
-    relay = local.aom_relay_configs
-    infra = local.aom_infra_configs
+    web              = local.aom_web_configs
+    relay            = local.aom_relay_configs
+    infra            = local.aom_infra_configs
+    github_bootstrap = local.aom_github_bootstrap_configs
   }
 }

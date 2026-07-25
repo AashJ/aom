@@ -8,7 +8,7 @@ source of truth for values written into Doppler.
 
 | Stack | Responsibility |
 | --- | --- |
-| [`doppler/`](doppler/) | Creates explicit `web`, `server`, and `infra` projects, their `dev`/`staging`/`prod` configs, and fans the SOPS values into each config. Each project lives in its own Terraform file, matching the AIS infrastructure layout. |
+| [`doppler/`](doppler/) | Creates explicit `web`, `server`, `infra`, and production-only `github-bootstrap` projects and fans the SOPS values into each config. Each project lives in its own Terraform file, matching the AIS infrastructure layout. |
 | [`cloudflare/`](cloudflare/) | Builds and deploys the static web application and relay Worker, including the per-game Durable Object binding and migration, observability, and `workers.dev` routes. Custom domains can be added later. |
 | [`github/`](github/) | Bootstraps the R2 state bucket and scoped credential, creates read-only Doppler CI tokens, and synchronizes the production Actions environment's variables and secrets. |
 
@@ -87,6 +87,11 @@ unset DOPPLER_TOKEN SOPS_AGE_KEY_CMD
 This targeted apply is only for breaking the first-deploy dependency cycle.
 Return to an ordinary full `terraform plan` and `terraform apply` after the
 relay URL and future web origins are known.
+
+The privileged Cloudflare token used only by the local GitHub bootstrap belongs
+at `aom_github_bootstrap.prod.CLOUDFLARE_API_TOKEN`. It is deliberately
+separate from `aom_infra`: GitHub Actions receives a read-only service token for
+`infra/prod`, but it must never receive access to `github-bootstrap/prod`.
 
 ## Local application configuration
 

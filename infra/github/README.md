@@ -21,19 +21,12 @@ gh auth login
 export GITHUB_TOKEN="$(gh auth token)"
 ```
 
-Expose the authenticated Doppler CLI token to the provider. It must be allowed
-to create service tokens in both `web/prod` and `infra/prod`:
-
-```bash
-export DOPPLER_TOKEN="$(doppler configure get token --plain --scope /)"
-```
-
-Set a Cloudflare bootstrap API token with `API Tokens Read`, `API Tokens Write`,
-and `Workers R2 Storage Write` permissions:
-
-```bash
-export CLOUDFLARE_API_TOKEN="REPLACE_ME"
-```
+The Terraform Doppler provider needs the authenticated CLI token and must be
+allowed to create service tokens in both `web/prod` and `infra/prod`. The
+Cloudflare provider reads its privileged bootstrap API token from the
+Terraform-managed `github-bootstrap/prod` Doppler config. Store that token as
+`aom_github_bootstrap.prod.CLOUDFLARE_API_TOKEN` in the SOPS payload and apply
+`infra/doppler` before continuing.
 
 Copy the public configuration template and fill it in:
 
@@ -41,17 +34,23 @@ Copy the public configuration template and fill it in:
 cp infra/github/terraform.tfvars.example infra/github/terraform.tfvars
 ```
 
-These three environment variables are the credential-zero layer: Terraform
-needs them to create and synchronize the narrower deployment credentials, but
-they are not copied into GitHub.
+The GitHub CLI login, Doppler CLI login, and SOPS-encrypted Cloudflare token are
+the credential-zero layer. Terraform needs them to create and synchronize the
+narrower deployment credentials, but the privileged Cloudflare token is not
+copied into GitHub.
 
 ## Apply
 
 ```bash
 terraform -chdir=infra/github init
-terraform -chdir=infra/github plan
-terraform -chdir=infra/github apply
-unset GITHUB_TOKEN DOPPLER_TOKEN CLOUDFLARE_API_TOKEN
+doppler run --project github-bootstrap --config prod -- \
+  env GITHUB_TOKEN="$(gh auth token)" \
+      DOPPLER_TOKEN="$(doppler configure get token --plain --scope /)" \
+  terraform -chdir=infra/github plan
+doppler run --project github-bootstrap --config prod -- \
+  env GITHUB_TOKEN="$(gh auth token)" \
+      DOPPLER_TOKEN="$(doppler configure get token --plain --scope /)" \
+  terraform -chdir=infra/github apply
 ```
 
 To initialize or migrate the Cloudflare deployment backend locally, load the
