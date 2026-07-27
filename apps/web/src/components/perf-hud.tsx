@@ -33,7 +33,7 @@ export function PerfHud({ game }: { game: GameHandle | null }) {
   }, [open, game]);
 
   return (
-    <div className="absolute top-3 right-3 flex flex-col items-end gap-2 font-mono text-xs text-slate-200 select-none">
+    <div className="absolute top-3 right-12 flex flex-col items-end gap-2 font-mono text-xs text-slate-200 select-none">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

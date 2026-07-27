@@ -8,7 +8,15 @@ export function ChatBox({ game }: { game: GameHandle | null }) {
 
   useEffect(() => {
     function openChat(event: globalThis.KeyboardEvent): void {
-      if (event.key !== "Enter" || event.repeat || game === null) {
+      if (
+        event.key !== "Enter" ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.repeat ||
+        game === null
+      ) {
         return;
       }
 

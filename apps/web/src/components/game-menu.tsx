@@ -1,0 +1,272 @@
+import { ScrollText } from "lucide-react";
+import { useCallback, useEffect, useState, type RefObject } from "react";
+import type { GameHandle } from "@aom/engine";
+
+type MenuView = "closed" | "menu" | "options" | "quit";
+
+export function GameMenu({
+  game,
+  fullscreenTargetRef,
+  pauseWhenOpen,
+  onQuit,
+}: {
+  game: GameHandle | null;
+  fullscreenTargetRef: RefObject<HTMLElement | null>;
+  pauseWhenOpen: boolean;
+  onQuit: () => void;
+}) {
+  const [view, setView] = useState<MenuView>("closed");
+  const { isSupported, isFullscreen, toggleFullscreen } = useFullscreenMode(fullscreenTargetRef);
+  const isOpen = view !== "closed";
+
+  useEffect(() => {
+    if (!isOpen || !pauseWhenOpen || !game) {
+      return;
+    }
+
+    game.stop();
+    return () => game.start();
+  }, [game, isOpen, pauseWhenOpen]);
+
+  useEffect(() => {
+    function handleKeyDown(event: globalThis.KeyboardEvent): void {
+      if (isEditableTarget(event.target) || event.repeat) {
+        return;
+      }
+
+      if (event.key === "F10") {
+        event.preventDefault();
+        setView((current) => (current === "closed" ? "menu" : "closed"));
+        return;
+      }
+
+      if (event.altKey && event.key === "Enter") {
+        event.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
+
+      if (event.key !== "Escape" || view === "closed") {
+        return;
+      }
+
+      event.preventDefault();
+      setView(view === "options" || view === "quit" ? "menu" : "closed");
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleFullscreen, view]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setView((current) => (current === "closed" ? "menu" : "closed"))}
+        className="absolute top-3 right-3 z-30 flex size-8 items-center justify-center border border-[#21180e] bg-[linear-gradient(180deg,#b3a77f_0%,#71654b_48%,#453923_100%)] text-[#f4db78] shadow-[inset_0_0_0_1px_#d9cda4,inset_0_0_0_3px_#5b4a2e,0_2px_5px_rgb(0_0_0/65%)] select-none hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78]"
+        aria-label="In-game menu"
+        aria-expanded={isOpen}
+        title="In-game menu (F10)"
+      >
+        <ScrollText
+          className="size-4 [filter:drop-shadow(0_1px_1px_rgb(0_0_0/90%))]"
+          aria-hidden="true"
+        />
+      </button>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" aria-hidden="true" />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              view === "options" ? "Options" : view === "quit" ? "Quit game" : "In-game menu"
+            }
+            className="relative w-full max-w-sm border border-[#21180e] bg-[#716f69] p-3 font-serif text-[#eee9d7] [background-image:radial-gradient(circle_at_18%_22%,rgb(255_255_255/10%)_0_0.6px,transparent_0.9px),radial-gradient(circle_at_73%_65%,rgb(24_20_15/14%)_0_0.7px,transparent_1px),linear-gradient(180deg,#89867d_0%,#6d6b66_47%,#7c7970_100%)] [background-size:13px_11px,17px_15px,100%_100%] shadow-[inset_0_0_0_2px_#bcb69c,inset_0_0_0_6px_#4e4436,0_8px_28px_rgb(0_0_0/75%)]"
+          >
+            <div className="border border-[#2a2117] bg-[#17130f]/85 p-5 shadow-[inset_0_0_0_1px_#9b8d68]">
+              {view === "menu" && (
+                <MenuPanel
+                  onResume={() => setView("closed")}
+                  onOptions={() => setView("options")}
+                  onQuit={() => setView("quit")}
+                />
+              )}
+              {view === "options" && (
+                <OptionsPanel
+                  isFullscreen={isFullscreen}
+                  isSupported={isSupported}
+                  onToggleFullscreen={() => void toggleFullscreen()}
+                  onBack={() => setView("menu")}
+                />
+              )}
+              {view === "quit" && <QuitPanel onConfirm={onQuit} onCancel={() => setView("menu")} />}
+            </div>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
+
+function MenuPanel({
+  onResume,
+  onOptions,
+  onQuit,
+}: {
+  onResume: () => void;
+  onOptions: () => void;
+  onQuit: () => void;
+}) {
+  return (
+    <>
+      <MenuTitle>Game Menu</MenuTitle>
+      <div className="mt-5 grid gap-2">
+        <MenuButton onClick={onResume} autoFocus>
+          Resume Game
+        </MenuButton>
+        <MenuButton onClick={onOptions}>Options</MenuButton>
+        <MenuButton onClick={onQuit}>Quit Game</MenuButton>
+      </div>
+      <p className="mt-4 text-center text-xs text-[#c7bea4] [text-shadow:0_1px_1px_#000]">F10</p>
+    </>
+  );
+}
+
+function OptionsPanel({
+  isFullscreen,
+  isSupported,
+  onToggleFullscreen,
+  onBack,
+}: {
+  isFullscreen: boolean;
+  isSupported: boolean;
+  onToggleFullscreen: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <>
+      <MenuTitle>Options</MenuTitle>
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          disabled={!isSupported}
+          aria-pressed={isFullscreen}
+          className="flex w-full items-center justify-between border border-[#24190e] bg-[#30271d] px-3 py-2.5 text-left text-sm text-[#eee9d7] shadow-[inset_0_0_0_1px_#756745] hover:bg-[#3b3022] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span>Fullscreen</span>
+          <span className="text-[#f4db78]">{isFullscreen ? "On" : "Off"}</span>
+        </button>
+        <p className="mt-2 text-center text-xs text-[#c7bea4] [text-shadow:0_1px_1px_#000]">
+          Toggle anytime with Alt+Enter
+        </p>
+        {!isSupported && (
+          <p className="mt-2 text-center text-xs text-[#d6a18a]">
+            Fullscreen is unavailable in this browser.
+          </p>
+        )}
+      </div>
+      <div className="mt-5">
+        <MenuButton onClick={onBack} autoFocus>
+          Back
+        </MenuButton>
+      </div>
+    </>
+  );
+}
+
+function QuitPanel({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <>
+      <MenuTitle>Quit Game?</MenuTitle>
+      <p className="mt-4 text-center text-sm text-[#ddd5be]">Any unsaved progress will be lost.</p>
+      <div className="mt-5 grid gap-2">
+        <MenuButton onClick={onConfirm}>Quit Game</MenuButton>
+        <MenuButton onClick={onCancel} autoFocus>
+          Cancel
+        </MenuButton>
+      </div>
+    </>
+  );
+}
+
+function MenuTitle({ children }: { children: string }) {
+  return (
+    <h2 className="text-center text-2xl font-semibold text-[#f4db78] [text-shadow:-1px_-1px_0_#211a13,1px_-1px_0_#211a13,-1px_1px_0_#211a13,1px_1px_0_#211a13,0_2px_2px_rgb(0_0_0/80%)]">
+      {children}
+    </h2>
+  );
+}
+
+function MenuButton({
+  children,
+  onClick,
+  autoFocus,
+}: {
+  children: string;
+  onClick: () => void;
+  autoFocus?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      autoFocus={autoFocus}
+      className="mythic-menu-button hover:mythic-menu-button-hover min-h-9 w-full px-4 py-2 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78]"
+    >
+      {children}
+    </button>
+  );
+}
+
+function useFullscreenMode(targetRef: RefObject<HTMLElement | null>) {
+  const [isSupported, setIsSupported] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const target = targetRef.current;
+
+    setIsSupported(
+      document.fullscreenEnabled &&
+        typeof target?.requestFullscreen === "function" &&
+        typeof document.exitFullscreen === "function",
+    );
+
+    const syncFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === targetRef.current);
+    };
+
+    syncFullscreenState();
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreenState);
+    };
+  }, [targetRef]);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement === targetRef.current) {
+        await document.exitFullscreen();
+      } else {
+        await targetRef.current?.requestFullscreen();
+      }
+    } catch (error) {
+      console.error("Unable to change fullscreen mode", error);
+    }
+  }, [targetRef]);
+
+  return { isSupported, isFullscreen, toggleFullscreen };
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement)
+  );
+}

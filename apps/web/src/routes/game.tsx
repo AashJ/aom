@@ -18,6 +18,7 @@ import {
 import { AgeAdvancementBar } from "@/components/age-advancement-bar";
 import { ChatBox } from "@/components/chat-box";
 import { CommandPanel } from "@/components/command-panel";
+import { GameMenu } from "@/components/game-menu";
 import { PerfHud } from "@/components/perf-hud";
 import { ResourceBar } from "@/components/resource-bar";
 import { StatsPanel } from "@/components/stats-panel";
@@ -63,9 +64,11 @@ export const Route = createFileRoute("/game")({
 });
 
 function GameComponent() {
+  const navigate = useNavigate();
   const { culture, map, room, name } = Route.useSearch();
   const playerName = normalizePlayerName(name);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gameViewRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<NetSession | null>(null);
   const begunSessionRef = useRef<NetSession | null>(null);
   const [error, setError] = useState<"unsupported" | "startup" | null>(null);
@@ -274,12 +277,18 @@ function GameComponent() {
   }
 
   return (
-    <div className="relative isolate h-dvh w-screen antialiased">
+    <div ref={gameViewRef} className="relative isolate h-dvh w-screen bg-black antialiased">
       <canvas ref={canvasRef} className="block h-full w-full" />
       <AgeAdvancementBar game={game} />
       <ChatBox game={game} />
       <ResourceBar game={game} />
       <PerfHud game={game} />
+      <GameMenu
+        game={game}
+        fullscreenTargetRef={gameViewRef}
+        pauseWhenOpen={room === undefined}
+        onQuit={() => void navigate({ to: "/" })}
+      />
       <CommandPanel game={game} />
       <StatsPanel game={game} />
       {room !== undefined && game === null && <StatusPill text="Preparing match…" />}
