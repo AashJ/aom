@@ -15,6 +15,9 @@ export interface UnitTypeStats {
   // movement domain explicitly so navigation never infers water behavior from
   // presentation, names, or combat classes.
   readonly movementDomain?: MovementDomain;
+  // Resource nodes may restrict which navigation domain can harvest them.
+  // Fish use this to reject land workers without coupling gather logic to a type id.
+  readonly resourceGathererDomain?: MovementDomain;
   readonly workRange?: number;
   readonly armor: ArmorProfile;
   // Exactly one primary attack shape or none. The discriminant is authoritative:

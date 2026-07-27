@@ -4,6 +4,7 @@ import { definition as neutralTree } from "../unit-types/neutral/tree";
 import { definition as neutralBerryBush } from "../unit-types/neutral/berry-bush";
 import { definition as neutralGoldMine } from "../unit-types/neutral/gold-mine";
 import { definition as neutralRelic } from "../unit-types/neutral/relic";
+import { definition as neutralFishPerch } from "../unit-types/neutral/fish-perch";
 import { definition as greekVillager } from "../unit-types/greek/villager";
 import { definition as egyptianLaborer } from "../unit-types/egyptian/laborer";
 import { definition as greekTownCenter } from "../unit-types/greek/town-center";
@@ -51,6 +52,7 @@ export const UNIT_TYPE_DEFINITIONS = [
   neutralBerryBush,
   neutralGoldMine,
   neutralRelic,
+  neutralFishPerch,
   greekVillager,
   egyptianLaborer,
   greekTownCenter,

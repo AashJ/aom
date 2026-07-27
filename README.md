@@ -18,11 +18,11 @@ The simulation is isolated from rendering and I/O. The engine consumes simulatio
 Single-player and multiplayer currently expose two deterministic random maps:
 
 - **Aegean Coast** — the default land map.
-- **River Nile** — desert banks separated by a meandering, animated Nile. Player starts and gold placement follow the Classic random-map profile currently supported by the simulation.
+- **River Nile** — desert banks separated by a meandering, animated Nile. Player starts, gold, 10-bush far berry patches, and deep-water perch schools follow the Classic random-map profile currently supported by the simulation.
 
 Map generation lives in `packages/sim/src/maps.ts`, so a seed and map id produce the same terrain, water mask, and start locations for every lockstep client. The engine renders water as a separate fog-aware WebGPU pass and uses the same water mask for the minimap, picking surface, and movement-domain navigation.
 
-River Nile's map and water foundation is playable, but the complete Classic naval loop is not yet available: docks, fishing ships, transport ships, and their original media/content contracts still need to be sourced and implemented. Land units cannot cross the river.
+River Nile's map and water foundation is playable, and its perch schools are populated with their original model and 1,000-food stock. The complete Classic naval loop is not yet available: docks, fishing ships, transport ships, and their gather/transport contracts still need to be implemented, so fish cannot be harvested yet. Land units cannot cross the river or gather fish.
 
 ## Run
 

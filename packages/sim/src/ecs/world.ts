@@ -134,6 +134,7 @@ import {
   NO_UNIT_TYPE,
   RESOURCE_COUNT,
   TYPE_BERRY,
+  TYPE_FISH_PERCH,
   TYPE_GOLD_MINE,
   TYPE_GREEK_VILLAGER,
   TYPE_TREE,
@@ -183,6 +184,13 @@ export const SEPARATION_RADIUS = 0.8;
 // Caps crowd pressure independently of authored movement speed.
 const SEPARATION_MAX_STEP = 0.12;
 const GOLD_PLACEMENT_ATTEMPTS = 64;
+const RIVER_NILE_BERRY_PATCH_RADIUS = 4;
+const RIVER_NILE_BERRIES_PER_PATCH = 10;
+const RIVER_NILE_BERRY_START_CLEARANCE = 60;
+const RIVER_NILE_FISH_PER_SCHOOL = 3;
+const RIVER_NILE_FISH_SCHOOL_RADIUS = 9;
+const RIVER_NILE_FISH_SCHOOL_SPACING = 22;
+const RIVER_NILE_FISH_LAND_CLEARANCE = 6;
 const INV_SQRT2 = 1 / Math.sqrt(2);
 const sampledFlowDirection = new Float64Array(2);
 const GOLD_OTHER_NODE_CLEARANCE = 2;
@@ -213,6 +221,12 @@ export class RequiredGoldMinePlacementError extends RequiredMapObjectPlacementEr
 class RequiredBerryPatchPlacementError extends RequiredMapObjectPlacementError {
   constructor(readonly playerIndex: number) {
     super(`Unable to place required berry patch for player ${playerIndex}`);
+  }
+}
+
+class RequiredFishSchoolPlacementError extends RequiredMapObjectPlacementError {
+  constructor(readonly schoolIndex: number) {
+    super(`Unable to place required fish school ${schoolIndex}`);
   }
 }
 
@@ -850,6 +864,16 @@ function reachableIn(field: FlowField, x: number, z: number): boolean {
   return cell === field.goalCell || field.dirX[cell] !== 0 || field.dirZ[cell] !== 0;
 }
 
+function canTypeGatherResource(workerType: number, resourceType: number): boolean {
+  const resourceStats = UNIT_TYPES[resourceType]!;
+
+  return (
+    resourceStats.resource >= 0 &&
+    (resourceStats.resourceGathererDomain === undefined ||
+      movementDomainForType(workerType) === resourceStats.resourceGathererDomain)
+  );
+}
+
 // Deterministic spiral for a walkable cell near a corner (the corner itself sits
 // under the pre-placed Town Center footprint).
 function walkableCellNear(world: World, x: number, z: number): number {
@@ -984,6 +1008,229 @@ function spawnGoldMines(
   }
 }
 
+function spawnAegeanBerryPatches(
+  world: World,
+  startLocations: readonly StartLocation[],
+  startFields: readonly FlowField[],
+): void {
+  const berryOffsets = [
+    [16, 16],
+    [18, 13],
+    [13, 18],
+    [20, 16],
+    [16, 20],
+  ] as const;
+
+  for (let cornerIndex = 0; cornerIndex < startLocations.length; cornerIndex += 1) {
+    const [cornerX, cornerZ] = startLocations[cornerIndex]!;
+    const dirX = cornerX < SIM_MAP_SIZE * 0.5 ? 1 : -1;
+    const dirZ = cornerZ < SIM_MAP_SIZE * 0.5 ? 1 : -1;
+    let placedBerries = 0;
+
+    for (let bush = 0; bush < berryOffsets.length; bush += 1) {
+      const [offsetX, offsetZ] = berryOffsets[bush]!;
+      let placed = false;
+
+      // Jitter widens with each failed attempt so a rocky patch pushes the
+      // bush to nearby open ground instead of silently accepting rock.
+      for (let attempt = 0; attempt < 20 && !placed; attempt += 1) {
+        const jitter = 3 + attempt * 0.75;
+        const rawX = cornerX + dirX * offsetX + (nextFloat(world.rng) * 2 - 1) * jitter;
+        const rawZ = cornerZ + dirZ * offsetZ + (nextFloat(world.rng) * 2 - 1) * jitter;
+        const x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
+        const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
+
+        if (isNodeSpotOpen(world, x, z) && reachableIn(startFields[cornerIndex]!, x, z)) {
+          spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
+          placed = true;
+          placedBerries += 1;
+        }
+      }
+    }
+
+    // The second solo patch is legacy map content, but every active player patch
+    // is required economy. Reject the terrain instead of starting someone without food.
+    if (cornerIndex < world.playerCount && placedBerries !== berryOffsets.length) {
+      throw new RequiredBerryPatchPlacementError(cornerIndex);
+    }
+  }
+}
+
+function isFarFromActiveStarts(
+  world: World,
+  x: number,
+  z: number,
+  startLocations: readonly StartLocation[],
+): boolean {
+  const clearanceSq = RIVER_NILE_BERRY_START_CLEARANCE * RIVER_NILE_BERRY_START_CLEARANCE;
+
+  for (let playerIndex = 0; playerIndex < world.playerCount; playerIndex += 1) {
+    const [startX, startZ] = startLocations[playerIndex]!;
+    const dx = x - startX;
+    const dz = z - startZ;
+    if (dx * dx + dz * dz < clearanceSq) return false;
+  }
+
+  return true;
+}
+
+function reachableFromAnActiveStart(
+  world: World,
+  x: number,
+  z: number,
+  startFields: readonly FlowField[],
+): boolean {
+  for (let playerIndex = 0; playerIndex < world.playerCount; playerIndex += 1) {
+    if (reachableIn(startFields[playerIndex]!, x, z)) return true;
+  }
+
+  return false;
+}
+
+function sampleClusterPoint(
+  world: World,
+  centerX: number,
+  centerZ: number,
+  radius: number,
+): readonly [number, number] {
+  const radiusSq = radius * radius;
+
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const dx = (nextFloat(world.rng) * 2 - 1) * radius;
+    const dz = (nextFloat(world.rng) * 2 - 1) * radius;
+    if (dx * dx + dz * dz <= radiusSq) return [centerX + dx, centerZ + dz];
+  }
+
+  return [centerX, centerZ];
+}
+
+function spawnRiverNileBerryPatches(
+  world: World,
+  startLocations: readonly StartLocation[],
+  startFields: readonly FlowField[],
+): void {
+  // river nile.xs uses cNumberPlayers / 2 copies; cNumberPlayers includes Gaia.
+  const patchCount = Math.floor((world.playerCount + 1) / 2);
+
+  for (let patchIndex = 0; patchIndex < patchCount; patchIndex += 1) {
+    let patch: readonly (readonly [number, number])[] | null = null;
+
+    for (let attempt = 0; attempt < 1_024 && patch === null; attempt += 1) {
+      const centerX = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
+      const centerZ = 8 + nextFloat(world.rng) * (SIM_MAP_SIZE - 16);
+      const candidates: (readonly [number, number])[] = [];
+      let valid = true;
+
+      for (let bush = 0; bush < RIVER_NILE_BERRIES_PER_PATCH; bush += 1) {
+        const [x, z] = sampleClusterPoint(world, centerX, centerZ, RIVER_NILE_BERRY_PATCH_RADIUS);
+
+        if (
+          !isNodeSpotOpen(world, x, z) ||
+          !isFarFromActiveStarts(world, x, z, startLocations) ||
+          !reachableFromAnActiveStart(world, x, z, startFields) ||
+          !hasNodeClearance(world, x, z, GOLD_OTHER_NODE_CLEARANCE)
+        ) {
+          valid = false;
+        }
+        candidates.push([x, z]);
+      }
+
+      if (valid) patch = candidates;
+    }
+
+    if (patch === null) {
+      throw new RequiredBerryPatchPlacementError(patchIndex);
+    }
+
+    for (const [x, z] of patch) {
+      spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
+    }
+  }
+}
+
+function isDeepWaterSpot(world: World, x: number, z: number): boolean {
+  const tileX = Math.floor(x);
+  const tileZ = Math.floor(z);
+  const clearance = RIVER_NILE_FISH_LAND_CLEARANCE;
+  const clearanceSq = clearance * clearance;
+
+  if (
+    tileX < clearance ||
+    tileX >= MAP_TILES - clearance ||
+    tileZ < clearance ||
+    tileZ >= MAP_TILES - clearance ||
+    world.waterNavigable[tileZ * MAP_TILES + tileX] !== 1
+  ) {
+    return false;
+  }
+
+  for (let dz = -clearance; dz <= clearance; dz += 1) {
+    for (let dx = -clearance; dx <= clearance; dx += 1) {
+      if (
+        dx * dx + dz * dz <= clearanceSq &&
+        world.waterNavigable[(tileZ + dz) * MAP_TILES + tileX + dx] !== 1
+      ) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function spawnRiverNileFishSchools(world: World): void {
+  const schoolCount = 3 * world.playerCount;
+  const schoolCenters: (readonly [number, number])[] = [];
+  const schoolSpacingSq = RIVER_NILE_FISH_SCHOOL_SPACING * RIVER_NILE_FISH_SCHOOL_SPACING;
+
+  for (let schoolIndex = 0; schoolIndex < schoolCount; schoolIndex += 1) {
+    let school: readonly (readonly [number, number])[] | null = null;
+    let acceptedCenter: readonly [number, number] | null = null;
+
+    for (let attempt = 0; attempt < 4_096 && school === null; attempt += 1) {
+      const centerX =
+        RIVER_NILE_FISH_SCHOOL_RADIUS +
+        nextFloat(world.rng) * (SIM_MAP_SIZE - RIVER_NILE_FISH_SCHOOL_RADIUS * 2);
+      const centerZ =
+        RIVER_NILE_FISH_SCHOOL_RADIUS +
+        nextFloat(world.rng) * (SIM_MAP_SIZE - RIVER_NILE_FISH_SCHOOL_RADIUS * 2);
+      let clearOfSchools = true;
+
+      for (const [otherX, otherZ] of schoolCenters) {
+        const dx = centerX - otherX;
+        const dz = centerZ - otherZ;
+        if (dx * dx + dz * dz < schoolSpacingSq) {
+          clearOfSchools = false;
+          break;
+        }
+      }
+      if (!clearOfSchools) continue;
+
+      const candidates: (readonly [number, number])[] = [];
+      let valid = true;
+      for (let fish = 0; fish < RIVER_NILE_FISH_PER_SCHOOL; fish += 1) {
+        const point = sampleClusterPoint(world, centerX, centerZ, RIVER_NILE_FISH_SCHOOL_RADIUS);
+        if (!isDeepWaterSpot(world, point[0], point[1])) valid = false;
+        candidates.push(point);
+      }
+
+      if (valid) {
+        school = candidates;
+        acceptedCenter = [centerX, centerZ];
+      }
+    }
+
+    if (school === null || acceptedCenter === null) {
+      throw new RequiredFishSchoolPlacementError(schoolIndex);
+    }
+
+    schoolCenters.push(acceptedCenter);
+    for (const [x, z] of school) {
+      spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_FISH_PERCH);
+    }
+  }
+}
+
 export function spawnResourceNodes(world: World): void {
   // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
   // Keep the two legacy resource fields in solo play; forests and berry patches remain
@@ -1071,51 +1318,19 @@ export function spawnResourceNodes(world: World): void {
     }
   }
 
-  const berryOffsets = [
-    [16, 16],
-    [18, 13],
-    [13, 18],
-    [20, 16],
-    [16, 20],
-  ] as const;
-
-  for (let cornerIndex = 0; cornerIndex < startFieldCount; cornerIndex += 1) {
-    const [cornerX, cornerZ] = startLocations[cornerIndex]!;
-    const dirX = cornerX < SIM_MAP_SIZE * 0.5 ? 1 : -1;
-    const dirZ = cornerZ < SIM_MAP_SIZE * 0.5 ? 1 : -1;
-    let placedBerries = 0;
-
-    for (let bush = 0; bush < berryOffsets.length; bush += 1) {
-      const [offsetX, offsetZ] = berryOffsets[bush]!;
-      let placed = false;
-
-      // Jitter widens with each failed attempt so a rocky patch pushes the
-      // bush to nearby open ground instead of silently accepting rock.
-      for (let attempt = 0; attempt < 20 && !placed; attempt += 1) {
-        const jitter = 3 + attempt * 0.75;
-        const rawX = cornerX + dirX * offsetX + (nextFloat(world.rng) * 2 - 1) * jitter;
-        const rawZ = cornerZ + dirZ * offsetZ + (nextFloat(world.rng) * 2 - 1) * jitter;
-        const x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
-        const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
-
-        if (isNodeSpotOpen(world, x, z) && reachableIn(startFields[cornerIndex]!, x, z)) {
-          spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
-          placed = true;
-          placedBerries += 1;
-        }
-      }
-    }
-
-    // The second solo patch is legacy map content, but every active player patch
-    // is required economy. Reject the terrain instead of starting someone without food.
-    if (cornerIndex < world.playerCount && placedBerries !== berryOffsets.length) {
-      throw new RequiredBerryPatchPlacementError(cornerIndex);
-    }
+  if (world.mapId === MAP_RIVER_NILE) {
+    spawnRiverNileBerryPatches(world, startLocations, startFields);
+  } else {
+    spawnAegeanBerryPatches(world, startLocations, startFields);
   }
 
   // Gold is placed after existing resources so its clearance constraints cannot
   // perturb the established forest and berry layouts for the same seed.
   spawnGoldMines(world, startLocations, startFields);
+
+  if (world.mapId === MAP_RIVER_NILE) {
+    spawnRiverNileFishSchools(world);
+  }
 }
 
 // Random terrain can occasionally seal a start into a component too small for
@@ -1541,7 +1756,7 @@ export function tickWorld(world: World): void {
         target < 0 ||
         world.dying[target] === 1 ||
         world.hp[target] === 0 ||
-        UNIT_TYPES[world.unitType[target]!]!.resource < 0
+        !canTypeGatherResource(world.unitType[i]!, world.unitType[target]!)
       ) {
         const searchX = world.posX[i]!;
         const searchZ = world.posZ[i]!;
@@ -1569,7 +1784,7 @@ export function tickWorld(world: World): void {
               const candidateStats = UNIT_TYPES[world.unitType[j]!]!;
 
               if (
-                candidateStats.resource < 0 ||
+                !canTypeGatherResource(world.unitType[i]!, world.unitType[j]!) ||
                 world.dying[j] === 1 ||
                 world.hp[j] === 0 ||
                 (requiredResource >= 0 && candidateStats.resource !== requiredResource)
@@ -1764,7 +1979,7 @@ export function tickWorld(world: World): void {
           target >= 0 &&
           world.dying[target] === 0 &&
           world.hp[target]! > 0 &&
-          UNIT_TYPES[world.unitType[target]!]!.resource >= 0
+          canTypeGatherResource(world.unitType[i]!, world.unitType[target]!)
         ) {
           const targetX = world.posX[target]!;
           const targetZ = world.posZ[target]!;
@@ -2366,6 +2581,7 @@ function applyPendingCommands(world: World): void {
           if (world.owner[index] !== command.issuer) continue;
           // Militia in a mixed selection are silently skipped, not treated as an error.
           if ((UNIT_TYPES[world.unitType[index]!]!.classes & UNIT_CLASS_WORKER) === 0) continue;
+          if (!canTypeGatherResource(world.unitType[index]!, world.unitType[target]!)) continue;
           assignGatherTask(
             world,
             index,

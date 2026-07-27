@@ -1,9 +1,9 @@
 import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
-import { TYPE_BERRY } from "../../unit-type-ids";
+import { TYPE_FISH_PERCH } from "../../unit-type-ids";
 import {
   CULTURE_SHARED,
   FOOD,
-  NO_ARMOR,
+  MOVEMENT_DOMAIN_WATER,
   NO_PREREQUISITE_BUILDINGS,
   NO_TYPE_RELATIONSHIPS,
   UNIT_CLASS_RESOURCE,
@@ -11,19 +11,21 @@ import {
 } from "../../unit-type-schema";
 
 export const definition = {
-  id: TYPE_BERRY,
-  key: "berry-bush",
-  label: "Berry Bush",
+  id: TYPE_FISH_PERCH,
+  key: "fish-perch",
+  label: "Perch",
   culture: CULTURE_SHARED,
   classes: UNIT_CLASS_RESOURCE,
-  maxHp: 100,
+  maxHp: 1_000,
   lineOfSight: 0,
-  movementSpeed: 0,
-  armor: NO_ARMOR,
+  movementSpeed: 3,
+  movementDomain: MOVEMENT_DOMAIN_WATER,
+  resourceGathererDomain: MOVEMENT_DOMAIN_WATER,
+  armor: [0.2, 0.2, 0.99],
   attack: null,
-  isStatic: true,
+  isStatic: false,
   resource: FOOD,
-  bodyRadius: 1,
+  bodyRadius: 3,
   collidesWithProjectiles: false,
   footprint: 0,
   costFood: 0,

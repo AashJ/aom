@@ -4,6 +4,7 @@ import { definition as neutralTree } from "../unit-media/neutral/tree";
 import { definition as neutralBerryBush } from "../unit-media/neutral/berry-bush";
 import { definition as neutralGoldMine } from "../unit-media/neutral/gold-mine";
 import { definition as neutralRelic } from "../unit-media/neutral/relic";
+import { definition as neutralFishPerch } from "../unit-media/neutral/fish-perch";
 import { definition as greekVillager } from "../unit-media/greek/villager";
 import { definition as egyptianLaborer } from "../unit-media/egyptian/laborer";
 import { definition as greekTownCenter } from "../unit-media/greek/town-center";
@@ -64,6 +65,7 @@ export const UNIT_MEDIA_DEFINITIONS = [
   neutralBerryBush,
   neutralGoldMine,
   neutralRelic,
+  neutralFishPerch,
   greekVillager,
   egyptianLaborer,
   greekTownCenter,

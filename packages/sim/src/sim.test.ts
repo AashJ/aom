@@ -22,6 +22,7 @@ import {
   LEASH_FACTOR,
   RESOURCE_COUNT,
   TYPE_BERRY,
+  TYPE_FISH_PERCH,
   TYPE_GREEK_HOUSE as TYPE_HOUSE,
   TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
@@ -93,6 +94,26 @@ function flatWorld(seed: number, playerIds: readonly number[] = [0]): World {
 }
 
 describe("sim", () => {
+  test("land workers reject water-only fish resources", () => {
+    const world = flatWorld(42);
+    const workerId = spawnUnit(world, 100, 100, 0, 0, 0, TYPE_VILLAGER);
+    const fishId = spawnUnit(world, 104, 100, 0, 0, NEUTRAL_OWNER, TYPE_FISH_PERCH);
+
+    enqueueCommand(world, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [workerId],
+      targetId: fishId,
+    });
+    tickWorld(world);
+
+    expect(world.mode[0]).toBe(MODE_IDLE);
+    expect(world.taskTarget[0]).toBe(NO_TARGET);
+    expect(world.moving[0]).toBe(0);
+    expect(world.hp[1]).toBe(1_000);
+  });
+
   test("pcg32 is repeatable and bounded", () => {
     const a = createPcg32(42, 7);
     const b = createPcg32(42, 7);
@@ -876,6 +897,7 @@ describe("resources and nodes", () => {
 
     let trees = 0;
     let berries = 0;
+    let fish = 0;
     const goldMines: number[] = [];
 
     for (let i = 0; i < a.count; i += 1) {
@@ -909,6 +931,10 @@ describe("resources and nodes", () => {
         berries += 1;
       }
 
+      if (a.unitType[i] === TYPE_FISH_PERCH) {
+        fish += 1;
+      }
+
       if (a.unitType[i] === TYPE_GOLD_MINE) {
         goldMines.push(i);
         expect(a.owner[i]).toBe(NEUTRAL_OWNER);
@@ -918,6 +944,7 @@ describe("resources and nodes", () => {
 
     expect(trees).toBeGreaterThan(50);
     expect(berries).toBe(10);
+    expect(fish).toBe(0);
 
     // This map profile gives both players one starting, medium, and far mine.
     expect(goldMines).toHaveLength(6);

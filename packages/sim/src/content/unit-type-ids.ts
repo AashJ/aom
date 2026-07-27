@@ -6,6 +6,7 @@ export const TYPE_TREE = 2;
 export const TYPE_BERRY = 3;
 export const TYPE_GOLD_MINE = 7;
 export const TYPE_RELIC = 8;
+export const TYPE_FISH_PERCH = 9;
 
 // Greek and Egyptian playable-roster reservations. Definitions land independently.
 export const TYPE_GREEK_VILLAGER = 16;

@@ -163,7 +163,7 @@ Zero-allocation discipline in the hot path: scratch vectors/matrices are module-
 - `World` stores the map id and seed as hashed lockstep state. The relay start/begin protocol carries the selected map, and older persisted rooms without a map id fall back to Aegean Coast.
 - Navigation builds domain-specific flow fields. Land units treat water as blocked; water units treat land as blocked; amphibious and air movement domains have their corresponding traversal rules.
 - The engine builds a water-surface heightmap for camera clamping, picking, markers, and unit placement while retaining the terrain floor below it. A dedicated animated, fog-aware WebGPU water pass draws the channel, and the minimap derives its water color from the same sim mask.
-- River Nile resource placement currently implements the supported Classic gold profile. The remaining naval/resource population depends on faithful dock, ship, fish, papyrus, lily, and wildlife content contracts rather than placeholders.
+- River Nile resource placement implements the supported Classic gold profile, 10-bush far berry patches, and three 3-perch schools per non-Gaia player. Perch carry 1,000 food, use their source model, require a water-domain gatherer, and remain unavailable until fishing ships and dock returns land. The remaining naval/resource population depends on faithful dock, ship, papyrus, lily, and wildlife content contracts rather than placeholders.
 
 ### Units (dummy, M1)
 

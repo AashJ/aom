@@ -328,6 +328,9 @@ for (const entry of entries) {
 
   const isResource = (definition.classes & UNIT_CLASS_RESOURCE) !== 0;
   const isBuilding = (definition.classes & UNIT_CLASS_BUILDING) !== 0;
+  if (definition.resourceGathererDomain !== undefined && !isResource) {
+    throw new Error(`${definition.key} restricts gatherer movement domain but is not a resource.`);
+  }
   if (
     !isResource &&
     !isBuilding &&
