@@ -13,6 +13,8 @@ export interface Room {
   players: PlayerInfo[];
   nextPlayerId: number;
   started: boolean;
+  readyPlayerIds: Set<number>;
+  gameplayReleased: boolean;
   sequencer: Sequencer;
   hashTracker: HashTracker;
 }
@@ -25,6 +27,8 @@ export function createRoom(code: string, seed: number): Room {
     players: [],
     nextPlayerId: 0,
     started: false,
+    readyPlayerIds: new Set(),
+    gameplayReleased: false,
     sequencer: createSequencer(),
     hashTracker: createHashTracker(),
   };
@@ -64,6 +68,7 @@ export function removePlayer(room: Room, playerId: number): ServerMessage {
   if (playerIndex !== -1) {
     room.players.splice(playerIndex, 1);
   }
+  room.readyPlayerIds.delete(playerId);
 
   return {
     v: PROTOCOL_VERSION,
@@ -83,6 +88,8 @@ export function startRoom(
 
   room.started = true;
   room.map = map;
+  room.readyPlayerIds.clear();
+  room.gameplayReleased = false;
 
   return {
     v: PROTOCOL_VERSION,
@@ -92,6 +99,30 @@ export function startRoom(
     players: [...room.players],
     hashIntervalTicks,
   };
+}
+
+export function markPlayerReady(room: Room, playerId: number): void {
+  if (
+    room.started &&
+    !room.gameplayReleased &&
+    room.players.some((player) => player.id === playerId)
+  ) {
+    room.readyPlayerIds.add(playerId);
+  }
+}
+
+export function releaseGameplayIfReady(room: Room): ServerMessage | null {
+  if (
+    !room.started ||
+    room.gameplayReleased ||
+    room.players.length === 0 ||
+    !room.players.every((player) => room.readyPlayerIds.has(player.id))
+  ) {
+    return null;
+  }
+
+  room.gameplayReleased = true;
+  return { v: PROTOCOL_VERSION, kind: "go" };
 }
 
 export function isHost(room: Room, playerId: number): boolean {

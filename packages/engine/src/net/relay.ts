@@ -45,8 +45,10 @@ export interface NetSession {
   readonly sink: CommandSink;
   readonly buffer: TurnBuffer;
   readonly begin: Promise<BeginInfo>;
+  readonly started: Promise<void>;
   isHost(): boolean;
   startMatch(map?: MapId): void;
+  ready(): void;
   reportHash(tick: number, value: number): void;
   isDesynced(): boolean;
   pingMs(): number;
@@ -183,10 +185,15 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
   let closedIntentionally = false;
   let desynced = false;
   let lastStalled: boolean | null = null;
+  let readySent = false;
   let resolveBegin!: (info: BeginInfo) => void;
+  let resolveStarted!: () => void;
 
   const begin = new Promise<BeginInfo>((resolve) => {
     resolveBegin = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    resolveStarted = resolve;
   });
 
   function send(message: ClientMessage): void {
@@ -267,6 +274,10 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
         emit({ kind: "begun" });
         return;
 
+      case "go":
+        resolveStarted();
+        return;
+
       case "turn":
         buffer.push(msg.turn, msg.commands);
         return;
@@ -306,6 +317,7 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
     sink: createRelaySink(send),
     buffer,
     begin,
+    started,
 
     isHost(): boolean {
       // Mirrors the server's rule: the current lowest player id is host.
@@ -319,6 +331,15 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
 
     startMatch(map: MapId = MAP_AEGEAN_COAST): void {
       send({ v: PROTOCOL_VERSION, kind: "start", map });
+    },
+
+    ready(): void {
+      if (readySent) {
+        return;
+      }
+
+      readySent = true;
+      send({ v: PROTOCOL_VERSION, kind: "ready" });
     },
 
     reportHash(tick: number, value: number): void {

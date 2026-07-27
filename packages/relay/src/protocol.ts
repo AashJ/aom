@@ -4,10 +4,11 @@
 import type { Command, MapId } from "@aom/sim";
 
 // v2 added COMMAND_CHEAT, v3 added COMMAND_ADVANCE_AGE, v4 added COMMAND_PRAY,
-// v5 added COMMAND_CANCEL_TRAIN, v6 added relic pickup/drop-off, and v7 adds
-// deterministic map selection to the match handshake. Older clients would
+// v5 added COMMAND_CANCEL_TRAIN, v6 added relic pickup/drop-off, v7 added
+// deterministic map selection to the match handshake, v8 added Egyptian heal
+// and empower commands, and v9 adds the ready/go startup barrier. Older clients would
 // otherwise construct a different world and immediately desync.
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 9;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -37,6 +38,10 @@ export type ClientMessage =
       v: typeof PROTOCOL_VERSION;
       kind: "start";
       map: MapId;
+    }
+  | {
+      v: typeof PROTOCOL_VERSION;
+      kind: "ready";
     }
   | {
       v: typeof PROTOCOL_VERSION;
@@ -80,6 +85,10 @@ export type ServerMessage =
       map: MapId;
       players: PlayerInfo[];
       hashIntervalTicks: number;
+    }
+  | {
+      v: typeof PROTOCOL_VERSION;
+      kind: "go";
     }
   | {
       v: typeof PROTOCOL_VERSION;

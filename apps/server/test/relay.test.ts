@@ -67,6 +67,19 @@ describe("Cloudflare relay Worker", () => {
     });
     expect(guestBegin).toEqual(hostBegin);
 
+    host.socket.send(JSON.stringify({ v: PROTOCOL_VERSION, kind: "ready" }));
+
+    // One ready player is not enough: the resident preparation timer must not
+    // number or broadcast turns while another client is still loading.
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    host.socket.send(JSON.stringify({ v: PROTOCOL_VERSION, kind: "ping", t: 73 }));
+    expect(await host.nextMessage()).toEqual({ v: PROTOCOL_VERSION, kind: "pong", t: 73 });
+
+    guest.socket.send(JSON.stringify({ v: PROTOCOL_VERSION, kind: "ready" }));
+    const [hostGo, guestGo] = await Promise.all([host.nextMessage(), guest.nextMessage()]);
+    expect(hostGo).toEqual({ v: PROTOCOL_VERSION, kind: "go" });
+    expect(guestGo).toEqual(hostGo);
+
     host.socket.send(
       JSON.stringify({
         v: PROTOCOL_VERSION,

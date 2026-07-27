@@ -11,10 +11,18 @@ import {
   type World,
 } from "@aom/sim";
 import { createSequencer } from "./sequencer";
-import { addPlayer, createRoom, isHost, removePlayer, startRoom } from "./room";
+import {
+  addPlayer,
+  createRoom,
+  isHost,
+  markPlayerReady,
+  releaseGameplayIfReady,
+  removePlayer,
+  startRoom,
+} from "./room";
 import { createHashTracker } from "./hash-tracker";
 import { createTurnBuffer } from "./turn-buffer";
-import type { WireCommand } from "./protocol";
+import { PROTOCOL_VERSION, type WireCommand } from "./protocol";
 
 function move(unitIds: number[], targetX: number, targetZ: number): WireCommand {
   return { type: COMMAND_MOVE, unitIds, targetX, targetZ };
@@ -121,6 +129,20 @@ describe("room", () => {
     // Started rooms reject both late joins and double starts.
     expect(addPlayer(room, "latecomer")).toBeNull();
     expect(startRoom(room, 20)).toBeNull();
+  });
+
+  test("releases gameplay only after every match participant is ready", () => {
+    const room = createRoom("ready", 42);
+    addPlayer(room, "host");
+    addPlayer(room, "guest");
+    startRoom(room, 20);
+
+    markPlayerReady(room, 0);
+    expect(releaseGameplayIfReady(room)).toBeNull();
+
+    markPlayerReady(room, 1);
+    expect(releaseGameplayIfReady(room)).toEqual({ v: PROTOCOL_VERSION, kind: "go" });
+    expect(releaseGameplayIfReady(room)).toBeNull();
   });
 });
 

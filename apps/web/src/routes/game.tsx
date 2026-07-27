@@ -201,14 +201,26 @@ function GameComponent() {
     let unsubEnd: (() => void) | null = null;
     let cancelled = false;
 
-    void createGame(canvas, { session: sessionRef.current! })
-      .then((game) => {
+    const session = sessionRef.current;
+    if (session === null) {
+      return;
+    }
+
+    void createGame(canvas, { session })
+      .then(async (game) => {
         if (cancelled) {
           game.dispose();
           return;
         }
 
         handle = game;
+        session.ready();
+        await session.started;
+
+        if (cancelled) {
+          return;
+        }
+
         game.start();
         setGame(game);
         unsubEnd = game.onMatchEnd(setMatchWinner);
@@ -270,6 +282,7 @@ function GameComponent() {
       <PerfHud game={game} />
       <CommandPanel game={game} />
       <StatsPanel game={game} />
+      {room !== undefined && game === null && <StatusPill text="Preparing match…" />}
       {net.desyncTick !== null && (
         <StatusPill text={`Desync detected at tick ${net.desyncTick} — match halted`} />
       )}

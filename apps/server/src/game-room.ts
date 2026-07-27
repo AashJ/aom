@@ -2,7 +2,9 @@ import {
   addPlayer,
   createRoom,
   isHost,
+  markPlayerReady,
   PROTOCOL_VERSION,
+  releaseGameplayIfReady,
   removePlayer,
   startRoom,
   type ClientMessage,
@@ -179,9 +181,29 @@ export class GameRoom extends DurableObject<Env> {
         return;
       }
 
+      case "ready": {
+        if (socketData.playerId === -1) {
+          this.sendError(socket, "connection has not joined a room");
+          return;
+        }
+
+        if (!this.room.started) {
+          this.sendError(socket, "room has not started preparing");
+          return;
+        }
+
+        markPlayerReady(this.room, socketData.playerId);
+        return;
+      }
+
       case "commands": {
         if (socketData.playerId === -1) {
           this.sendError(socket, "connection has not joined a room");
+          return;
+        }
+
+        if (!this.room.gameplayReleased) {
+          this.sendError(socket, "gameplay has not started");
           return;
         }
 
@@ -236,6 +258,14 @@ export class GameRoom extends DurableObject<Env> {
     this.turnTimer = setInterval(() => {
       if (this.room === null || !this.room.started) {
         this.stopTurnClock();
+        return;
+      }
+
+      if (!this.room.gameplayReleased) {
+        const go = releaseGameplayIfReady(this.room);
+        if (go !== null) {
+          this.broadcast(go);
+        }
         return;
       }
 
