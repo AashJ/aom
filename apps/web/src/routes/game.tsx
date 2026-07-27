@@ -11,6 +11,7 @@ import {
   WebGPUUnsupportedError,
   type GameCulture,
   type GameHandle,
+  type GameMap,
   type NetSession,
   type PlayerInfo,
 } from "@aom/engine";
@@ -35,6 +36,7 @@ interface NetState {
 
 interface GameSearch {
   culture?: GameCulture;
+  map?: GameMap;
   room?: string;
   name?: string;
 }
@@ -53,6 +55,7 @@ export const Route = createFileRoute("/game")({
   validateSearch: (search): GameSearch => ({
     culture:
       search.culture === "greek" || search.culture === "egyptian" ? search.culture : undefined,
+    map: search.map === "aegean-coast" || search.map === "river-nile" ? search.map : undefined,
     room: typeof search.room === "string" ? search.room : undefined,
     name: typeof search.name === "string" ? search.name : undefined,
   }),
@@ -60,7 +63,7 @@ export const Route = createFileRoute("/game")({
 });
 
 function GameComponent() {
-  const { culture, room, name } = Route.useSearch();
+  const { culture, map, room, name } = Route.useSearch();
   const playerName = normalizePlayerName(name);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<NetSession | null>(null);
@@ -90,7 +93,7 @@ function GameComponent() {
     let unsubEnd: (() => void) | null = null;
     let cancelled = false;
 
-    void createGame(canvas, { culture: culture ?? "greek" })
+    void createGame(canvas, { culture: culture ?? "greek", map: map ?? "aegean-coast" })
       .then((game) => {
         if (cancelled) {
           game.dispose();
@@ -114,7 +117,7 @@ function GameComponent() {
       unsubEnd?.();
       handle?.dispose();
     };
-  }, [culture, room]);
+  }, [culture, map, room]);
 
   useEffect(() => {
     if (room === undefined || playerName === null) {
@@ -239,7 +242,7 @@ function GameComponent() {
         players={net.players}
         selfId={net.selfId}
         isHost={sessionRef.current?.isHost() ?? false}
-        onStart={() => sessionRef.current?.startMatch()}
+        onStart={(selectedMap) => sessionRef.current?.startMatch(selectedMap)}
         closed={net.closed}
       />
     );
@@ -252,7 +255,7 @@ function GameComponent() {
         players={net.players}
         selfId={net.selfId}
         isHost={sessionRef.current?.isHost() ?? false}
-        onStart={() => sessionRef.current?.startMatch()}
+        onStart={(selectedMap) => sessionRef.current?.startMatch(selectedMap)}
         closed={net.closed}
       />
     );
@@ -350,7 +353,7 @@ function LobbyScreen({
   players: PlayerInfo[];
   selfId: number;
   isHost: boolean;
-  onStart: () => void;
+  onStart: (map: GameMap) => void;
   closed: boolean;
 }) {
   const hostId = players.reduce(
@@ -358,6 +361,7 @@ function LobbyScreen({
     Number.POSITIVE_INFINITY,
   );
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [map, setMap] = useState<GameMap>("aegean-coast");
 
   async function handleCopyInvite() {
     try {
@@ -392,6 +396,34 @@ function LobbyScreen({
           <p className="mt-6 text-base text-red-300 sm:text-sm">Connection lost.</p>
         ) : (
           <>
+            {isHost && (
+              <fieldset className="mt-6 grid gap-2 text-left">
+                <legend className="text-sm font-medium text-slate-300">Map</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ["aegean-coast", "Aegean Coast"],
+                      ["river-nile", "River Nile"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <Button
+                      key={id}
+                      type="button"
+                      variant={map === id ? "default" : "outline"}
+                      aria-pressed={map === id}
+                      onClick={() => setMap(id)}
+                      className={
+                        map === id
+                          ? "bg-sky-500 text-white hover:bg-sky-400"
+                          : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white"
+                      }
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <div className="mt-6 flex flex-col items-stretch justify-center gap-2 sm:flex-row">
               <Button
                 type="button"
@@ -408,7 +440,7 @@ function LobbyScreen({
                   type="button"
                   size="lg"
                   className="rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
-                  onClick={onStart}
+                  onClick={() => onStart(map)}
                 >
                   Start
                 </Button>

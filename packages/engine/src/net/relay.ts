@@ -20,7 +20,9 @@ import {
   COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
+  MAP_AEGEAN_COAST,
   type CheatId,
+  type MapId,
 } from "@aom/sim";
 import type { CommandSink } from "./sink";
 
@@ -33,6 +35,7 @@ export type NetEvent =
 
 export interface BeginInfo {
   seed: number;
+  map: MapId;
   players: PlayerInfo[];
   hashIntervalTicks: number;
   selfId: number;
@@ -43,7 +46,7 @@ export interface NetSession {
   readonly buffer: TurnBuffer;
   readonly begin: Promise<BeginInfo>;
   isHost(): boolean;
-  startMatch(): void;
+  startMatch(map?: MapId): void;
   reportHash(tick: number, value: number): void;
   isDesynced(): boolean;
   pingMs(): number;
@@ -256,6 +259,7 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
         begun = true;
         resolveBegin({
           seed: msg.seed,
+          map: msg.map,
           players: msg.players,
           hashIntervalTicks: msg.hashIntervalTicks,
           selfId,
@@ -313,8 +317,8 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
       return selfId === lowestPlayerId;
     },
 
-    startMatch(): void {
-      send({ v: PROTOCOL_VERSION, kind: "start" });
+    startMatch(map: MapId = MAP_AEGEAN_COAST): void {
+      send({ v: PROTOCOL_VERSION, kind: "start", map });
     },
 
     reportHash(tick: number, value: number): void {

@@ -84,7 +84,14 @@ export function minimapUnitToWorld(
   out[offset + 1] = Math.max(0, Math.min(1, v)) * MAP_TILES;
 }
 
-export function buildMinimapTexels(heights: Float32Array): Uint8Array {
+export function buildMinimapTexels(heights: Float32Array, waterNavigable?: Uint8Array): Uint8Array {
+  if (
+    waterNavigable !== undefined &&
+    waterNavigable.length !== MINIMAP_TEX_SIZE * MINIMAP_TEX_SIZE
+  ) {
+    throw new RangeError("Minimap water mask must contain one value per map tile.");
+  }
+
   const texels = new Uint8Array(MINIMAP_TEX_SIZE * MINIMAP_TEX_SIZE * 4);
 
   for (let z = 0; z < MINIMAP_TEX_SIZE; z += 1) {
@@ -118,6 +125,15 @@ export function buildMinimapTexels(heights: Float32Array): Uint8Array {
       // Same linear-value convention the terrain fragment writes to the non-srgb swapchain,
       // so the minimap matches the world's look.
       const offset = (z * MINIMAP_TEX_SIZE + x) * 4;
+      if (waterNavigable?.[z * MINIMAP_TEX_SIZE + x] === 1) {
+        const waterLight = 0.78 + light * 0.22;
+        texels[offset] = Math.round(0.055 * waterLight * 255);
+        texels[offset + 1] = Math.round(0.27 * waterLight * 255);
+        texels[offset + 2] = Math.round(0.34 * waterLight * 255);
+        texels[offset + 3] = 255;
+        continue;
+      }
+
       texels[offset] = Math.round(r * 255);
       texels[offset + 1] = Math.round(g * 255);
       texels[offset + 2] = Math.round(b * 255);
@@ -132,6 +148,7 @@ export function createMinimapRenderer(
   device: GPUDevice,
   format: GPUTextureFormat,
   heights: Float32Array,
+  waterNavigable?: Uint8Array,
 ): MinimapRenderer {
   const module = device.createShaderModule({ code: minimapWgsl });
   const texture = device.createTexture({
@@ -236,7 +253,7 @@ export function createMinimapRenderer(
 
   device.queue.writeTexture(
     { texture },
-    buildMinimapTexels(heights),
+    buildMinimapTexels(heights, waterNavigable),
     { bytesPerRow: MINIMAP_TEX_SIZE * 4 },
     { width: MINIMAP_TEX_SIZE, height: MINIMAP_TEX_SIZE },
   );

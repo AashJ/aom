@@ -1,5 +1,6 @@
 import {
   BUILD_OPTIONS_BY_WORKER,
+  buildSurfaceHeightmap,
   canPlaceBuilding,
   CHEAT_ADD_FOOD,
   CHEAT_ADD_GOLD,
@@ -17,6 +18,7 @@ import {
   GOD_ZEUS,
   hashWorld,
   MAP_TILES,
+  MAP_AEGEAN_COAST,
   MAX_TRAIN_QUEUE,
   MAX_UNITS,
   MODE_PRAYING,
@@ -36,6 +38,7 @@ import {
   workerTypeForCulture,
   writeSnapshot,
   type CheatId,
+  type MapId,
   type TypeCommandRelationship,
 } from "@aom/sim";
 import { createGameAudio } from "./audio/audio";
@@ -61,6 +64,7 @@ import { createMarkerRenderer } from "./render/marker";
 import { createMinimapRenderer } from "./render/minimap";
 import { createTerrainRenderer } from "./render/terrain";
 import { createUnitsRenderer } from "./render/units";
+import { createWaterRenderer } from "./render/water";
 import { createFrameLoop } from "./render/loop";
 import { createStatsCollector, type StatsCallback } from "./render/stats";
 import { raycastHeightfield } from "./terrain/raycast";
@@ -133,9 +137,11 @@ export interface GameHandle {
 export interface GameOptions {
   session?: NetSession;
   culture?: GameCulture;
+  map?: GameMap;
 }
 
 export type GameCulture = "egyptian" | "greek";
+export type GameMap = MapId;
 
 const NO_OPTIONS: readonly TypeCommandRelationship[] = Object.freeze([]);
 const NO_TYPES: readonly number[] = Object.freeze([]);
@@ -191,7 +197,7 @@ export async function createGame(
         }
 
         // Decoded images are cached across device loss; only GPU resources are rebuilt.
-        const [nextTerrain, nextUnits] = await Promise.all([
+        const [nextTerrain, nextWater, nextUnits] = await Promise.all([
           createTerrainRenderer(
             nextGpu.device,
             nextGpu.format,
@@ -199,12 +205,20 @@ export async function createGame(
             world.terrainMaterials,
             world.walkable,
           ),
+          Promise.resolve(
+            createWaterRenderer(
+              nextGpu.device,
+              nextGpu.format,
+              world.waterNavigable,
+              world.waterLevel,
+            ),
+          ),
           createUnitsRenderer(
             nextGpu.device,
             nextGpu.format,
             MAX_UNITS,
             currSnap.projectileIds.length,
-            heights,
+            surfaceHeights,
           ),
         ]);
 
@@ -216,9 +230,15 @@ export async function createGame(
         gpu = nextGpu;
         // GPU resources die with their device, so recreate renderer-owned state.
         terrain = nextTerrain;
+        water = nextWater;
         units = nextUnits;
-        minimap = createMinimapRenderer(nextGpu.device, nextGpu.format, heights);
-        marker = createMarkerRenderer(nextGpu.device, nextGpu.format, heights);
+        minimap = createMinimapRenderer(
+          nextGpu.device,
+          nextGpu.format,
+          heights,
+          world.waterNavigable,
+        );
+        marker = createMarkerRenderer(nextGpu.device, nextGpu.format, surfaceHeights);
         fog = createFogRenderer(nextGpu.device);
         gpuTimer = createGpuTimer(nextGpu.device);
         passDescriptor.timestampWrites = gpuTimer.passTimestampWrites;
@@ -244,14 +264,17 @@ export async function createGame(
   // deterministic playable successor), so rendering receives identical heights
   // without a per-tick channel.
   const ownerIds = beginInfo ? beginInfo.players.map((player) => player.id) : [0];
+  const mapId = beginInfo?.map ?? options.map ?? MAP_AEGEAN_COAST;
   const world = createPlayableWorld(
     beginInfo ? beginInfo.seed : 1337,
     3 * ownerIds.length,
     ownerIds.map((id) => ({ id, majorGod: session ? GOD_ZEUS : soloMajorGod })),
     session ? { [CULTURE_GREEK]: [TYPE_NEMEAN_LION] } : undefined,
+    mapId,
   );
   const sink = session ? session.sink : createLoopbackSink(world);
   const heights = world.heights;
+  const surfaceHeights = buildSurfaceHeightmap(heights, world.waterNavigable, world.waterLevel);
   const selfCulture = cultureForMajorGod(world.playerMajorGod[selfPlayerId]!);
   const selfTownCenterType = townCenterTypeForCulture(selfCulture);
   const selfWorkerType = workerTypeForCulture(selfCulture);
@@ -293,16 +316,26 @@ export async function createGame(
     return playerState.availability(unitType, producerType).available;
   }
 
-  let [terrain, units] = await Promise.all([
+  let [terrain, water, units] = await Promise.all([
     createTerrainRenderer(gpu.device, gpu.format, heights, world.terrainMaterials, world.walkable),
-    createUnitsRenderer(gpu.device, gpu.format, MAX_UNITS, currSnap.projectileIds.length, heights),
+    Promise.resolve(
+      createWaterRenderer(gpu.device, gpu.format, world.waterNavigable, world.waterLevel),
+    ),
+    createUnitsRenderer(
+      gpu.device,
+      gpu.format,
+      MAX_UNITS,
+      currSnap.projectileIds.length,
+      surfaceHeights,
+    ),
   ]);
-  let minimap = createMinimapRenderer(gpu.device, gpu.format, heights);
-  let marker = createMarkerRenderer(gpu.device, gpu.format, heights);
+  let minimap = createMinimapRenderer(gpu.device, gpu.format, heights, world.waterNavigable);
+  let marker = createMarkerRenderer(gpu.device, gpu.format, surfaceHeights);
   let fog = createFogRenderer(gpu.device);
   let gpuTimer = createGpuTimer(gpu.device);
   let depthTexture: GPUTexture | null = null;
   const audio = createGameAudio(world.playerMajorGod[selfPlayerId]!);
+  let waterTimeSeconds = 0;
 
   const colorAttachment: GPURenderPassColorAttachment = {
     clearValue: { r: 0.05, g: 0.07, b: 0.1, a: 1 },
@@ -410,7 +443,8 @@ export async function createGame(
 
   function render(alpha: number, dtMs: number): void {
     applyInput(input.state, camera, dtMs / 1000, canvas);
-    applyCameraTerrain(camera, heights, dtMs);
+    applyCameraTerrain(camera, surfaceHeights, dtMs);
+    waterTimeSeconds += dtMs / 1000;
     smoothCamera(camera, dtMs);
     updateMatrices(camera, gpu.canvas.width / gpu.canvas.height);
 
@@ -426,7 +460,7 @@ export async function createGame(
 
           screenRay(camera, ndcX, ndcY, placementRayOrigin, placementRayDir);
           hitGround = raycastHeightfield(
-            heights,
+            surfaceHeights,
             placementRayOrigin,
             placementRayDir,
             placementHit,
@@ -504,7 +538,7 @@ export async function createGame(
           prevSnap,
           currSnap,
           alpha,
-          heights,
+          surfaceHeights,
           canvas,
         );
         if (input.state.corruptPending) {
@@ -524,7 +558,7 @@ export async function createGame(
           prevSnap,
           currSnap,
           alpha,
-          heights,
+          surfaceHeights,
           canvas,
           markerPos,
         );
@@ -701,6 +735,13 @@ export async function createGame(
       input.state.debugOverlay,
       fogView,
     );
+    const waterDrawCalls = water.draw(
+      pass,
+      gpu.device.queue,
+      camera.viewProj,
+      waterTimeSeconds,
+      fogView,
+    );
     const placementStats = UNIT_TYPES[placementType];
     const ghostType = placementStats ? placementType : -1;
     const ghostX = placementStats ? placementTile[0]! + placementStats.footprint / 2 : 0;
@@ -713,7 +754,7 @@ export async function createGame(
       prevSnap,
       currSnap,
       alpha,
-      heights,
+      surfaceHeights,
       ghostType,
       ghostX,
       ghostZ,
@@ -743,7 +784,7 @@ export async function createGame(
     }
     // +4 = minimap frame + base + footprint + dots.
     statsCollector.frameGauges.drawCalls =
-      visibleChunks + unitStatistics.drawCalls + 4 + (markerAgeMs < 600 ? 1 : 0);
+      visibleChunks + waterDrawCalls + unitStatistics.drawCalls + 4 + (markerAgeMs < 600 ? 1 : 0);
     statsCollector.frameGauges.instances = unitStatistics.instances;
     statsCollector.frameGauges.chunksVisible = visibleChunks;
     statsCollector.frameGauges.chunksTotal = terrain.chunkBounds.length;

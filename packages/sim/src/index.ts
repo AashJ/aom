@@ -124,6 +124,7 @@ export * from "./hash";
 export * from "./snapshot";
 export * from "./visibility";
 export * from "./math/prng";
+export * from "./maps";
 export {
   MAP_TILES,
   TERRAIN_CLIFF_GREEK_A,

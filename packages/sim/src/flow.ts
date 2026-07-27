@@ -3,6 +3,7 @@
 // never per tick. Integer-cost Dijkstra keeps the build fully deterministic; the
 // only floats are the final normalized directions.
 import { MAP_TILES } from "./terrain";
+import { MOVEMENT_DOMAIN_LAND, type MovementDomain } from "./content/unit-type-schema";
 
 const CELL_COUNT = MAP_TILES * MAP_TILES;
 const UNVISITED = 0xffffffff;
@@ -75,6 +76,7 @@ function bucketPush(cost: number, cell: number): void {
 
 export interface FlowField {
   goalCell: number;
+  movementDomain: MovementDomain;
   dirX: Float32Array;
   dirZ: Float32Array;
 }
@@ -90,6 +92,7 @@ export function buildFlowField(
   walkable: Uint8Array,
   goalCell: number,
   routeGoalCells?: readonly number[],
+  movementDomain: MovementDomain = MOVEMENT_DOMAIN_LAND,
 ): FlowField {
   // Command-time allocation, not per-tick.
   const dirX = new Float32Array(CELL_COUNT);
@@ -98,7 +101,7 @@ export function buildFlowField(
   if (routeGoalCells === undefined && walkable[goalCell] !== 1) {
     // Callers remap unwalkable goals to a walkable cell before calling this;
     // building interactions instead provide their walkable perimeter cells.
-    return { goalCell, dirX, dirZ };
+    return { goalCell, movementDomain, dirX, dirZ };
   }
 
   costs.fill(UNVISITED);
@@ -127,7 +130,7 @@ export function buildFlowField(
     }
 
     if (!seededGoal) {
-      return { goalCell, dirX, dirZ };
+      return { goalCell, movementDomain, dirX, dirZ };
     }
   }
 
@@ -259,7 +262,7 @@ export function buildFlowField(
     }
   }
 
-  return { goalCell, dirX, dirZ };
+  return { goalCell, movementDomain, dirX, dirZ };
 }
 
 export function sampleFlowDirection(

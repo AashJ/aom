@@ -96,6 +96,16 @@ describe("buildMinimapTexels", () => {
     expect(texels[3]).toBe(255);
     expect(brightness(texels, 20, 20)).not.toBe(brightness(texels, 200, 130));
   });
+
+  test("renders navigable water blue-green independently of underwater height", () => {
+    const water = new Uint8Array(MAP_TILES * MAP_TILES);
+    water[128 * MAP_TILES + 128] = 1;
+    const texels = buildMinimapTexels(flatHeights(-4), water);
+    const offset = offsetOf(128, 128);
+
+    expect(texels[offset + 2]).toBeGreaterThan(texels[offset]!);
+    expect(texels[offset + 1]).toBeGreaterThan(texels[offset]!);
+  });
 });
 
 describe("worldToMinimapUnit", () => {

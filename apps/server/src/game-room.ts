@@ -10,6 +10,7 @@ import {
   type Room,
   type ServerMessage,
 } from "@aom/relay";
+import { DEFAULT_MAP_ID, isMapId, type MapId } from "@aom/sim";
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./index";
 import { roomCodeFromRequest } from "./room-code";
@@ -27,6 +28,7 @@ interface SocketData {
 interface StoredRoom {
   code: string;
   seed: number;
+  map?: MapId;
   players: PlayerInfo[];
   nextPlayerId: number;
   started: boolean;
@@ -160,7 +162,12 @@ export class GameRoom extends DurableObject<Env> {
           return;
         }
 
-        const begin = startRoom(this.room, HASH_INTERVAL_TICKS);
+        if (!isMapId(message.map)) {
+          this.sendError(socket, "unknown map");
+          return;
+        }
+
+        const begin = startRoom(this.room, HASH_INTERVAL_TICKS, message.map);
         if (begin === null) {
           this.sendError(socket, "room cannot be started");
           return;
@@ -296,6 +303,7 @@ export class GameRoom extends DurableObject<Env> {
     const stored: StoredRoom = {
       code: this.room.code,
       seed: this.room.seed,
+      map: this.room.map,
       players: [...this.room.players],
       nextPlayerId: this.room.nextPlayerId,
       started: this.room.started,
@@ -342,6 +350,7 @@ function readSocketData(socket: WebSocket): SocketData {
 
 function restoreRoom(stored: StoredRoom): Room {
   const room = createRoom(stored.code, stored.seed);
+  room.map = isMapId(stored.map) ? stored.map : DEFAULT_MAP_ID;
   room.players = [...stored.players];
   room.nextPlayerId = stored.nextPlayerId;
   room.started = stored.started;

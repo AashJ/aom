@@ -11,6 +11,10 @@ export interface UnitTypeStats {
   readonly maxHp: number;
   readonly lineOfSight: number;
   readonly movementSpeed: number;
+  // Omitted only by legacy land definitions. Gate E units must author their
+  // movement domain explicitly so navigation never infers water behavior from
+  // presentation, names, or combat classes.
+  readonly movementDomain?: MovementDomain;
   readonly workRange?: number;
   readonly armor: ArmorProfile;
   // Exactly one primary attack shape or none. The discriminant is authoritative:
@@ -45,6 +49,16 @@ export interface UnitTypeStats {
   readonly trainedAt: readonly TypeCommandRelationship[];
   readonly builtBy: readonly TypeCommandRelationship[];
 }
+
+export const MOVEMENT_DOMAIN_LAND = 0;
+export const MOVEMENT_DOMAIN_WATER = 1;
+export const MOVEMENT_DOMAIN_AMPHIBIOUS = 2;
+export const MOVEMENT_DOMAIN_AIR = 3;
+export type MovementDomain =
+  | typeof MOVEMENT_DOMAIN_LAND
+  | typeof MOVEMENT_DOMAIN_WATER
+  | typeof MOVEMENT_DOMAIN_AMPHIBIOUS
+  | typeof MOVEMENT_DOMAIN_AIR;
 
 export interface HeroTraits {
   // Greek heroes use one live-or-queued copy of each identity per player.

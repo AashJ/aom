@@ -3,7 +3,7 @@ import { MAP_TILES } from "../terrain";
 import { circleSweepEntryFraction } from "./circle-collision";
 import { resolveStableId, stableIdAt, type StableIdLookupState } from "./id";
 import { NO_MELEE_ATTACK_VARIANT } from "./melee-attack-cycles";
-import { isWalkableStep, type WalkableGroundState } from "./navigation";
+import { isWalkableStep, movementDomainForType, type WalkableGroundState } from "./navigation";
 import { targetReactionCapabilitiesAt, type TargetReactionStore } from "./target-reactions";
 import { NO_TARGET } from "./unit-tasks";
 
@@ -87,7 +87,8 @@ function initializeTerrainCandidates(
   for (let i = 0; i < world.count; i += 1) {
     const oldX = world.posX[i]!;
     const oldZ = world.posZ[i]!;
-    if (UNIT_TYPES[world.unitType[i]!]!.isStatic) {
+    const unitType = world.unitType[i]!;
+    if (UNIT_TYPES[unitType]!.isStatic) {
       candidateX[i] = oldX;
       candidateZ[i] = oldZ;
       continue;
@@ -95,19 +96,26 @@ function initializeTerrainCandidates(
 
     const requestedX = clampPosition(oldX + world.pushX[i]!);
     const requestedZ = clampPosition(oldZ + world.pushZ[i]!);
-    if (isWalkableStep(world, oldX, oldZ, requestedX, requestedZ)) {
+    const movementDomain = movementDomainForType(unitType);
+    if (isWalkableStep(world, oldX, oldZ, requestedX, requestedZ, movementDomain)) {
       candidateX[i] = requestedX;
       candidateZ[i] = requestedZ;
       continue;
     }
 
     // Preserve the world's deterministic x-then-z terrain-slide preference.
-    if (requestedX !== oldX && isWalkableStep(world, oldX, oldZ, requestedX, oldZ)) {
+    if (
+      requestedX !== oldX &&
+      isWalkableStep(world, oldX, oldZ, requestedX, oldZ, movementDomain)
+    ) {
       candidateX[i] = requestedX;
       candidateZ[i] = oldZ;
       continue;
     }
-    if (requestedZ !== oldZ && isWalkableStep(world, oldX, oldZ, oldX, requestedZ)) {
+    if (
+      requestedZ !== oldZ &&
+      isWalkableStep(world, oldX, oldZ, oldX, requestedZ, movementDomain)
+    ) {
       candidateX[i] = oldX;
       candidateZ[i] = requestedZ;
       continue;
@@ -390,19 +398,26 @@ function applyContactCorrections(world: GroundMotionWorld, scratch: GroundMotion
     const fromZ = scratch.candidateZ[i]!;
     const proposedX = clampPosition(fromX + correctionX);
     const proposedZ = clampPosition(fromZ + correctionZ);
-    if (isWalkableStep(world, fromX, fromZ, proposedX, proposedZ)) {
+    const movementDomain = movementDomainForType(world.unitType[i]!);
+    if (isWalkableStep(world, fromX, fromZ, proposedX, proposedZ, movementDomain)) {
       scratch.candidateX[i] = proposedX;
       scratch.candidateZ[i] = proposedZ;
       changed ||= proposedX !== fromX || proposedZ !== fromZ;
       continue;
     }
 
-    if (proposedX !== fromX && isWalkableStep(world, fromX, fromZ, proposedX, fromZ)) {
+    if (
+      proposedX !== fromX &&
+      isWalkableStep(world, fromX, fromZ, proposedX, fromZ, movementDomain)
+    ) {
       scratch.candidateX[i] = proposedX;
       changed = true;
       continue;
     }
-    if (proposedZ !== fromZ && isWalkableStep(world, fromX, fromZ, fromX, proposedZ)) {
+    if (
+      proposedZ !== fromZ &&
+      isWalkableStep(world, fromX, fromZ, fromX, proposedZ, movementDomain)
+    ) {
       scratch.candidateZ[i] = proposedZ;
       changed = true;
     }

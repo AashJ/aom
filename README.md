@@ -13,6 +13,17 @@ A recreation of *Age of Mythology* in the browser. It is an experiment in using 
 
 The simulation is isolated from rendering and I/O. The engine consumes simulation snapshots, while the relay distributes ordered player commands so every client advances the same world state.
 
+## Maps
+
+Single-player and multiplayer currently expose two deterministic random maps:
+
+- **Aegean Coast** — the default land map.
+- **River Nile** — desert banks separated by a meandering, animated Nile. Player starts and gold placement follow the Classic random-map profile currently supported by the simulation.
+
+Map generation lives in `packages/sim/src/maps.ts`, so a seed and map id produce the same terrain, water mask, and start locations for every lockstep client. The engine renders water as a separate fog-aware WebGPU pass and uses the same water mask for the minimap, picking surface, and movement-domain navigation.
+
+River Nile's map and water foundation is playable, but the complete Classic naval loop is not yet available: docks, fishing ships, transport ships, and their original media/content contracts still need to be sourced and implemented. Land units cannot cross the river.
+
 ## Run
 
 ```sh

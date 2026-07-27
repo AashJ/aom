@@ -28,6 +28,7 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 | Camera      | **Fixed pitch/yaw, pan + zoom**                     | Classic RTS camera. Simpler culling, picking, and minimap math. Yaw rotation can be added later without structural rework (nothing may assume axis-aligned view).                                                                                                                                                                                                                                                      |
 | Simulation  | **Deterministic lockstep-ready from day 1**         | "Online" means lockstep multiplayer eventually: identical inputs must produce identical state on every client. Retrofitting determinism into a float-soup sim is a rewrite; designing for it now costs almost nothing in M1.                                                                                                                                                                                           |
 | UI shell    | **React for chrome only**                           | React renders menus, HUD, routes. It never participates in the frame loop and never re-renders per frame. The game is one canvas owned by imperative code.                                                                                                                                                                                                                                                             |
+| Maps        | **Sim-owned deterministic generation**              | The selected map id and seed are lockstep state. The sim produces terrain heights, water masks, and starts; renderer, navigation, picking, and minimap consume those results instead of independently inferring geography.                                                                                                                                                                                               |
 
 Rejected alternatives, for the record: 2D isometric sprites (cheapest path to performance, but not AoM), PixiJS/Three.js (faster start, less control), Canvas 2D (can't hit the perf bar), WebGPU+WebGL2 dual backend (too much surface area for a sequential build).
 
@@ -155,6 +156,14 @@ Zero-allocation discipline in the hot path: scratch vectors/matrices are module-
 - Split into **32×32-tile chunks** (8×8 = 64 chunks). Each chunk is one vertex/index buffer pair (33×33 verts), one draw call.
 - **Culling:** per-chunk AABB vs. camera frustum on the CPU. 64 AABB tests per frame is nothing; GPU compute culling is a later optimization once entity counts justify it.
 - M1 look: no textures. Vertex color from height + slope, plus a subtle shader-drawn tile grid so camera motion reads clearly. Texture splatting is a later milestone.
+
+### Maps and water
+
+- `@aom/sim` owns map definitions and generation. `generateMap(mapId, seed, playerCount)` returns deterministic height, terrain-domain, water, and start-location data. Aegean Coast remains the default; River Nile generates opposing desert banks around a meandering channel at sea level.
+- `World` stores the map id and seed as hashed lockstep state. The relay start/begin protocol carries the selected map, and older persisted rooms without a map id fall back to Aegean Coast.
+- Navigation builds domain-specific flow fields. Land units treat water as blocked; water units treat land as blocked; amphibious and air movement domains have their corresponding traversal rules.
+- The engine builds a water-surface heightmap for camera clamping, picking, markers, and unit placement while retaining the terrain floor below it. A dedicated animated, fog-aware WebGPU water pass draws the channel, and the minimap derives its water color from the same sim mask.
+- River Nile resource placement currently implements the supported Classic gold profile. The remaining naval/resource population depends on faithful dock, ship, fish, papyrus, lily, and wildlife content contracts rather than placeholders.
 
 ### Units (dummy, M1)
 

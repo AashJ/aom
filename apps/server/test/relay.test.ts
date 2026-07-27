@@ -58,9 +58,13 @@ describe("Cloudflare relay Worker", () => {
       ],
     });
 
-    host.socket.send(JSON.stringify({ v: PROTOCOL_VERSION, kind: "start" }));
+    host.socket.send(JSON.stringify({ v: PROTOCOL_VERSION, kind: "start", map: "river-nile" }));
     const [hostBegin, guestBegin] = await Promise.all([host.nextMessage(), guest.nextMessage()]);
-    expect(hostBegin).toMatchObject({ kind: "begin", hashIntervalTicks: 20 });
+    expect(hostBegin).toMatchObject({
+      kind: "begin",
+      map: "river-nile",
+      hashIntervalTicks: 20,
+    });
     expect(guestBegin).toEqual(hostBegin);
 
     host.socket.send(

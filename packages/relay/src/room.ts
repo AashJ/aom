@@ -1,6 +1,7 @@
 // Lobby/room state as plain data plus pure transition functions returning the
 // ServerMessages the server should send; the server app stays a thin pipe
 // between sockets and these functions.
+import { DEFAULT_MAP_ID, type MapId } from "@aom/sim";
 import { PROTOCOL_VERSION, type PlayerInfo, type ServerMessage } from "./protocol";
 import { createHashTracker, type HashTracker } from "./hash-tracker";
 import { createSequencer, type Sequencer } from "./sequencer";
@@ -8,6 +9,7 @@ import { createSequencer, type Sequencer } from "./sequencer";
 export interface Room {
   code: string;
   seed: number;
+  map: MapId;
   players: PlayerInfo[];
   nextPlayerId: number;
   started: boolean;
@@ -19,6 +21,7 @@ export function createRoom(code: string, seed: number): Room {
   return {
     code,
     seed,
+    map: DEFAULT_MAP_ID,
     players: [],
     nextPlayerId: 0,
     started: false,
@@ -69,17 +72,23 @@ export function removePlayer(room: Room, playerId: number): ServerMessage {
   };
 }
 
-export function startRoom(room: Room, hashIntervalTicks: number): ServerMessage | null {
+export function startRoom(
+  room: Room,
+  hashIntervalTicks: number,
+  map: MapId = DEFAULT_MAP_ID,
+): ServerMessage | null {
   if (room.started || room.players.length === 0) {
     return null;
   }
 
   room.started = true;
+  room.map = map;
 
   return {
     v: PROTOCOL_VERSION,
     kind: "begin",
     seed: room.seed,
+    map: room.map,
     players: [...room.players],
     hashIntervalTicks,
   };

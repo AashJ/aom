@@ -8,6 +8,7 @@ import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import type { World } from "./ecs/world";
 import { AGE_COUNT } from "./ecs/progression";
 import { VISIBILITY_TILES } from "./visibility";
+import { MAP_RIVER_NILE } from "./maps";
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -20,6 +21,17 @@ export function hashWorld(world: World): number {
   h = Math.imul(h, FNV_PRIME);
 
   word = world.count >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
+  word = world.mapId === MAP_RIVER_NILE ? 1 : 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
+  // Static terrain and water masks are pure functions of this map identity and
+  // seed. Hash their compact inputs instead of rescanning another 65,536 cells
+  // at every lockstep checkpoint.
+  word = world.mapSeed >>> 0;
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 

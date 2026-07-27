@@ -17,6 +17,7 @@ export {
   createGame,
   type GameCulture,
   type GameHandle,
+  type GameMap,
   type GameOptions,
   type SelectionSummary,
 } from "./game";

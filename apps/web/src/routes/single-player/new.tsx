@@ -1,4 +1,4 @@
-import type { GameCulture } from "@aom/engine";
+import type { GameCulture, GameMap } from "@aom/engine";
 import { buttonVariants } from "@aom/ui/components/button";
 import { cn } from "@aom/ui/lib/utils";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -30,14 +30,31 @@ const cultures = [
   description: string;
 }[];
 
-const matchDetails = [
-  ["Scenario", "Skirmish"],
-  ["Map", "Aegean Coast"],
-  ["Difficulty", "Standard"],
-] as const;
+const maps = [
+  {
+    id: "aegean-coast",
+    name: "Aegean Coast",
+    description: "The established land battlefield.",
+  },
+  {
+    id: "river-nile",
+    name: "River Nile",
+    description: "Separated desert banks divided by the broad Egyptian Nile.",
+  },
+] as const satisfies readonly {
+  id: GameMap;
+  name: string;
+  description: string;
+}[];
 
 function NewSinglePlayerComponent() {
   const [culture, setCulture] = useState<GameCulture>("greek");
+  const [map, setMap] = useState<GameMap>("aegean-coast");
+  const matchDetails = [
+    ["Scenario", "Skirmish"],
+    ["Map", maps.find((option) => option.id === map)!.name],
+    ["Difficulty", "Standard"],
+  ] as const;
 
   return (
     <main className="relative isolate min-h-dvh overflow-hidden bg-background text-foreground">
@@ -159,9 +176,38 @@ function NewSinglePlayerComponent() {
                 })}
               </div>
 
+              <div className="grid gap-2">
+                <h2 className="font-display text-xl font-medium text-[#f7d46b]">Map</h2>
+                <div className="grid gap-3 sm:grid-cols-2" aria-label="Available maps">
+                  {maps.map((option) => {
+                    const selected = map === option.id;
+
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setMap(option.id)}
+                        className={cn(
+                          "grid gap-1 rounded-sm bg-[#080d3a]/70 p-3 text-left ring-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b]",
+                          selected
+                            ? "ring-2 ring-[#f7d46b]"
+                            : "ring-[#d8bb5a]/45 hover:brightness-110",
+                        )}
+                      >
+                        <span className="font-display text-lg font-medium text-[#fff1b1]">
+                          {option.name}
+                        </span>
+                        <span className="text-sm text-[#ddd3b7]">{option.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <Link
                 to="/game"
-                search={{ culture }}
+                search={{ culture, map }}
                 className={cn(
                   buttonVariants({ variant: "default", size: "lg" }),
                   "h-10 rounded-full bg-[#d8bb5a] px-4 font-display text-base font-medium text-[#161230] shadow-lg ring-2 ring-[#d8bb5a] hover:bg-[#f7d46b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f7d46b] sm:h-9 sm:text-sm",

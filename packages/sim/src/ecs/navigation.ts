@@ -1,11 +1,33 @@
 import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { MAP_TILES } from "../terrain";
 import type { World } from "./world";
+import {
+  MOVEMENT_DOMAIN_LAND,
+  MOVEMENT_DOMAIN_WATER,
+  type MovementDomain,
+} from "../content/unit-type-schema";
+import { UNIT_TYPES } from "./types";
 
 const FIELD_CACHE_SIZE = 8;
 
 export interface WalkableGroundState {
   readonly walkable: Uint8Array;
+  readonly waterNavigable?: Uint8Array;
+}
+
+export function movementDomainForType(unitType: number): MovementDomain {
+  return UNIT_TYPES[unitType]!.movementDomain ?? MOVEMENT_DOMAIN_LAND;
+}
+
+export function navigationGridForDomain(
+  world: WalkableGroundState,
+  movementDomain: MovementDomain,
+): Uint8Array {
+  if (movementDomain === MOVEMENT_DOMAIN_WATER && world.waterNavigable !== undefined) {
+    return world.waterNavigable;
+  }
+
+  return world.walkable;
 }
 
 export function isWalkableStep(
@@ -14,14 +36,16 @@ export function isWalkableStep(
   fromZ: number,
   toX: number,
   toZ: number,
+  movementDomain: MovementDomain = MOVEMENT_DOMAIN_LAND,
 ): boolean {
+  const navigationGrid = navigationGridForDomain(world, movementDomain);
   const fromTile = cellOf(fromX, fromZ);
   const toTile = cellOf(toX, toZ);
 
   // Units spawned on an obstructed tile must be able to move within it until
   // they cross onto walkable ground.
   if (toTile === fromTile) return true;
-  if (world.walkable[toTile] !== 1) return false;
+  if (navigationGrid[toTile] !== 1) return false;
 
   const fromTileX = fromTile & (MAP_TILES - 1);
   const fromTileZ = fromTile >>> 8;
@@ -33,7 +57,7 @@ export function isWalkableStep(
   // so requiring both orthogonal side tiles prevents diagonal corner cutting.
   const xSideTile = fromTileZ * MAP_TILES + toTileX;
   const zSideTile = toTileZ * MAP_TILES + fromTileX;
-  return world.walkable[xSideTile] === 1 && world.walkable[zSideTile] === 1;
+  return navigationGrid[xSideTile] === 1 && navigationGrid[zSideTile] === 1;
 }
 
 export function setFacingToward(
@@ -64,12 +88,14 @@ export function assignFieldGoal(
   // MOVE keeps its walkable-goal remap before calling this. Static buildings keep their blocked
   // center as the logical/cache goal, but route to every walkable cell around their footprint.
   const goalCell = cellOf(targetX, targetZ);
+  const movementDomain = movementDomainForType(world.unitType[index]!);
+  const navigationGrid = navigationGridForDomain(world, movementDomain);
   let fieldForGoal: FlowField | null = null;
 
   for (let cacheIndex = 0; cacheIndex < world.fieldCache.length; cacheIndex += 1) {
     const field = world.fieldCache[cacheIndex]!;
 
-    if (field.goalCell === goalCell) {
+    if (field.goalCell === goalCell && field.movementDomain === movementDomain) {
       fieldForGoal = field;
       world.fieldCache.splice(cacheIndex, 1);
       world.fieldCache.push(field);
@@ -104,15 +130,15 @@ export function assignFieldGoal(
 
           const routeGoalCell = z * MAP_TILES + x;
 
-          if (world.walkable[routeGoalCell] === 1) {
+          if (navigationGrid[routeGoalCell] === 1) {
             routeGoalCells.push(routeGoalCell);
           }
         }
       }
 
-      fieldForGoal = buildFlowField(world.walkable, goalCell, routeGoalCells);
+      fieldForGoal = buildFlowField(navigationGrid, goalCell, routeGoalCells, movementDomain);
     } else {
-      fieldForGoal = buildFlowField(world.walkable, goalCell);
+      fieldForGoal = buildFlowField(navigationGrid, goalCell, undefined, movementDomain);
     }
 
     world.fieldCache.push(fieldForGoal);

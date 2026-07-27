@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { advanceProjectileAim, clearAttackOrder } from "./attack-state";
 import { NO_TARGET } from "./id";
 import { NO_MELEE_ATTACK_VARIANT } from "./melee-attack-cycles";
+import { MOVEMENT_DOMAIN_LAND, type MovementDomain } from "../content/unit-type-schema";
 
 describe("canonical attack-sequence state", () => {
   test("advances only consecutive shots against the same stable target", () => {
@@ -11,7 +12,14 @@ describe("canonical attack-sequence state", () => {
       attackAimTarget: new Uint32Array([NO_TARGET]),
       attackAimShots: new Uint16Array(1),
       moving: new Uint8Array([1]),
-      unitField: [{ goalCell: 4, dirX: new Float32Array(1), dirZ: new Float32Array(1) }],
+      unitField: [
+        {
+          goalCell: 4,
+          movementDomain: MOVEMENT_DOMAIN_LAND as MovementDomain,
+          dirX: new Float32Array(1),
+          dirZ: new Float32Array(1),
+        },
+      ],
     };
 
     expect(advanceProjectileAim(state, 0, 44)).toBe(0);
@@ -31,7 +39,14 @@ describe("canonical attack-sequence state", () => {
       meleeActionVariant: new Uint8Array([1]),
       meleeActionImpactPending: new Uint8Array([1]),
       moving: new Uint8Array([1]),
-      unitField: [{ goalCell: 4, dirX: new Float32Array(1), dirZ: new Float32Array(1) }],
+      unitField: [
+        {
+          goalCell: 4,
+          movementDomain: MOVEMENT_DOMAIN_LAND as MovementDomain,
+          dirX: new Float32Array(1),
+          dirZ: new Float32Array(1),
+        },
+      ],
     };
 
     clearAttackOrder(state, 0);

@@ -1,12 +1,13 @@
 // Wire contract consumed by both ends (@aom/engine's net layer and apps/server),
 // so it lives in a package, not the server app. JSON-shaped plain data only;
 // versioned from message one.
-import type { Command } from "@aom/sim";
+import type { Command, MapId } from "@aom/sim";
 
 // v2 added COMMAND_CHEAT, v3 added COMMAND_ADVANCE_AGE, v4 added COMMAND_PRAY,
-// v5 added COMMAND_CANCEL_TRAIN, and v6 adds relic pickup/drop-off. Older clients would otherwise silently drop a command and
-// desync from a newer match.
-export const PROTOCOL_VERSION = 6;
+// v5 added COMMAND_CANCEL_TRAIN, v6 added relic pickup/drop-off, and v7 adds
+// deterministic map selection to the match handshake. Older clients would
+// otherwise construct a different world and immediately desync.
+export const PROTOCOL_VERSION = 7;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -35,6 +36,7 @@ export type ClientMessage =
   | {
       v: typeof PROTOCOL_VERSION;
       kind: "start";
+      map: MapId;
     }
   | {
       v: typeof PROTOCOL_VERSION;
@@ -75,6 +77,7 @@ export type ServerMessage =
       v: typeof PROTOCOL_VERSION;
       kind: "begin";
       seed: number;
+      map: MapId;
       players: PlayerInfo[];
       hashIntervalTicks: number;
     }

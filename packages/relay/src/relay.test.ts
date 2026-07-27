@@ -78,6 +78,7 @@ describe("room", () => {
     });
     expect(startRoom(room, 20)).toMatchObject({
       kind: "begin",
+      map: "aegean-coast",
       players: [
         { id: 0, name: "host" },
         { id: 1, name: "second" },
@@ -109,8 +110,13 @@ describe("room", () => {
     // Host migrates to the lowest remaining id.
     expect(isHost(room, 1)).toBe(true);
 
-    const begin = startRoom(room, 20);
-    expect(begin).toMatchObject({ kind: "begin", seed: 1337, hashIntervalTicks: 20 });
+    const begin = startRoom(room, 20, "river-nile");
+    expect(begin).toMatchObject({
+      kind: "begin",
+      seed: 1337,
+      map: "river-nile",
+      hashIntervalTicks: 20,
+    });
 
     // Started rooms reject both late joins and double starts.
     expect(addPlayer(room, "latecomer")).toBeNull();

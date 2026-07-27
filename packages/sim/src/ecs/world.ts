@@ -28,12 +28,15 @@ import {
 } from "../content/culture-types";
 import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
+import { MAP_TILES } from "../terrain";
 import {
-  computeWalkable,
-  generateHeightmap,
-  generateTerrainMaterials,
-  MAP_TILES,
-} from "../terrain";
+  DEFAULT_MAP_ID,
+  generateMap,
+  MAP_RIVER_NILE,
+  startLocationsForMap,
+  type MapId,
+  type StartLocation,
+} from "../maps";
 import {
   isEntityVisibleTo,
   isFootprintVisibleTo,
@@ -50,7 +53,13 @@ import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickGreekFavor } from "./favor";
 import { countLiveOrQueuedUnitType } from "./hero-lifecycle";
 import { registerPlayer } from "./players";
-import { assignFieldGoal, isWalkableStep, setFacingToward } from "./navigation";
+import {
+  assignFieldGoal,
+  isWalkableStep,
+  movementDomainForType,
+  navigationGridForDomain,
+  setFacingToward,
+} from "./navigation";
 import { MAX_PROJECTILE_BODY_RADIUS, MAX_TARGET_BODY_RADIUS } from "./unit-catalog-bounds";
 import { AGE_COUNT, NO_GOD } from "./progression";
 import {
@@ -173,51 +182,23 @@ const GOAL_REMAP_RADIUS = 8;
 export const SEPARATION_RADIUS = 0.8;
 // Caps crowd pressure independently of authored movement speed.
 const SEPARATION_MAX_STEP = 0.12;
-type StartLocation = readonly [number, number];
-
-// Classic random maps distribute starts around the map rather than filling a
-// square corner-by-corner. In particular, the three-player layout must not give
-// one player the long diagonal while the other two begin a side apart.
-const START_LOCATIONS_BY_PLAYER_COUNT: readonly (readonly StartLocation[])[] = [
-  [],
-  [[40, 40]],
-  [
-    [40, 40],
-    [216, 216],
-  ],
-  [
-    [128, 40],
-    [204, 172],
-    [52, 172],
-  ],
-  [
-    [40, 40],
-    [216, 216],
-    [216, 40],
-    [40, 216],
-  ],
-];
-
-function startLocationsForPlayerCount(playerCount: number): readonly StartLocation[] {
-  const locations = START_LOCATIONS_BY_PLAYER_COUNT[playerCount];
-
-  if (locations === undefined || locations.length !== playerCount) {
-    throw new RangeError(`Current map does not support ${playerCount} players.`);
-  }
-
-  return locations;
-}
-
 const GOLD_PLACEMENT_ATTEMPTS = 64;
 const INV_SQRT2 = 1 / Math.sqrt(2);
 const sampledFlowDirection = new Float64Array(2);
 const GOLD_OTHER_NODE_CLEARANCE = 2;
 // This is content for the current map, not a universal economy rule. Future
 // maps can choose different counts and ranges without changing mine behavior.
-const CURRENT_MAP_GOLD_PLACEMENTS = [
+const AEGEAN_GOLD_PLACEMENTS = [
   { perPlayer: 1, minDistance: 22, maxDistance: 32, goldMineSpacing: 6 },
   { perPlayer: 1, minDistance: 50, maxDistance: 75, goldMineSpacing: 10 },
   { perPlayer: 1, minDistance: 90, maxDistance: 115, goldMineSpacing: 12 },
+] as const;
+// river nile.xs: one small mine at 34–40 m, one medium mine at 40–60 m,
+// and three far mines within the player's team land from 60 m outward.
+const RIVER_NILE_GOLD_PLACEMENTS = [
+  { perPlayer: 1, minDistance: 34, maxDistance: 40, goldMineSpacing: 30 },
+  { perPlayer: 1, minDistance: 40, maxDistance: 60, goldMineSpacing: 30 },
+  { perPlayer: 3, minDistance: 60, maxDistance: 300, goldMineSpacing: 30 },
 ] as const;
 const MAX_PLAYABLE_MAP_SEED_ATTEMPTS = 256;
 
@@ -239,8 +220,13 @@ export interface World {
   tick: number;
   count: number;
   rng: Pcg32;
+  mapId: MapId;
+  mapSeed: number;
   heights: Float32Array;
   terrainMaterials: Uint8Array;
+  terrainDomains: Uint8Array;
+  waterNavigable: Uint8Array;
+  waterLevel: number;
   walkable: Uint8Array;
   posX: Float64Array;
   posZ: Float64Array;
@@ -349,10 +335,8 @@ export interface World {
   fieldCache: FlowField[];
 }
 
-export function createWorld(seed: number): World {
-  const heights = generateHeightmap(seed);
-  const terrainMaterials = generateTerrainMaterials(seed, heights);
-  const walkable = computeWalkable(heights);
+export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerCount = 2): World {
+  const generatedMap = generateMap(mapId, seed, Math.max(1, playerCount));
   const slotOf = new Int32Array(MAX_UNITS);
   const playerSlotById = new Int16Array(256);
   const playerMajorGod = new Uint8Array(256);
@@ -371,11 +355,16 @@ export function createWorld(seed: number): World {
     tick: 0,
     count: 0,
     rng: createPcg32(seed),
+    mapId,
+    mapSeed: seed,
     // One seed now derives the whole world: terrain and units can never disagree
     // about which map they're on.
-    heights,
-    terrainMaterials,
-    walkable,
+    heights: generatedMap.heights,
+    terrainMaterials: generatedMap.terrainMaterials,
+    terrainDomains: generatedMap.terrainDomains,
+    waterNavigable: generatedMap.waterNavigable,
+    waterLevel: generatedMap.waterLevel,
+    walkable: generatedMap.landWalkable,
     // SoA typed arrays: cache-friendly linear iteration, zero per-tick allocation, and
     // trivially hashable for future desync detection.
     posX: new Float64Array(MAX_UNITS),
@@ -496,6 +485,7 @@ function isTypeAvailableToPlayer(
 
 function hasWalkableDirectPath(
   world: World,
+  unitType: number,
   fromX: number,
   fromZ: number,
   toX: number,
@@ -513,7 +503,7 @@ function hasWalkableDirectPath(
     const nextX = fromX + ((toX - fromX) * segment) / segmentCount;
     const nextZ = fromZ + ((toZ - fromZ) * segment) / segmentCount;
 
-    if (!isWalkableStep(world, x, z, nextX, nextZ)) {
+    if (!isWalkableStep(world, x, z, nextX, nextZ, movementDomainForType(unitType))) {
       return false;
     }
 
@@ -522,6 +512,40 @@ function hasWalkableDirectPath(
   }
 
   return true;
+}
+
+function remapGoalForNavigationGrid(
+  navigationGrid: Uint8Array,
+  targetX: number,
+  targetZ: number,
+): readonly [number, number] | null {
+  const goalCell = cellOf(targetX, targetZ);
+
+  if (navigationGrid[goalCell] === 1) {
+    return [targetX, targetZ];
+  }
+
+  const goalTileX = goalCell % MAP_TILES;
+  const goalTileZ = Math.floor(goalCell / MAP_TILES);
+
+  // Fixed scan order is determinism; first hit is not the Euclidean-nearest
+  // but is stable and matches Classic's closest-reachable command behavior.
+  for (let radius = 1; radius <= GOAL_REMAP_RADIUS; radius += 1) {
+    for (let dz = -radius; dz <= radius; dz += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dz) !== radius) continue;
+        const tileX = goalTileX + dx;
+        const tileZ = goalTileZ + dz;
+
+        if (tileX < 0 || tileX >= MAP_TILES || tileZ < 0 || tileZ >= MAP_TILES) continue;
+        if (navigationGrid[tileZ * MAP_TILES + tileX] === 1) {
+          return [tileX + 0.5, tileZ + 0.5];
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 export function spawnUnit(
@@ -736,7 +760,7 @@ export function spawnUnits(
     return;
   }
 
-  const startLocations = startLocationsForPlayerCount(ownerCount);
+  const startLocations = startLocationsForMap(world.mapId, world.mapSeed, ownerCount);
 
   for (let ownerIndex = 0; ownerIndex < ownerCount; ownerIndex += 1) {
     registerPlayer(world, ownerIds[ownerIndex]!);
@@ -933,7 +957,10 @@ function spawnGoldMines(
   startLocations: readonly StartLocation[],
   startFields: readonly FlowField[],
 ): void {
-  for (const placement of CURRENT_MAP_GOLD_PLACEMENTS) {
+  const placements =
+    world.mapId === MAP_RIVER_NILE ? RIVER_NILE_GOLD_PLACEMENTS : AEGEAN_GOLD_PLACEMENTS;
+
+  for (const placement of placements) {
     for (let copy = 0; copy < placement.perPlayer; copy += 1) {
       for (let playerIndex = 0; playerIndex < world.playerCount; playerIndex += 1) {
         const [startX, startZ] = startLocations[playerIndex]!;
@@ -962,7 +989,7 @@ export function spawnResourceNodes(world: World): void {
   // Keep the two legacy resource fields in solo play; forests and berry patches remain
   // available on both halves of the map. Multiplayer adds one field per active start.
   const startFieldCount = Math.max(2, world.playerCount);
-  const startLocations = startLocationsForPlayerCount(startFieldCount);
+  const startLocations = startLocationsForMap(world.mapId, world.mapSeed, startFieldCount);
   const startFields: FlowField[] = [];
 
   for (let playerIndex = 0; playerIndex < startFieldCount; playerIndex += 1) {
@@ -1101,11 +1128,13 @@ export function createPlayableWorld(
   unitCount: number,
   players: readonly MatchPlayerSetup[],
   startingUnitTypesByCulture?: StartingUnitTypesByCulture,
+  mapId: MapId = DEFAULT_MAP_ID,
 ): World {
   const ownerIds = players.map((player) => player.id);
 
   for (let attempt = 0; attempt < MAX_PLAYABLE_MAP_SEED_ATTEMPTS; attempt += 1) {
-    const world = createWorld((seed + attempt) >>> 0);
+    const worldSeed = (seed + attempt) >>> 0;
+    const world = createWorld(worldSeed, mapId, Math.max(2, players.length));
 
     for (const player of players) {
       registerPlayer(world, player.id, player.majorGod);
@@ -1943,7 +1972,15 @@ export function tickWorld(world: World): void {
       const canApproachDirectly =
         dist <= FINAL_APPROACH_DIST &&
         (field === null ||
-          hasWalkableDirectPath(world, x, z, world.moveTargetX[i]!, world.moveTargetZ[i]!, dist));
+          hasWalkableDirectPath(
+            world,
+            world.unitType[i]!,
+            x,
+            z,
+            world.moveTargetX[i]!,
+            world.moveTargetZ[i]!,
+            dist,
+          ));
 
       // Fields quantize to tiles; a clear last stretch uses the exact line so arrival stays
       // bit-exact. If terrain blocks that segment, keep following the field around it.
@@ -2256,63 +2293,22 @@ function applyPendingCommands(world: World): void {
 
     // Late commands apply ASAP instead of dropping; deterministic because queue order is fixed.
     if (command.type === COMMAND_MOVE) {
-      let targetX = command.targetX;
-      let targetZ = command.targetZ;
-      let goalCell = cellOf(targetX, targetZ);
+      for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
+        const id = command.unitIds[unitIndex]!;
+        const index = resolveId(world, id);
 
-      if (world.walkable[goalCell] !== 1) {
-        const goalTileX = goalCell % MAP_TILES;
-        const goalTileZ = Math.floor(goalCell / MAP_TILES);
-        let remappedCell = -1;
+        if (index < 0) continue;
+        // THE ownership validation - one place, every client, deterministic. The relay stays
+        // dumb; forged or mis-addressed commands die here identically everywhere.
+        if (world.owner[index] !== command.issuer) continue;
+        const movementDomain = movementDomainForType(world.unitType[index]!);
+        const navigationGrid = navigationGridForDomain(world, movementDomain);
+        const target = remapGoalForNavigationGrid(navigationGrid, command.targetX, command.targetZ);
 
-        // Fixed scan order is determinism; first hit is not the euclidean-nearest
-        // but is stable and close enough - AoM-style "move to the closest reachable spot".
-        for (let r = 1; r <= GOAL_REMAP_RADIUS && remappedCell === -1; r += 1) {
-          for (let dz = -r; dz <= r && remappedCell === -1; dz += 1) {
-            for (let dx = -r; dx <= r; dx += 1) {
-              if (Math.abs(dx) !== r && Math.abs(dz) !== r) {
-                continue;
-              }
-
-              const tileX = goalTileX + dx;
-              const tileZ = goalTileZ + dz;
-
-              if (tileX < 0 || tileX >= MAP_TILES || tileZ < 0 || tileZ >= MAP_TILES) {
-                continue;
-              }
-
-              const candidate = tileZ * MAP_TILES + tileX;
-
-              if (world.walkable[candidate] === 1) {
-                remappedCell = candidate;
-                targetX = tileX + 0.5;
-                targetZ = tileZ + 0.5;
-                break;
-              }
-            }
-          }
-        }
-
-        if (remappedCell === -1) {
-          // Clicked deep inside a mountain; leave existing orders untouched.
-        } else {
-          goalCell = remappedCell;
-        }
-      }
-
-      if (world.walkable[goalCell] === 1) {
-        for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
-          const id = command.unitIds[unitIndex]!;
-          const index = resolveId(world, id);
-
-          if (index < 0) continue;
-          // THE ownership validation - one place, every client, deterministic. The relay stays
-          // dumb; forged or mis-addressed commands die here identically everywhere.
-          if (world.owner[index] !== command.issuer) continue;
-          // Carried resources persist across interrupts: a hauler keeps the load.
-          clearUnitTask(world, index);
-          assignFieldGoal(world, index, targetX, targetZ);
-        }
+        if (target === null) continue;
+        // Carried resources persist across interrupts: a hauler keeps the load.
+        clearUnitTask(world, index);
+        assignFieldGoal(world, index, target[0], target[1]);
       }
     } else if (command.type === COMMAND_STOP) {
       for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
