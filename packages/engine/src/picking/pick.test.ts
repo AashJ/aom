@@ -27,7 +27,9 @@ import {
   TYPE_JASON,
   TYPE_MILITIA,
   TYPE_RELIC,
+  TYPE_TREE,
   UNIT_TYPES,
+  updateVisibility,
   VERTS_PER_ROW,
   type RenderSnapshot,
   tickWorld,
@@ -379,6 +381,70 @@ describe("pickUnit", () => {
     expect(Array.from(marker)).toEqual([192, 64]);
     expect(input.commandPending).toBeFalse();
     expect(input.commandFromMinimap).toBeFalse();
+  });
+
+  test("a minimap command immediately after marquee selection sees the selected unit", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+    const input = commandInput(0, 0);
+
+    spawnUnit(world, camera.target[0]!, camera.target[2]!, 0, 0);
+    spawnUnit(
+      world,
+      camera.target[0]! + 4,
+      camera.target[2]! + 4,
+      0,
+      0,
+      NEUTRAL_OWNER,
+      TYPE_TREE,
+    );
+    updateVisibility(world);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    marqueeSelect(
+      world,
+      camera,
+      0,
+      0,
+      canvas.clientWidth,
+      canvas.clientHeight,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+    );
+
+    input.commandFromMinimap = true;
+    input.commandWorldX = 192;
+    input.commandWorldZ = 64;
+
+    const issued = consumeCommandInput(
+      input,
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(world.selected[0]).toBe(1);
+    expect(world.selected[1]).toBe(1);
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["move"]);
+    expect(sink.moveTargets).toEqual([[192, 64]]);
   });
 
   test("right-click on an own blueprint routes to Build", () => {

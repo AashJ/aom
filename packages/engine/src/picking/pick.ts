@@ -246,11 +246,14 @@ export function consumeSelectionInput(
   const hit = pickUnit(camera, ndcX, ndcY, prev, curr, alpha, heights);
 
   clearSelection(world);
+  // Selection is client-local UI state, so do not wait for the next 20 Hz snapshot write.
+  // Command routing below reads curr in this same frame.
+  curr.selected.fill(0, 0, curr.count);
 
   if (hit >= 0) {
     // Plain click replaces the selection; additive shift-click arrives with real gameplay.
-    // The tint appears after the next snapshot write, at most 50 ms later.
     setSelected(world, hit, true);
+    curr.selected[hit] = 1;
   }
 }
 
@@ -389,6 +392,10 @@ export function marqueeSelect(
   canvas: HTMLCanvasElement,
 ): void {
   clearSelection(world);
+  // Keep the render/command snapshot coherent with the immediately-mutated local selection.
+  // Without this, a fast minimap click after releasing the marquee sees the prior selection
+  // until the next simulation snapshot (up to 50 ms later).
+  curr.selected.fill(0, 0, curr.count);
 
   const m = camera.viewProj;
   const clientWidth = canvas.clientWidth;
@@ -423,6 +430,7 @@ export function marqueeSelect(
 
     if (minX <= px && px <= maxX && minY <= py && py <= maxY) {
       setSelected(world, i, true);
+      curr.selected[i] = 1;
     }
   }
 }
