@@ -12,7 +12,28 @@ import {
   GOD_HERMES,
 } from "@aom/sim";
 import { PROTOCOL_VERSION, type ClientMessage } from "@aom/relay";
-import { createRelaySink, relayUrlForRoom } from "./relay";
+import { createRelaySink, getLobbyRole, relayUrlForRoom } from "./relay";
+
+describe("multiplayer lobby role", () => {
+  test("stays joining until the relay identifies this player", () => {
+    expect(getLobbyRole([], -1)).toBe("joining");
+    expect(getLobbyRole([{ id: 0, name: "host" }], -1)).toBe("joining");
+  });
+
+  test("assigns the lowest active player id as host", () => {
+    const players = [
+      { id: 3, name: "host" },
+      { id: 7, name: "guest" },
+    ];
+
+    expect(getLobbyRole(players, 3)).toBe("host");
+    expect(getLobbyRole(players, 7)).toBe("guest");
+  });
+
+  test("follows host migration in the rendered roster", () => {
+    expect(getLobbyRole([{ id: 7, name: "new host" }], 7)).toBe("host");
+  });
+});
 
 describe("relay connection URL", () => {
   test("routes the WebSocket to the room's Durable Object", () => {

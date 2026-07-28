@@ -7,6 +7,7 @@ import {
   MATCH_DRAW,
   connectToRelay,
   createGame,
+  getLobbyRole,
   isWebGPUSupported,
   WebGPUUnsupportedError,
   type GameCulture,
@@ -256,7 +257,6 @@ function GameComponent() {
         room={room}
         players={net.players}
         selfId={net.selfId}
-        isHost={sessionRef.current?.isHost() ?? false}
         onStart={(selectedMap) => sessionRef.current?.startMatch(selectedMap)}
         closed={net.closed}
       />
@@ -269,7 +269,6 @@ function GameComponent() {
         room={room}
         players={net.players}
         selfId={net.selfId}
-        isHost={sessionRef.current?.isHost() ?? false}
         onStart={(selectedMap) => sessionRef.current?.startMatch(selectedMap)}
         closed={net.closed}
       />
@@ -367,14 +366,12 @@ function LobbyScreen({
   room,
   players,
   selfId,
-  isHost,
   onStart,
   closed,
 }: {
   room: string;
   players: PlayerInfo[];
   selfId: number;
-  isHost: boolean;
   onStart: (map: GameMap) => void;
   closed: boolean;
 }) {
@@ -382,6 +379,8 @@ function LobbyScreen({
     (lowest, player) => Math.min(lowest, player.id),
     Number.POSITIVE_INFINITY,
   );
+  const role = getLobbyRole(players, selfId);
+  const isHost = role === "host";
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [map, setMap] = useState<GameMap>("aegean-coast");
 
@@ -475,7 +474,11 @@ function LobbyScreen({
               </p>
             )}
 
-            {!isHost && (
+            {role === "joining" && (
+              <p className="mt-6 text-base text-slate-300 sm:text-sm">Joining lobby…</p>
+            )}
+
+            {role === "guest" && (
               <p className="mt-6 text-base text-slate-300 sm:text-sm">
                 Waiting for the host to start…
               </p>

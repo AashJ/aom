@@ -41,12 +41,26 @@ export interface BeginInfo {
   selfId: number;
 }
 
+export type LobbyRole = "joining" | "host" | "guest";
+
+export function getLobbyRole(players: PlayerInfo[], selfId: number): LobbyRole {
+  if (!players.some((player) => player.id === selfId)) {
+    return "joining";
+  }
+
+  let hostId = Number.POSITIVE_INFINITY;
+  for (const player of players) {
+    hostId = Math.min(hostId, player.id);
+  }
+
+  return selfId === hostId ? "host" : "guest";
+}
+
 export interface NetSession {
   readonly sink: CommandSink;
   readonly buffer: TurnBuffer;
   readonly begin: Promise<BeginInfo>;
   readonly started: Promise<void>;
-  isHost(): boolean;
   startMatch(map?: MapId): void;
   ready(): void;
   reportHash(tick: number, value: number): void;
@@ -318,16 +332,6 @@ export function connectToRelay(url: string, room: string, name: string): NetSess
     buffer,
     begin,
     started,
-
-    isHost(): boolean {
-      // Mirrors the server's rule: the current lowest player id is host.
-      let lowestPlayerId = Number.POSITIVE_INFINITY;
-      for (const player of roster) {
-        lowestPlayerId = Math.min(lowestPlayerId, player.id);
-      }
-
-      return selfId === lowestPlayerId;
-    },
 
     startMatch(map: MapId = MAP_AEGEAN_COAST): void {
       send({ v: PROTOCOL_VERSION, kind: "start", map });
