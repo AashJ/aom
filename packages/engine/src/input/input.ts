@@ -8,6 +8,8 @@ import {
 // Pure geometry only - no GPU coupling.
 const minimapRectScratch = new Float32Array(4);
 const minimapPairScratch = new Float32Array(2);
+const VIRTUAL_POINTER_TARGET_SELECTOR =
+  'button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[role="button"]:not([aria-disabled="true"])';
 
 export interface InputState {
   keyPanX: number;
@@ -97,8 +99,15 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   let rightDown = false;
   let rightDownX = 0;
   let rightDownY = 0;
+  let dragButtonMask = 0;
   let marqueeActive = false;
+  let virtualPointerX = 0;
+  let virtualPointerY = 0;
+  let virtualPressCaptured = false;
+  let virtualPressTarget: HTMLElement | null = null;
   const marquee = document.createElement("div");
+  const virtualPointer =
+    typeof canvas.requestPointerLock === "function" ? document.createElement("div") : null;
 
   marquee.style.position = "absolute";
   marquee.style.border = "1px solid rgba(120, 180, 255, 0.9)";
@@ -109,9 +118,65 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   // position:relative, so absolute coordinates are canvas-relative.
   (canvas.parentElement ?? document.body).appendChild(marquee);
 
+  if (virtualPointer) {
+    virtualPointer.setAttribute("aria-hidden", "true");
+    virtualPointer.style.position = "fixed";
+    virtualPointer.style.zIndex = "2147483647";
+    virtualPointer.style.width = "22px";
+    virtualPointer.style.height = "29px";
+    virtualPointer.style.pointerEvents = "none";
+    virtualPointer.style.display = "none";
+    virtualPointer.style.transform = "translate(-2px, -2px)";
+    virtualPointer.style.clipPath =
+      "polygon(8% 0%, 8% 80%, 34% 62%, 58% 100%, 78% 88%, 54% 53%, 92% 51%)";
+    virtualPointer.style.background =
+      "linear-gradient(135deg, #fff7c7 0%, #e8c868 45%, #8d5e20 100%)";
+    virtualPointer.style.filter =
+      "drop-shadow(-1px 0 #21160b) drop-shadow(1px 0 #21160b) drop-shadow(0 -1px #21160b) drop-shadow(0 1px #21160b) drop-shadow(1px 2px 1px rgb(0 0 0 / 70%))";
+    (canvas.parentElement ?? document.body).appendChild(virtualPointer);
+  }
+
   function recomputeKeyPan(): void {
     state.keyPanX = (d || right ? 1 : 0) - (a || left ? 1 : 0);
     state.keyPanY = (w || up ? 1 : 0) - (s || down ? 1 : 0);
+  }
+
+  function resetPointerGesture(): void {
+    state.minimapDragging = false;
+    leftDown = false;
+    rightDown = false;
+    dragButtonMask = 0;
+    marqueeActive = false;
+    marquee.style.display = "none";
+    state.dragging = false;
+    state.hasDragAnchor = false;
+    virtualPressCaptured = false;
+    virtualPressTarget = null;
+  }
+
+  function deactivatePointer(): void {
+    resetPointerGesture();
+    state.pointerInside = false;
+    state.pointerOverMinimap = false;
+  }
+
+  function resetAllInput(): void {
+    w = false;
+    s = false;
+    a = false;
+    d = false;
+    up = false;
+    down = false;
+    left = false;
+    right = false;
+    recomputeKeyPan();
+    deactivatePointer();
+  }
+
+  function handleVisibilityChange(): void {
+    if (document.hidden) {
+      resetAllInput();
+    }
   }
 
   function setKey(code: string, pressed: boolean): boolean {
@@ -198,6 +263,13 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   }
 
   function updatePointerOverMinimap(x: number, y: number): void {
+    if (x < 0 || y < 0 || x >= canvas.clientWidth || y >= canvas.clientHeight) {
+      state.pointerInside = false;
+      state.pointerOverMinimap = false;
+      return;
+    }
+
+    state.pointerInside = true;
     minimapRectPx(canvas.clientWidth, canvas.clientHeight, minimapRectScratch);
     minimapUnitFromPixel(x, y, minimapRectScratch, minimapPairScratch, 0);
     state.pointerOverMinimap = isInsideMinimapDiamond(
@@ -206,36 +278,165 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     );
   }
 
+  function isPointerLocked(): boolean {
+    return document.pointerLockElement === canvas;
+  }
+
+  function pointerCoordinates(event: PointerEvent, applyMovement: boolean): [number, number] {
+    if (!isPointerLocked()) {
+      return [event.offsetX, event.offsetY];
+    }
+
+    if (applyMovement) {
+      virtualPointerX = Math.max(
+        0,
+        Math.min(canvas.clientWidth - 1, virtualPointerX + event.movementX),
+      );
+      virtualPointerY = Math.max(
+        0,
+        Math.min(canvas.clientHeight - 1, virtualPointerY + event.movementY),
+      );
+    }
+
+    return [virtualPointerX, virtualPointerY];
+  }
+
+  function updateVirtualPointerTarget(x: number, y: number): Element | null {
+    if (!isPointerLocked()) {
+      updatePointerOverMinimap(x, y);
+      return canvas;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    virtualPointer?.style.setProperty("left", `${rect.left + x}px`);
+    virtualPointer?.style.setProperty("top", `${rect.top + y}px`);
+    const target = document.elementFromPoint(rect.left + x, rect.top + y);
+
+    if (target === canvas) {
+      updatePointerOverMinimap(x, y);
+    } else {
+      state.pointerInside = false;
+      state.pointerOverMinimap = false;
+    }
+
+    return target;
+  }
+
+  function captureVirtualUiPress(target: Element | null, event: PointerEvent): boolean {
+    if (!isPointerLocked() || target === canvas) {
+      return false;
+    }
+
+    const pressTarget =
+      event.button === 0 && target instanceof HTMLElement
+        ? target.closest<HTMLElement>(VIRTUAL_POINTER_TARGET_SELECTOR)
+        : null;
+    resetPointerGesture();
+    virtualPressCaptured = true;
+    virtualPressTarget = pressTarget;
+    event.preventDefault();
+    return true;
+  }
+
+  function releaseVirtualUiPress(target: Element | null, event: PointerEvent): boolean {
+    if (!isPointerLocked() || (!virtualPressCaptured && target === canvas)) {
+      return false;
+    }
+
+    const pressedTarget = virtualPressTarget;
+    const shouldClick =
+      event.button === 0 &&
+      pressedTarget !== null &&
+      target instanceof Node &&
+      (target === pressedTarget || pressedTarget.contains(target));
+    resetPointerGesture();
+
+    if (shouldClick) {
+      pressedTarget.focus({ preventScroll: true });
+      pressedTarget.click();
+    }
+
+    event.preventDefault();
+    return true;
+  }
+
+  function setPointerCaptureUnlessLocked(event: PointerEvent): void {
+    if (!isPointerLocked()) {
+      canvas.setPointerCapture(event.pointerId);
+    }
+  }
+
+  function handlePointerLockChange(): void {
+    if (!virtualPointer) {
+      return;
+    }
+
+    if (isPointerLocked()) {
+      virtualPointerX =
+        state.pointerInside && state.pointerX >= 0 && state.pointerX < canvas.clientWidth
+          ? state.pointerX
+          : canvas.clientWidth / 2;
+      virtualPointerY =
+        state.pointerInside && state.pointerY >= 0 && state.pointerY < canvas.clientHeight
+          ? state.pointerY
+          : canvas.clientHeight / 2;
+      state.pointerX = virtualPointerX;
+      state.pointerY = virtualPointerY;
+      virtualPointer.style.display = "block";
+      updateVirtualPointerTarget(virtualPointerX, virtualPointerY);
+      return;
+    }
+
+    virtualPointer.style.display = "none";
+    deactivatePointer();
+  }
+
   window.addEventListener("keydown", handleKeyDown, { signal });
   window.addEventListener("keyup", handleKeyUp, { signal });
+  window.addEventListener("blur", resetAllInput, { signal });
+  document.addEventListener("visibilitychange", handleVisibilityChange, { signal });
+  document.addEventListener("pointerlockchange", handlePointerLockChange, { signal });
+  handlePointerLockChange();
   canvas.addEventListener(
     "pointermove",
     (event) => {
-      state.pointerX = event.offsetX;
-      state.pointerY = event.offsetY;
-      state.pointerInside = true;
-      updatePointerOverMinimap(event.offsetX, event.offsetY);
+      const [pointerX, pointerY] = pointerCoordinates(event, true);
+      state.pointerX = pointerX;
+      state.pointerY = pointerY;
+      const target = updateVirtualPointerTarget(pointerX, pointerY);
+
+      if (isPointerLocked() && (virtualPressCaptured || target !== canvas)) {
+        if (!virtualPressCaptured) {
+          resetPointerGesture();
+        }
+        return;
+      }
+
+      // Browsers can lose the corresponding pointerup when focus or capture moves outside the
+      // page. The physical button mask lets the next move repair any latched gesture state.
+      if (
+        (leftDown && (event.buttons & 1) === 0) ||
+        (rightDown && (event.buttons & 2) === 0) ||
+        (dragButtonMask !== 0 && (event.buttons & dragButtonMask) === 0)
+      ) {
+        resetPointerGesture();
+      }
 
       if (rightDown && !state.dragging) {
-        const dx = event.offsetX - rightDownX;
-        const dy = event.offsetY - rightDownY;
+        const dx = pointerX - rightDownX;
+        const dy = pointerY - rightDownY;
 
         // A right press is ambiguous until it moves — under 4 px it's a command click,
         // over it's the M1 grab-pan.
         if (Math.abs(dx) + Math.abs(dy) >= 4) {
           state.dragging = true;
+          dragButtonMask = 2;
         }
       }
 
       if (state.minimapDragging) {
         minimapRectPx(canvas.clientWidth, canvas.clientHeight, minimapRectScratch);
-        minimapUnitFromPixel(
-          event.offsetX,
-          event.offsetY,
-          minimapRectScratch,
-          minimapPairScratch,
-          0,
-        );
+        minimapUnitFromPixel(pointerX, pointerY, minimapRectScratch, minimapPairScratch, 0);
         minimapUnitToWorld(minimapPairScratch[0]!, minimapPairScratch[1]!, minimapPairScratch, 0);
         state.minimapJumpX = minimapPairScratch[0]!;
         state.minimapJumpZ = minimapPairScratch[1]!;
@@ -244,8 +445,8 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       }
 
       if (leftDown) {
-        const dx = event.offsetX - leftDownX;
-        const dy = event.offsetY - leftDownY;
+        const dx = pointerX - leftDownX;
+        const dy = pointerY - leftDownY;
 
         if (!marqueeActive && Math.abs(dx) + Math.abs(dy) >= 4) {
           marqueeActive = true;
@@ -253,10 +454,10 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
         }
 
         if (marqueeActive) {
-          const minX = Math.min(leftDownX, event.offsetX);
-          const minY = Math.min(leftDownY, event.offsetY);
-          const maxX = Math.max(leftDownX, event.offsetX);
-          const maxY = Math.max(leftDownY, event.offsetY);
+          const minX = Math.min(leftDownX, pointerX);
+          const minY = Math.min(leftDownY, pointerY);
+          const maxX = Math.max(leftDownX, pointerX);
+          const maxY = Math.max(leftDownY, pointerY);
 
           marquee.style.left = `${minX}px`;
           marquee.style.top = `${minY}px`;
@@ -269,24 +470,36 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   );
   canvas.addEventListener(
     "pointerleave",
-    () => {
+    (event) => {
+      if (isPointerLocked()) {
+        return;
+      }
+
       state.pointerInside = false;
       state.pointerOverMinimap = false;
+
+      if (event.buttons === 0) {
+        resetPointerGesture();
+      }
     },
     { signal },
   );
   canvas.addEventListener(
     "pointerdown",
     (event) => {
-      state.pointerX = event.offsetX;
-      state.pointerY = event.offsetY;
-      state.pointerInside = true;
-      updatePointerOverMinimap(event.offsetX, event.offsetY);
+      const [pointerX, pointerY] = pointerCoordinates(event, false);
+      state.pointerX = pointerX;
+      state.pointerY = pointerY;
+      const target = updateVirtualPointerTarget(pointerX, pointerY);
+
+      if (captureVirtualUiPress(target, event)) {
+        return;
+      }
 
       if (event.button === 0) {
         if (state.pointerOverMinimap) {
           state.minimapDragging = true;
-          canvas.setPointerCapture(event.pointerId);
+          setPointerCaptureUnlessLocked(event);
           minimapUnitToWorld(minimapPairScratch[0]!, minimapPairScratch[1]!, minimapPairScratch, 0);
           state.minimapJumpX = minimapPairScratch[0]!;
           state.minimapJumpZ = minimapPairScratch[1]!;
@@ -296,24 +509,25 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
         }
 
         leftDown = true;
-        leftDownX = event.offsetX;
-        leftDownY = event.offsetY;
-        canvas.setPointerCapture(event.pointerId);
+        leftDownX = pointerX;
+        leftDownY = pointerY;
+        setPointerCaptureUnlessLocked(event);
         return;
       }
 
       if (event.button === 1) {
         state.dragging = true;
-        canvas.setPointerCapture(event.pointerId);
+        dragButtonMask = 4;
+        setPointerCaptureUnlessLocked(event);
         event.preventDefault();
         return;
       }
 
       if (event.button === 2) {
         rightDown = true;
-        rightDownX = event.offsetX;
-        rightDownY = event.offsetY;
-        canvas.setPointerCapture(event.pointerId);
+        rightDownX = pointerX;
+        rightDownY = pointerY;
+        setPointerCaptureUnlessLocked(event);
         event.preventDefault();
       }
     },
@@ -322,26 +536,35 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
   canvas.addEventListener(
     "pointerup",
     (event) => {
+      const [pointerX, pointerY] = pointerCoordinates(event, false);
+      state.pointerX = pointerX;
+      state.pointerY = pointerY;
+      const target = updateVirtualPointerTarget(pointerX, pointerY);
+
+      if (releaseVirtualUiPress(target, event)) {
+        return;
+      }
+
       if (event.button === 0) {
         if (state.minimapDragging) {
           state.minimapDragging = false;
           return;
         }
 
-        const dx = event.offsetX - leftDownX;
-        const dy = event.offsetY - leftDownY;
+        const dx = pointerX - leftDownX;
+        const dy = pointerY - leftDownY;
 
         if (marqueeActive) {
-          state.marqueeMinX = Math.min(leftDownX, event.offsetX);
-          state.marqueeMinY = Math.min(leftDownY, event.offsetY);
-          state.marqueeMaxX = Math.max(leftDownX, event.offsetX);
-          state.marqueeMaxY = Math.max(leftDownY, event.offsetY);
+          state.marqueeMinX = Math.min(leftDownX, pointerX);
+          state.marqueeMinY = Math.min(leftDownY, pointerY);
+          state.marqueeMaxX = Math.max(leftDownX, pointerX);
+          state.marqueeMaxY = Math.max(leftDownY, pointerY);
           state.marqueePending = true;
           marqueeActive = false;
           marquee.style.display = "none";
         } else if (leftDown && Math.sqrt(dx * dx + dy * dy) < 4) {
-          state.clickX = event.offsetX;
-          state.clickY = event.offsetY;
+          state.clickX = pointerX;
+          state.clickY = pointerY;
           state.clickPending = true;
         }
 
@@ -350,7 +573,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       }
 
       if (event.button === 2) {
-        updatePointerOverMinimap(event.offsetX, event.offsetY);
+        updatePointerOverMinimap(pointerX, pointerY);
 
         if (rightDown && !state.dragging) {
           state.commandPending = true;
@@ -367,12 +590,13 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
             state.commandWorldZ = minimapPairScratch[1]!;
           } else {
             state.commandFromMinimap = false;
-            state.commandX = event.offsetX;
-            state.commandY = event.offsetY;
+            state.commandX = pointerX;
+            state.commandY = pointerY;
           }
         }
 
         rightDown = false;
+        dragButtonMask = 0;
         state.dragging = false;
         state.hasDragAnchor = false;
         return;
@@ -380,26 +604,15 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
 
       if (event.button === 1) {
         // Left release no longer kills an active middle/right drag.
+        dragButtonMask = 0;
         state.dragging = false;
         state.hasDragAnchor = false;
       }
     },
     { signal },
   );
-  canvas.addEventListener(
-    "pointercancel",
-    () => {
-      state.minimapDragging = false;
-      leftDown = false;
-      rightDown = false;
-      marqueeActive = false;
-      marquee.style.display = "none";
-      state.dragging = false;
-      state.hasDragAnchor = false;
-      state.pointerOverMinimap = false;
-    },
-    { signal },
-  );
+  canvas.addEventListener("pointercancel", deactivatePointer, { signal });
+  canvas.addEventListener("lostpointercapture", resetPointerGesture, { signal });
   canvas.addEventListener(
     "contextmenu",
     (event) => {
@@ -411,6 +624,14 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     "wheel",
     (event) => {
       event.preventDefault();
+
+      if (
+        isPointerLocked() &&
+        updateVirtualPointerTarget(virtualPointerX, virtualPointerY) !== canvas
+      ) {
+        return;
+      }
+
       state.wheelDelta += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
     },
     { passive: false, signal },
@@ -421,6 +642,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     detach(): void {
       controller.abort();
       marquee.remove();
+      virtualPointer?.remove();
     },
   };
 }

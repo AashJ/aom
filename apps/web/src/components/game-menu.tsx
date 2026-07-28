@@ -7,16 +7,25 @@ type MenuView = "closed" | "menu" | "options" | "quit";
 export function GameMenu({
   game,
   fullscreenTargetRef,
+  pointerLockTargetRef,
   pauseWhenOpen,
   onQuit,
 }: {
   game: GameHandle | null;
   fullscreenTargetRef: RefObject<HTMLElement | null>;
+  pointerLockTargetRef: RefObject<HTMLCanvasElement | null>;
   pauseWhenOpen: boolean;
   onQuit: () => void;
 }) {
   const [view, setView] = useState<MenuView>("closed");
-  const { isSupported, isFullscreen, toggleFullscreen } = useFullscreenMode(fullscreenTargetRef);
+  const {
+    isSupported,
+    isFullscreen,
+    isPointerLockSupported,
+    isPointerLocked,
+    requestPointerLock,
+    toggleFullscreen,
+  } = useFullscreenMode(fullscreenTargetRef, pointerLockTargetRef);
   const isOpen = view !== "closed";
 
   useEffect(() => {
@@ -73,6 +82,16 @@ export function GameMenu({
           aria-hidden="true"
         />
       </button>
+
+      {isFullscreen && isPointerLockSupported && !isPointerLocked && (
+        <button
+          type="button"
+          onClick={() => void requestPointerLock()}
+          className="fixed top-3 left-1/2 z-40 -translate-x-1/2 border border-[#21180e] bg-[#30271d] px-4 py-2 font-serif text-sm text-[#f4db78] shadow-[inset_0_0_0_1px_#756745,0_2px_8px_rgb(0_0_0/70%)] hover:bg-[#3b3022] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f4db78]"
+        >
+          Click to recapture the game pointer
+        </button>
+      )}
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -160,7 +179,7 @@ function OptionsPanel({
           <span className="text-[#f4db78]">{isFullscreen ? "On" : "Off"}</span>
         </button>
         <p className="mt-2 text-center text-xs text-[#c7bea4] [text-shadow:0_1px_1px_#000]">
-          Toggle anytime with Alt+Enter
+          Toggle anytime with Alt+Enter. Escape releases the game pointer.
         </p>
         {!isSupported && (
           <p className="mt-2 text-center text-xs text-[#d6a18a]">
@@ -221,44 +240,116 @@ function MenuButton({
   );
 }
 
-function useFullscreenMode(targetRef: RefObject<HTMLElement | null>) {
+function useFullscreenMode(
+  targetRef: RefObject<HTMLElement | null>,
+  pointerLockTargetRef: RefObject<HTMLCanvasElement | null>,
+) {
   const [isSupported, setIsSupported] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPointerLockSupported, setIsPointerLockSupported] = useState(false);
+  const [isPointerLocked, setIsPointerLocked] = useState(false);
 
   useEffect(() => {
     const target = targetRef.current;
+    const pointerLockTarget = pointerLockTargetRef.current;
 
     setIsSupported(
       document.fullscreenEnabled &&
         typeof target?.requestFullscreen === "function" &&
         typeof document.exitFullscreen === "function",
     );
+    setIsPointerLockSupported(
+      typeof pointerLockTarget?.requestPointerLock === "function" &&
+        typeof document.exitPointerLock === "function",
+    );
 
-    const syncFullscreenState = () => {
-      setIsFullscreen(document.fullscreenElement === targetRef.current);
+    const syncState = () => {
+      const fullscreen = document.fullscreenElement === targetRef.current;
+      setIsFullscreen(fullscreen);
+      setIsPointerLocked(document.pointerLockElement === pointerLockTargetRef.current);
+
+      if (
+        !fullscreen &&
+        document.pointerLockElement === pointerLockTargetRef.current &&
+        typeof document.exitPointerLock === "function"
+      ) {
+        document.exitPointerLock();
+      }
     };
 
-    syncFullscreenState();
-    document.addEventListener("fullscreenchange", syncFullscreenState);
+    syncState();
+    document.addEventListener("fullscreenchange", syncState);
+    document.addEventListener("pointerlockchange", syncState);
 
     return () => {
-      document.removeEventListener("fullscreenchange", syncFullscreenState);
+      document.removeEventListener("fullscreenchange", syncState);
+      document.removeEventListener("pointerlockchange", syncState);
     };
-  }, [targetRef]);
+  }, [pointerLockTargetRef, targetRef]);
+
+  const requestPointerLock = useCallback(async () => {
+    try {
+      await pointerLockTargetRef.current?.requestPointerLock();
+    } catch (error) {
+      console.error("Unable to capture the game pointer", error);
+    }
+  }, [pointerLockTargetRef]);
 
   const toggleFullscreen = useCallback(async () => {
+    const fullscreenTarget = targetRef.current;
+    const pointerLockTarget = pointerLockTargetRef.current;
+
+    if (!fullscreenTarget) {
+      return;
+    }
+
     try {
-      if (document.fullscreenElement === targetRef.current) {
+      if (document.fullscreenElement === fullscreenTarget) {
+        if (document.pointerLockElement === pointerLockTarget) {
+          document.exitPointerLock();
+        }
         await document.exitFullscreen();
       } else {
-        await targetRef.current?.requestFullscreen();
+        // Both calls must happen during the same user activation. Fullscreen consumes that
+        // activation in some browsers, so pointer lock is intentionally requested first.
+        let pointerLockRequest: Promise<void> | undefined;
+
+        if (typeof pointerLockTarget?.requestPointerLock === "function") {
+          try {
+            pointerLockRequest = Promise.resolve(pointerLockTarget.requestPointerLock()).catch(
+              (error: unknown) => {
+                console.error("Unable to capture the game pointer", error);
+              },
+            );
+          } catch (error) {
+            console.error("Unable to capture the game pointer", error);
+          }
+        }
+
+        try {
+          await fullscreenTarget.requestFullscreen({ navigationUI: "hide" });
+        } catch (error) {
+          if (document.pointerLockElement === pointerLockTarget) {
+            document.exitPointerLock();
+          }
+          throw error;
+        }
+
+        void pointerLockRequest;
       }
     } catch (error) {
       console.error("Unable to change fullscreen mode", error);
     }
-  }, [targetRef]);
+  }, [pointerLockTargetRef, targetRef]);
 
-  return { isSupported, isFullscreen, toggleFullscreen };
+  return {
+    isSupported,
+    isFullscreen,
+    isPointerLockSupported,
+    isPointerLocked,
+    requestPointerLock,
+    toggleFullscreen,
+  };
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

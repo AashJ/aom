@@ -286,6 +286,7 @@ function GameComponent() {
       <GameMenu
         game={game}
         fullscreenTargetRef={gameViewRef}
+        pointerLockTargetRef={canvasRef}
         pauseWhenOpen={room === undefined}
         onQuit={() => void navigate({ to: "/" })}
       />
