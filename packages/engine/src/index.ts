@@ -28,8 +28,8 @@ export {
   type PlayerStateCallback,
 } from "./player-state";
 export { TYPE_ICONS, type IconConfig } from "./assets/icons";
-export { connectToRelay } from "./net/relay";
-export type { BeginInfo, NetEvent, NetSession } from "./net/relay";
+export { connectToRelay, getLobbyRole } from "./net/relay";
+export type { BeginInfo, LobbyRole, NetEvent, NetSession } from "./net/relay";
 // The web app consumes the engine's API surface only — it re-exports the wire
 // types it needs so apps/web never depends on @aom/relay directly.
 export type { PlayerInfo } from "@aom/relay";
