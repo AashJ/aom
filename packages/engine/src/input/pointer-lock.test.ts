@@ -154,54 +154,54 @@ test("pointer lock drives the custom cursor and routes canvas and HUD clicks", (
   expect(cursor.style.left).toBe("800px");
   expect(cursor.style.top).toBe("450px");
 
-  dispatch(canvas, "pointermove", {
+  dispatch(fakeDocument, "mousemove", {
     buttons: 0,
     movementX: 120,
     movementY: -80,
-    offsetX: 0,
-    offsetY: 0,
   });
   expect(input.state.pointerX).toBe(920);
   expect(input.state.pointerY).toBe(370);
   expect(cursor.style.left).toBe("920px");
   expect(cursor.style.top).toBe("370px");
 
-  dispatch(canvas, "pointerdown", {
+  dispatch(fakeDocument, "mousedown", {
     button: 0,
     buttons: 1,
-    offsetX: 0,
-    offsetY: 0,
-    pointerId: 1,
   });
-  dispatch(canvas, "pointerup", {
+  dispatch(fakeDocument, "mouseup", {
     button: 0,
     buttons: 0,
-    offsetX: 0,
-    offsetY: 0,
-    pointerId: 1,
   });
   expect(input.state.clickPending).toBe(true);
   expect(input.state.clickX).toBe(920);
   expect(input.state.clickY).toBe(370);
 
+  // Browsers deliver the locked mouse stream as MouseEvents on the document. Those events
+  // must still support marquee selection and grab-pan, not just single clicks.
   input.state.clickPending = false;
+  dispatch(fakeDocument, "mousedown", { button: 0, buttons: 1, movementX: 0, movementY: 0 });
+  dispatch(fakeDocument, "mousemove", { buttons: 1, movementX: 20, movementY: 10 });
+  dispatch(fakeDocument, "mouseup", { button: 0, buttons: 0, movementX: 0, movementY: 0 });
+  expect(input.state.marqueePending).toBe(true);
+
+  input.state.marqueePending = false;
+  dispatch(fakeDocument, "mousedown", { button: 2, buttons: 2, movementX: 0, movementY: 0 });
+  dispatch(fakeDocument, "mousemove", { buttons: 2, movementX: 20, movementY: 0 });
+  expect(input.state.dragging).toBe(true);
+  dispatch(fakeDocument, "mouseup", { button: 2, buttons: 0, movementX: 0, movementY: 0 });
+  expect(input.state.dragging).toBe(false);
+
   const hudButton = new FakeElement();
   hudButton.interactive = true;
   fakeDocument.hitTarget = hudButton;
 
-  dispatch(canvas, "pointerdown", {
+  dispatch(fakeDocument, "mousedown", {
     button: 0,
     buttons: 1,
-    offsetX: 0,
-    offsetY: 0,
-    pointerId: 2,
   });
-  dispatch(canvas, "pointerup", {
+  dispatch(fakeDocument, "mouseup", {
     button: 0,
     buttons: 0,
-    offsetX: 0,
-    offsetY: 0,
-    pointerId: 2,
   });
   expect(hudButton.clicked).toBe(1);
   expect(hudButton.focused).toBe(true);

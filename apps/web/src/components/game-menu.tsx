@@ -249,6 +249,14 @@ function useFullscreenMode(
   const [isPointerLockSupported, setIsPointerLockSupported] = useState(false);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
 
+  const requestPointerLock = useCallback(async () => {
+    try {
+      await pointerLockTargetRef.current?.requestPointerLock();
+    } catch (error) {
+      console.error("Unable to capture the game pointer", error);
+    }
+  }, [pointerLockTargetRef]);
+
   useEffect(() => {
     const target = targetRef.current;
     const pointerLockTarget = pointerLockTargetRef.current;
@@ -263,7 +271,7 @@ function useFullscreenMode(
         typeof document.exitPointerLock === "function",
     );
 
-    const syncState = () => {
+    const syncState = (): boolean => {
       const fullscreen = document.fullscreenElement === targetRef.current;
       setIsFullscreen(fullscreen);
       setIsPointerLocked(document.pointerLockElement === pointerLockTargetRef.current);
@@ -275,25 +283,32 @@ function useFullscreenMode(
       ) {
         document.exitPointerLock();
       }
+
+      return fullscreen;
+    };
+
+    const handleFullscreenChange = () => {
+      // Pointer lock is allowed once fullscreen has been granted. Requesting it from this
+      // event avoids racing fullscreen and pointer-lock user-activation rules, and ensures
+      // every fullscreen entry captures the game cursor by default.
+      if (
+        syncState() &&
+        document.pointerLockElement !== pointerLockTargetRef.current &&
+        typeof pointerLockTargetRef.current?.requestPointerLock === "function"
+      ) {
+        void requestPointerLock();
+      }
     };
 
     syncState();
-    document.addEventListener("fullscreenchange", syncState);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("pointerlockchange", syncState);
 
     return () => {
-      document.removeEventListener("fullscreenchange", syncState);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("pointerlockchange", syncState);
     };
-  }, [pointerLockTargetRef, targetRef]);
-
-  const requestPointerLock = useCallback(async () => {
-    try {
-      await pointerLockTargetRef.current?.requestPointerLock();
-    } catch (error) {
-      console.error("Unable to capture the game pointer", error);
-    }
-  }, [pointerLockTargetRef]);
+  }, [pointerLockTargetRef, requestPointerLock, targetRef]);
 
   const toggleFullscreen = useCallback(async () => {
     const fullscreenTarget = targetRef.current;
@@ -310,32 +325,7 @@ function useFullscreenMode(
         }
         await document.exitFullscreen();
       } else {
-        // Both calls must happen during the same user activation. Fullscreen consumes that
-        // activation in some browsers, so pointer lock is intentionally requested first.
-        let pointerLockRequest: Promise<void> | undefined;
-
-        if (typeof pointerLockTarget?.requestPointerLock === "function") {
-          try {
-            pointerLockRequest = Promise.resolve(pointerLockTarget.requestPointerLock()).catch(
-              (error: unknown) => {
-                console.error("Unable to capture the game pointer", error);
-              },
-            );
-          } catch (error) {
-            console.error("Unable to capture the game pointer", error);
-          }
-        }
-
-        try {
-          await fullscreenTarget.requestFullscreen({ navigationUI: "hide" });
-        } catch (error) {
-          if (document.pointerLockElement === pointerLockTarget) {
-            document.exitPointerLock();
-          }
-          throw error;
-        }
-
-        void pointerLockRequest;
+        await fullscreenTarget.requestFullscreen({ navigationUI: "hide" });
       }
     } catch (error) {
       console.error("Unable to change fullscreen mode", error);
