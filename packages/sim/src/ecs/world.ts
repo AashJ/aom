@@ -201,6 +201,25 @@ const AEGEAN_GOLD_PLACEMENTS = [
   { perPlayer: 1, minDistance: 50, maxDistance: 75, goldMineSpacing: 10 },
   { perPlayer: 1, minDistance: 90, maxDistance: 115, goldMineSpacing: 12 },
 ] as const;
+const AEGEAN_BERRY_PATCH_PLACEMENT_ATTEMPTS = 64;
+// Classic random-map scripts place berries as one object definition: the range
+// applies to the patch center and every bush stays within a small cluster.
+const AEGEAN_BERRY_PLACEMENTS = [
+  { count: 5, minDistance: 20, maxDistance: 25 },
+  { count: 10, minDistance: 50, maxDistance: 100 },
+] as const;
+const AEGEAN_BERRY_CLUSTER_OFFSETS = [
+  [0, 0],
+  [2, 0],
+  [-2, 0],
+  [0, 2],
+  [0, -2],
+  [2.8, 2.8],
+  [-2.8, 2.8],
+  [2.8, -2.8],
+  [-2.8, -2.8],
+  [4, 0],
+] as const;
 // river nile.xs: one small mine at 34–40 m, one medium mine at 40–60 m,
 // and three far mines within the player's team land from 60 m outward.
 const RIVER_NILE_GOLD_PLACEMENTS = [
@@ -1008,50 +1027,106 @@ function spawnGoldMines(
   }
 }
 
+function isAegeanBerryPatchOpen(
+  world: World,
+  centerX: number,
+  centerZ: number,
+  field: FlowField,
+  count: number,
+): boolean {
+  for (let bush = 0; bush < count; bush += 1) {
+    const [offsetX, offsetZ] = AEGEAN_BERRY_CLUSTER_OFFSETS[bush]!;
+    const x = centerX + offsetX;
+    const z = centerZ + offsetZ;
+
+    if (
+      !isNodeSpotOpen(world, x, z) ||
+      !reachableIn(field, x, z) ||
+      !hasNodeClearance(world, x, z, GOLD_OTHER_NODE_CLEARANCE)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function findConstrainedAegeanBerryPatch(
+  world: World,
+  startX: number,
+  startZ: number,
+  field: FlowField,
+  count: number,
+  minDistance: number,
+  maxDistance: number,
+): readonly [number, number] | null {
+  const minDistanceSq = minDistance * minDistance;
+  const maxDistanceSq = maxDistance * maxDistance;
+
+  for (let attempt = 0; attempt < AEGEAN_BERRY_PATCH_PLACEMENT_ATTEMPTS; attempt += 1) {
+    const centerX = startX + (nextFloat(world.rng) * 2 - 1) * maxDistance;
+    const centerZ = startZ + (nextFloat(world.rng) * 2 - 1) * maxDistance;
+    const dx = centerX - startX;
+    const dz = centerZ - startZ;
+    const distanceSq = dx * dx + dz * dz;
+
+    if (
+      distanceSq >= minDistanceSq &&
+      distanceSq <= maxDistanceSq &&
+      isAegeanBerryPatchOpen(world, centerX, centerZ, field, count)
+    ) {
+      return [centerX, centerZ];
+    }
+  }
+
+  // Required food never disappears because rejection sampling was unlucky.
+  for (let tileZ = 5; tileZ < MAP_TILES - 5; tileZ += 1) {
+    for (let tileX = 5; tileX < MAP_TILES - 5; tileX += 1) {
+      const centerX = tileX + 0.5;
+      const centerZ = tileZ + 0.5;
+      const dx = centerX - startX;
+      const dz = centerZ - startZ;
+      const distanceSq = dx * dx + dz * dz;
+
+      if (
+        distanceSq >= minDistanceSq &&
+        distanceSq <= maxDistanceSq &&
+        isAegeanBerryPatchOpen(world, centerX, centerZ, field, count)
+      ) {
+        return [centerX, centerZ];
+      }
+    }
+  }
+
+  return null;
+}
+
 function spawnAegeanBerryPatches(
   world: World,
   startLocations: readonly StartLocation[],
   startFields: readonly FlowField[],
 ): void {
-  const berryOffsets = [
-    [16, 16],
-    [18, 13],
-    [13, 18],
-    [20, 16],
-    [16, 20],
-  ] as const;
+  for (const placement of AEGEAN_BERRY_PLACEMENTS) {
+    for (let playerIndex = 0; playerIndex < world.playerCount; playerIndex += 1) {
+      const [startX, startZ] = startLocations[playerIndex]!;
+      const center = findConstrainedAegeanBerryPatch(
+        world,
+        startX,
+        startZ,
+        startFields[playerIndex]!,
+        placement.count,
+        placement.minDistance,
+        placement.maxDistance,
+      );
 
-  for (let cornerIndex = 0; cornerIndex < startLocations.length; cornerIndex += 1) {
-    const [cornerX, cornerZ] = startLocations[cornerIndex]!;
-    const dirX = cornerX < SIM_MAP_SIZE * 0.5 ? 1 : -1;
-    const dirZ = cornerZ < SIM_MAP_SIZE * 0.5 ? 1 : -1;
-    let placedBerries = 0;
-
-    for (let bush = 0; bush < berryOffsets.length; bush += 1) {
-      const [offsetX, offsetZ] = berryOffsets[bush]!;
-      let placed = false;
-
-      // Jitter widens with each failed attempt so a rocky patch pushes the
-      // bush to nearby open ground instead of silently accepting rock.
-      for (let attempt = 0; attempt < 20 && !placed; attempt += 1) {
-        const jitter = 3 + attempt * 0.75;
-        const rawX = cornerX + dirX * offsetX + (nextFloat(world.rng) * 2 - 1) * jitter;
-        const rawZ = cornerZ + dirZ * offsetZ + (nextFloat(world.rng) * 2 - 1) * jitter;
-        const x = rawX < 8 ? 8 : rawX > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawX;
-        const z = rawZ < 8 ? 8 : rawZ > SIM_MAP_SIZE - 8 ? SIM_MAP_SIZE - 8 : rawZ;
-
-        if (isNodeSpotOpen(world, x, z) && reachableIn(startFields[cornerIndex]!, x, z)) {
-          spawnUnit(world, x, z, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
-          placed = true;
-          placedBerries += 1;
-        }
+      if (center === null) {
+        throw new RequiredBerryPatchPlacementError(playerIndex);
       }
-    }
 
-    // The second solo patch is legacy map content, but every active player patch
-    // is required economy. Reject the terrain instead of starting someone without food.
-    if (cornerIndex < world.playerCount && placedBerries !== berryOffsets.length) {
-      throw new RequiredBerryPatchPlacementError(cornerIndex);
+      for (let bush = 0; bush < placement.count; bush += 1) {
+        const [offsetX, offsetZ] = AEGEAN_BERRY_CLUSTER_OFFSETS[bush]!;
+        spawnUnit(world, center[0] + offsetX, center[1] + offsetZ, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
+      }
     }
   }
 }
@@ -1233,8 +1308,8 @@ function spawnRiverNileFishSchools(world: World): void {
 
 export function spawnResourceNodes(world: World): void {
   // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
-  // Keep the two legacy resource fields in solo play; forests and berry patches remain
-  // available on both halves of the map. Multiplayer adds one field per active start.
+  // Keep the two legacy forest fields in solo play. Multiplayer adds one field
+  // per active start; food and gold profiles use active starts only.
   const startFieldCount = Math.max(2, world.playerCount);
   const startLocations = startLocationsForMap(world.mapId, world.mapSeed, startFieldCount);
   const startFields: FlowField[] = [];

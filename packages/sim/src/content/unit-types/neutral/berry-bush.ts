@@ -16,7 +16,7 @@ export const definition = {
   label: "Berry Bush",
   culture: CULTURE_SHARED,
   classes: UNIT_CLASS_RESOURCE,
-  maxHp: 100,
+  maxHp: 150,
   lineOfSight: 0,
   movementSpeed: 0,
   armor: NO_ARMOR,
