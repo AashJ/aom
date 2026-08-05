@@ -929,6 +929,8 @@ describe("resources and nodes", () => {
 
       if (a.unitType[i] === TYPE_BERRY) {
         berries += 1;
+        expect(a.owner[i]).toBe(NEUTRAL_OWNER);
+        expect(a.hp[i]).toBe(150);
       }
 
       if (a.unitType[i] === TYPE_FISH_PERCH) {
@@ -943,7 +945,7 @@ describe("resources and nodes", () => {
     }
 
     expect(trees).toBeGreaterThan(50);
-    expect(berries).toBe(10);
+    expect(berries).toBe(30);
     expect(fish).toBe(0);
 
     // This map profile gives both players one starting, medium, and far mine.
@@ -952,6 +954,28 @@ describe("resources and nodes", () => {
       [40, 40],
       [216, 216],
     ] as const;
+
+    for (const [startX, startZ] of starts) {
+      const closeBerries: number[] = [];
+
+      for (let i = 0; i < a.count; i += 1) {
+        if (a.unitType[i] !== TYPE_BERRY) continue;
+        const dx = a.posX[i]! - startX;
+        const dz = a.posZ[i]! - startZ;
+        if (dx * dx + dz * dz <= 30 * 30) closeBerries.push(i);
+      }
+
+      expect(closeBerries).toHaveLength(5);
+
+      for (const left of closeBerries) {
+        for (const right of closeBerries) {
+          const dx = a.posX[left]! - a.posX[right]!;
+          const dz = a.posZ[left]! - a.posZ[right]!;
+          expect(Math.sqrt(dx * dx + dz * dz)).toBeLessThanOrEqual(4);
+        }
+      }
+    }
+
     const bands = [
       [22, 32],
       [50, 75],
@@ -1400,17 +1424,27 @@ describe("gathering", () => {
 
     const villagers: number[] = [];
     let firstBush = -1;
+    let patchCenterX = 0;
+    let patchCenterZ = 0;
     let patchStock = 0;
 
     for (let i = 0; i < world.count; i += 1) {
-      if (world.unitType[i] === TYPE_BERRY && world.posX[i]! < 128) {
-        if (firstBush < 0) firstBush = i;
-        patchStock += world.hp[i]!;
+      if (world.unitType[i] === TYPE_BERRY && firstBush < 0) {
+        firstBush = i;
+        patchCenterX = world.posX[i]!;
+        patchCenterZ = world.posZ[i]!;
       }
 
       if (world.unitType[i] === TYPE_VILLAGER && world.owner[i] === 0) {
         villagers.push(unitIdAt(world, i));
       }
+    }
+
+    for (let i = 0; i < world.count; i += 1) {
+      if (world.unitType[i] !== TYPE_BERRY) continue;
+      const dx = world.posX[i]! - patchCenterX;
+      const dz = world.posZ[i]! - patchCenterZ;
+      if (dx * dx + dz * dz <= 5 * 5) patchStock += world.hp[i]!;
     }
 
     const foodBefore = world.stockpiles[FOOD]!;
@@ -1433,7 +1467,10 @@ describe("gathering", () => {
     let bushesLeft = 0;
 
     for (let i = 0; i < world.count; i += 1) {
-      if (world.unitType[i] === TYPE_BERRY && world.posX[i]! < 128) bushesLeft += 1;
+      if (world.unitType[i] !== TYPE_BERRY) continue;
+      const dx = world.posX[i]! - patchCenterX;
+      const dz = world.posZ[i]! - patchCenterZ;
+      if (dx * dx + dz * dz <= 5 * 5) bushesLeft += 1;
     }
 
     expect(bushesLeft).toBe(0);
