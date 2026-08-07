@@ -53,7 +53,7 @@ export interface CommandSink {
   submitCancelTrain(buildingId: number, queueIndex: number): void;
   submitAdvanceAge(buildingId: number, minorGod: number): void;
   submitCheat(cheat: CheatId): void;
-  submitPlace(buildingType: number, tileX: number, tileZ: number): void;
+  submitPlace(buildingType: number, tileX: number, tileZ: number, rotation?: 0 | 1): void;
 }
 
 export function createLoopbackSink(world: World): CommandSink {
@@ -224,7 +224,7 @@ export function createLoopbackSink(world: World): CommandSink {
         cheat,
       });
     },
-    submitPlace(buildingType: number, tileX: number, tileZ: number): void {
+    submitPlace(buildingType: number, tileX: number, tileZ: number, rotation: 0 | 1 = 0): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
         // Single-player is player 0 and owns everything spawned by default.
@@ -233,6 +233,7 @@ export function createLoopbackSink(world: World): CommandSink {
         buildingType,
         tileX,
         tileZ,
+        rotation,
       });
     },
   };

@@ -226,12 +226,12 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
       });
     },
 
-    submitPlace(buildingType: number, tileX: number, tileZ: number): void {
+    submitPlace(buildingType: number, tileX: number, tileZ: number, rotation: 0 | 1 = 0): void {
       // No tick stamping here: the sequencer's turn assignment IS the execution time, unlike the loopback sink.
       send({
         v: PROTOCOL_VERSION,
         kind: "commands",
-        commands: [{ type: COMMAND_PLACE, buildingType, tileX, tileZ }],
+        commands: [{ type: COMMAND_PLACE, buildingType, tileX, tileZ, rotation }],
       });
     },
   };

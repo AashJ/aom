@@ -39,6 +39,7 @@ export interface InputState {
   stopPending: boolean;
   corruptPending: boolean;
   escapePending: boolean;
+  rotatePlacementPending: boolean;
   marqueePending: boolean;
   marqueeMinX: number;
   marqueeMinY: number;
@@ -78,6 +79,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     stopPending: false,
     corruptPending: false,
     escapePending: false,
+    rotatePlacementPending: false,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -238,6 +240,11 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
 
     if (event.code === "Escape" && !event.repeat) {
       state.escapePending = true;
+      return;
+    }
+
+    if (event.code === "KeyR" && !event.repeat) {
+      state.rotatePlacementPending = true;
       return;
     }
 

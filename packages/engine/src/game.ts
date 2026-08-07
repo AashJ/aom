@@ -300,6 +300,7 @@ export async function createGame(
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
   let placementType = -1;
+  let placementRotation: 0 | 1 = 0;
   const placementTile = new Int32Array(2);
   let placementValid = false;
   let lastSelection: SelectionSummary = {
@@ -460,6 +461,15 @@ export async function createGame(
         const placementStats = UNIT_TYPES[placementType];
 
         if (placementStats && isViewerTypeAvailable(placementType)) {
+          if (input.state.rotatePlacementPending) {
+            input.state.rotatePlacementPending = false;
+            if (
+              placementStats.footprintDepth !== undefined &&
+              placementStats.footprintDepth !== placementStats.footprint
+            ) {
+              placementRotation = placementRotation === 0 ? 1 : 0;
+            }
+          }
           const ndcX = (input.state.pointerX / canvas.clientWidth) * 2 - 1;
           const ndcY = 1 - (input.state.pointerY / canvas.clientHeight) * 2;
           let hitGround = false;
@@ -473,10 +483,17 @@ export async function createGame(
           );
 
           if (hitGround) {
-            const footprint = placementStats.footprint;
+            const footprint =
+              placementRotation === 0
+                ? placementStats.footprint
+                : (placementStats.footprintDepth ?? placementStats.footprint);
+            const footprintDepth =
+              placementRotation === 0
+                ? (placementStats.footprintDepth ?? placementStats.footprint)
+                : placementStats.footprint;
 
             placementTile[0] = Math.round(placementHit[0]! - footprint / 2);
-            placementTile[1] = Math.round(placementHit[2]! - footprint / 2);
+            placementTile[1] = Math.round(placementHit[2]! - footprintDepth / 2);
           }
 
           const stockpileBase = selfPlayerId * RESOURCE_COUNT;
@@ -489,9 +506,16 @@ export async function createGame(
           let footprintVisible = hitGround;
 
           if (footprintVisible) {
-            const footprint = placementStats.footprint;
+            const footprint =
+              placementRotation === 0
+                ? placementStats.footprint
+                : (placementStats.footprintDepth ?? placementStats.footprint);
+            const footprintDepth =
+              placementRotation === 0
+                ? (placementStats.footprintDepth ?? placementStats.footprint)
+                : placementStats.footprint;
 
-            for (let z = placementTile[1]!; z < placementTile[1]! + footprint; z += 1) {
+            for (let z = placementTile[1]!; z < placementTile[1]! + footprintDepth; z += 1) {
               for (let x = placementTile[0]!; x < placementTile[0]! + footprint; x += 1) {
                 if (
                   x < 0 ||
@@ -511,7 +535,13 @@ export async function createGame(
 
           placementValid =
             footprintVisible &&
-            canPlaceBuilding(world, placementTile[0]!, placementTile[1]!, placementType) &&
+            canPlaceBuilding(
+              world,
+              placementTile[0]!,
+              placementTile[1]!,
+              placementType,
+              placementRotation,
+            ) &&
             affordable;
         } else {
           placementValid = false;
@@ -522,8 +552,14 @@ export async function createGame(
           input.state.clickPending = false;
 
           if (placementValid) {
-            sink.submitPlace(placementType, placementTile[0]!, placementTile[1]!);
+            sink.submitPlace(
+              placementType,
+              placementTile[0]!,
+              placementTile[1]!,
+              placementRotation,
+            );
             placementType = -1;
+            placementRotation = 0;
             placementValid = false;
           }
         }
@@ -532,11 +568,13 @@ export async function createGame(
           input.state.commandPending = false;
           input.state.escapePending = false;
           placementType = -1;
+          placementRotation = 0;
           placementValid = false;
         }
 
         input.state.marqueePending = false;
       } else {
+        input.state.rotatePlacementPending = false;
         consumeSelectionInput(
           input.state,
           world,
@@ -764,8 +802,18 @@ export async function createGame(
     );
     const placementStats = UNIT_TYPES[placementType];
     const ghostType = placementStats ? placementType : -1;
-    const ghostX = placementStats ? placementTile[0]! + placementStats.footprint / 2 : 0;
-    const ghostZ = placementStats ? placementTile[1]! + placementStats.footprint / 2 : 0;
+    const ghostFootprint = placementStats
+      ? placementRotation === 0
+        ? placementStats.footprint
+        : (placementStats.footprintDepth ?? placementStats.footprint)
+      : 0;
+    const ghostFootprintDepth = placementStats
+      ? placementRotation === 0
+        ? (placementStats.footprintDepth ?? placementStats.footprint)
+        : placementStats.footprint
+      : 0;
+    const ghostX = placementStats ? placementTile[0]! + ghostFootprint / 2 : 0;
+    const ghostZ = placementStats ? placementTile[1]! + ghostFootprintDepth / 2 : 0;
     const unitStatistics = units.draw(
       pass,
       gpu.device.queue,
@@ -778,6 +826,7 @@ export async function createGame(
       ghostType,
       ghostX,
       ghostZ,
+      placementRotation,
       placementValid,
     );
     minimap.draw(
@@ -908,10 +957,12 @@ export async function createGame(
 
       audio.uiClick();
       placementType = buildingType;
+      placementRotation = 0;
       placementValid = false;
     },
     cancelPlacement(): void {
       placementType = -1;
+      placementRotation = 0;
       placementValid = false;
     },
     trainSelected(unitType: number): void {

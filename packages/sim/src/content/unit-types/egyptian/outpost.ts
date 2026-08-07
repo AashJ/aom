@@ -5,7 +5,6 @@ import {
   NO_PREREQUISITE_BUILDINGS,
   NO_TYPE_RELATIONSHIPS,
   UNIT_CLASS_BUILDING,
-  UNIT_CLASS_HUMAN,
   type UnitTypeStats,
 } from "../../unit-type-schema";
 
@@ -20,13 +19,6 @@ export const definition = {
   movementSpeed: 0,
   armor: [0.3, 0.9, 0.05],
   attack: null,
-  garrison: {
-    capacity: 1,
-    enterRange: 1,
-    validOccupants: [{ kind: "classes", classes: UNIT_CLASS_HUMAN }],
-    attackMultiplierPerOccupant: 0,
-    ejectOnDeath: true,
-  },
   isStatic: true,
   resource: -1,
   bodyRadius: 1,
@@ -37,7 +29,6 @@ export const definition = {
   costGold: 15,
   costFavor: 0,
   buildTicks: 20 * 20,
-  buildLimit: 5,
   populationCost: 0,
   popBonus: 0,
   trainExitOffset: 2,

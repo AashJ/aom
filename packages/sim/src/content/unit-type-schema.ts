@@ -94,6 +94,10 @@ export interface UnitTypeStats {
   // Town Centers snap to and convert a neutral Settlement socket instead of
   // occupying arbitrary clear terrain.
   readonly placementReplacementType?: number;
+  // Destroyed Town Centers uncover the underlying neutral Settlement again.
+  // This is a building replacement (with a stamped footprint), not the
+  // zero-footprint unit replacement used by Phoenix Eggs.
+  readonly destructionReplacementType?: number;
   // Neutral Settlement sockets occupy terrain but are map sites, not build-menu
   // entries of their own.
   readonly isPlacementSocket?: boolean;
@@ -105,6 +109,9 @@ export interface UnitTypeStats {
   // Some building chains permit exactly one live site of each authored tier.
   // Destroying the site releases the limit so it may be rebuilt.
   readonly buildLimit?: number;
+  // Settlement Level 1 starts at the proto's one-site cap, then the Heroic
+  // age rule unlocks expansion Town Centers on additional map Settlements.
+  readonly buildLimitByAge?: readonly [number, number, number, number];
   // Egyptian monuments continuously generate Favor while complete. The rate is
   // authored per monument because Classic does not use one shared tier formula.
   readonly favorTricklePerSecond?: number;

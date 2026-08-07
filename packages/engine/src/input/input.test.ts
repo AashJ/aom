@@ -153,6 +153,14 @@ test("hiding the document clears keyboard and pointer state", () => {
   expect(state.pointerInside).toBe(false);
 });
 
+test("R emits a one-shot placement rotation intent", () => {
+  const state = attachTestInput();
+
+  dispatch(fakeWindow, "keydown", { code: "KeyR", repeat: false });
+
+  expect(state.rotatePlacementPending).toBe(true);
+});
+
 test("pointer cancellation clears stale hover and drag state", () => {
   const state = attachTestInput();
 

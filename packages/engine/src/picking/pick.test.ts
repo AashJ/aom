@@ -71,6 +71,7 @@ function commandInput(x: number, y: number): InputState {
     stopPending: false,
     corruptPending: false,
     escapePending: false,
+    rotatePlacementPending: false,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -106,6 +107,18 @@ function recordingSink(): CommandSink & {
     },
     submitGather: (_ids, targetId) => {
       calls.push("gather");
+      targetIds.push(targetId);
+    },
+    submitHeal: (_ids, targetId) => {
+      calls.push("heal");
+      targetIds.push(targetId);
+    },
+    submitEmpower: (_ids, targetId) => {
+      calls.push("empower");
+      targetIds.push(targetId);
+    },
+    submitConvert: (_ids, targetId) => {
+      calls.push("convert");
       targetIds.push(targetId);
     },
     submitPray: (_ids, targetId) => {

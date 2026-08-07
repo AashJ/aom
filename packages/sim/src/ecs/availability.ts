@@ -129,7 +129,8 @@ export function getTypeAvailability(
     }
   }
 
-  const typeLimit = stats.hero?.trainLimit ?? stats.buildLimit;
+  const typeLimit =
+    stats.hero?.trainLimit ?? stats.buildLimitByAge?.[context.playerAge] ?? stats.buildLimit;
   if (typeLimit !== undefined && context.ownedOrQueuedUnitCount(unitType) >= typeLimit) {
     return { available: false, reason: "train-limit", limit: typeLimit };
   }

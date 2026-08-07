@@ -256,6 +256,9 @@ const MELEE_SNARE_TICKS = 3 * TICK_HZ;
 const MELEE_SNARE_STRENGTH = 0.35;
 const sampledFlowDirection = new Float64Array(2);
 const GOLD_OTHER_NODE_CLEARANCE = 2;
+const EXTRA_SETTLEMENTS_PER_PLAYER = 2;
+const SETTLEMENT_MIN_SPACING = 34;
+const SETTLEMENT_PLACEMENT_ATTEMPTS = 4_096;
 // This is content for the current map, not a universal economy rule. Future
 // maps can choose different counts and ranges without changing mine behavior.
 const AEGEAN_GOLD_PLACEMENTS = [
@@ -291,6 +294,7 @@ const RIVER_NILE_GOLD_PLACEMENTS = [
 ] as const;
 const MAX_PLAYABLE_MAP_SEED_ATTEMPTS = 256;
 const PHARAOH_RESPAWN_TICKS = 90 * TICK_HZ;
+export const SETTLEMENT_VICTORY_TICKS = 2 * 60 * TICK_HZ;
 
 class RequiredMapObjectPlacementError extends RangeError {}
 
@@ -309,6 +313,15 @@ class RequiredBerryPatchPlacementError extends RequiredMapObjectPlacementError {
 class RequiredFishSchoolPlacementError extends RequiredMapObjectPlacementError {
   constructor(readonly schoolIndex: number) {
     super(`Unable to place required fish school ${schoolIndex}`);
+  }
+}
+
+export class RequiredSettlementPlacementError extends RequiredMapObjectPlacementError {
+  constructor(
+    readonly playerIndex: number,
+    readonly copy: number,
+  ) {
+    super(`Unable to place required Settlement ${copy + 1} for player ${playerIndex}`);
   }
 }
 
@@ -355,6 +368,7 @@ export interface World {
   // the next whole resource becomes spendable.
   playerFavorProgress: Uint32Array;
   wonderVictoryProgress: Uint32Array;
+  settlementVictoryProgress: Uint32Array;
   // Rebuilt from active prayer tasks every tick for Favor generation and HUD rate.
   prayingVillagers: Uint16Array;
   unitType: Uint16Array;
@@ -523,6 +537,7 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     playerMinorGods,
     playerFavorProgress: new Uint32Array(256),
     wonderVictoryProgress: new Uint32Array(256),
+    settlementVictoryProgress: new Uint32Array(256),
     prayingVillagers: new Uint16Array(256),
     unitType: new Uint16Array(MAX_UNITS),
     containedBy: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
@@ -1618,10 +1633,93 @@ function spawnRiverNileFishSchools(world: World): void {
   }
 }
 
+function settlementSampleWord(
+  seed: number,
+  playerIndex: number,
+  copy: number,
+  attempt: number,
+  salt: number,
+): number {
+  let value =
+    seed ^
+    Math.imul(playerIndex + 1, 0x9e3779b1) ^
+    Math.imul(copy + 1, 0x85ebca77) ^
+    Math.imul(attempt + 1, 0xc2b2ae3d) ^
+    salt;
+  value = Math.imul(value ^ (value >>> 16), 0x7feb352d);
+  value = Math.imul(value ^ (value >>> 15), 0x846ca68b);
+  return (value ^ (value >>> 16)) >>> 0;
+}
+
+function isSettlementClearOfBuildings(world: World, centerX: number, centerZ: number): boolean {
+  const spacingSq = SETTLEMENT_MIN_SPACING * SETTLEMENT_MIN_SPACING;
+
+  for (let index = 0; index < world.count; index += 1) {
+    if ((UNIT_TYPES[world.unitType[index]!]!.classes & UNIT_CLASS_BUILDING) === 0) continue;
+    const dx = world.posX[index]! - centerX;
+    const dz = world.posZ[index]! - centerZ;
+    if (dx * dx + dz * dz < spacingSq) return false;
+  }
+
+  return true;
+}
+
+function spawnSettlementSites(
+  world: World,
+  startLocations: readonly StartLocation[],
+): void {
+  const startFields = startLocations.map(([startX, startZ]) => {
+    const inwardX = startX + (startX < SIM_MAP_SIZE * 0.5 ? 6 : -6);
+    const inwardZ = startZ + (startZ < SIM_MAP_SIZE * 0.5 ? 6 : -6);
+    return buildFlowField(world.walkable, walkableCellNear(world, inwardX, inwardZ));
+  });
+
+  for (let copy = 0; copy < EXTRA_SETTLEMENTS_PER_PLAYER; copy += 1) {
+    const minDistance = copy === 0 ? 45 : 72;
+    const maxDistance = copy === 0 ? 70 : 108;
+    const minDistanceSq = minDistance * minDistance;
+    const maxDistanceSq = maxDistance * maxDistance;
+
+    for (let playerIndex = 0; playerIndex < startLocations.length; playerIndex += 1) {
+      const [startX, startZ] = startLocations[playerIndex]!;
+      let placed = false;
+
+      for (let attempt = 0; attempt < SETTLEMENT_PLACEMENT_ATTEMPTS && !placed; attempt += 1) {
+        const span = maxDistance * 2 + 1;
+        const dx = (settlementSampleWord(world.mapSeed, playerIndex, copy, attempt, 0) % span) - maxDistance;
+        const dz =
+          (settlementSampleWord(world.mapSeed, playerIndex, copy, attempt, 0x51ed270b) % span) -
+          maxDistance;
+        const distanceSq = dx * dx + dz * dz;
+        if (distanceSq < minDistanceSq || distanceSq > maxDistanceSq) continue;
+
+        const tileX = startX + dx - 2;
+        const tileZ = startZ + dz - 2;
+        const centerX = tileX + 2.5;
+        const centerZ = tileZ + 2.5;
+        if (
+          !canPlaceBuilding(world, tileX, tileZ, TYPE_SETTLEMENT) ||
+          !reachableIn(startFields[playerIndex]!, centerX, centerZ) ||
+          !isSettlementClearOfBuildings(world, centerX, centerZ)
+        ) {
+          continue;
+        }
+
+        spawnBuilding(world, tileX, tileZ, NEUTRAL_OWNER, TYPE_SETTLEMENT);
+        placed = true;
+      }
+
+      if (!placed) throw new RequiredSettlementPlacementError(playerIndex, copy);
+    }
+  }
+}
+
 export function spawnResourceNodes(world: World): void {
   // Fixed order: the rng stream and handle assignment depend on call order; do not reorder.
   // Keep the two legacy forest fields in solo play. Multiplayer adds one field
   // per active start; food and gold profiles use active starts only.
+  const activeStartLocations = startLocationsForMap(world.mapId, world.mapSeed, world.playerCount);
+  spawnSettlementSites(world, activeStartLocations);
   const startFieldCount = Math.max(2, world.playerCount);
   const startLocations = startLocationsForMap(world.mapId, world.mapSeed, startFieldCount);
   const startFields: FlowField[] = [];
@@ -1842,6 +1940,48 @@ function updateGates(world: World): void {
   }
 
   if (navigationChanged) flushFlowFields(world);
+}
+
+function tickSettlementVictory(world: World): void {
+  let siteCount = 0;
+  let claimant = -1;
+  let allClaimedByOnePlayer = true;
+
+  for (let index = 0; index < world.count; index += 1) {
+    const stats = UNIT_TYPES[world.unitType[index]!]!;
+    if (stats.isPlacementSocket === true) {
+      siteCount += 1;
+      allClaimedByOnePlayer = false;
+      continue;
+    }
+    if (stats.placementReplacementType === undefined) continue;
+
+    siteCount += 1;
+    const owner = world.owner[index]!;
+    if (
+      owner === NEUTRAL_OWNER ||
+      world.dying[index] === 1 ||
+      world.hp[index]! <= 0 ||
+      world.buildProgress[index]! < stats.buildTicks
+    ) {
+      allClaimedByOnePlayer = false;
+      continue;
+    }
+    if (claimant === -1) claimant = owner;
+    else if (claimant !== owner) allClaimedByOnePlayer = false;
+  }
+
+  if (siteCount === 0 || !allClaimedByOnePlayer) claimant = -1;
+
+  for (let playerSlot = 0; playerSlot < world.playerCount; playerSlot += 1) {
+    const playerId = world.playerIds[playerSlot]!;
+    if (playerId !== claimant) world.settlementVictoryProgress[playerId] = 0;
+  }
+
+  if (claimant < 0) return;
+  const progress = world.settlementVictoryProgress[claimant]! + 1;
+  world.settlementVictoryProgress[claimant] = progress;
+  if (progress >= SETTLEMENT_VICTORY_TICKS) world.winner = claimant;
 }
 
 export function tickWorld(world: World): void {
@@ -3322,6 +3462,8 @@ export function tickWorld(world: World): void {
     }
   }
 
+  if (world.contested && world.winner === -1) tickSettlementVictory(world);
+
   // Annihilation, in-sim, hashed: the UI reads it, never computes it.
   if (world.contested && world.winner === -1) {
     // Neutral forests must not prevent victory or count as armies in a draw.
@@ -3471,6 +3613,11 @@ function applyDeaths(world: World): void {
     readonly z: number;
     readonly unitType: number;
   }> = [];
+  const buildingDestructionReplacements: Array<{
+    readonly tileX: number;
+    readonly tileZ: number;
+    readonly unitType: number;
+  }> = [];
 
   // Preserve lethal-event order independently from the descending dense-index
   // removal order used below.
@@ -3511,6 +3658,20 @@ function applyDeaths(world: World): void {
       if (placementAllowed) {
         deathReplacements.push({ owner, x, z, unitType: replacement.unitType });
       }
+    }
+
+    const buildingReplacement = stats.destructionReplacementType;
+    if (buildingReplacement !== undefined) {
+      const rotated = stats.footprintDepth !== undefined && world.facingX[index] === 1;
+      const footprint = rotated ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
+      const footprintDepth = rotated
+        ? stats.footprint
+        : (stats.footprintDepth ?? stats.footprint);
+      buildingDestructionReplacements.push({
+        tileX: Math.round(world.posX[index]! - footprint / 2),
+        tileZ: Math.round(world.posZ[index]! - footprintDepth / 2),
+        unitType: buildingReplacement,
+      });
     }
   }
 
@@ -3676,6 +3837,17 @@ function applyDeaths(world: World): void {
   for (const replacement of deathReplacements) {
     if (world.count >= MAX_UNITS) break;
     spawnUnit(world, replacement.x, replacement.z, 0, 0, replacement.owner, replacement.unitType);
+  }
+
+  for (const replacement of buildingDestructionReplacements) {
+    if (world.count >= MAX_UNITS) break;
+    spawnBuilding(
+      world,
+      replacement.tileX,
+      replacement.tileZ,
+      NEUTRAL_OWNER,
+      replacement.unitType,
+    );
   }
 
   for (const event of deathSpawns) {

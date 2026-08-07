@@ -99,6 +99,7 @@ export interface ModelRenderer {
     ghostType: number,
     ghostX: number,
     ghostZ: number,
+    ghostRotation: 0 | 1,
     ghostValid: boolean,
   ): RendererStatistics;
 }
@@ -509,6 +510,7 @@ export async function createModelRenderer(
       ghostType,
       ghostX,
       ghostZ,
+      ghostRotation,
       ghostValid,
     ): RendererStatistics {
       resetRendererStatistics(statistics);
@@ -661,8 +663,8 @@ export async function createModelRenderer(
           modelIndex,
           ghostX,
           ghostZ,
-          0,
-          1,
+          ghostRotation,
+          ghostRotation === 0 ? 1 : 0,
           0,
           0,
           1,

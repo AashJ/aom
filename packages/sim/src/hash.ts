@@ -89,6 +89,10 @@ export function hashWorld(world: World): number {
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
+    word = world.settlementVictoryProgress[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
     word = world.pharaohRespawnRemaining[playerId]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);

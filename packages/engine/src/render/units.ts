@@ -23,6 +23,7 @@ export interface UnitsRenderer {
     ghostType: number,
     ghostX: number,
     ghostZ: number,
+    ghostRotation: 0 | 1,
     ghostValid: boolean,
   ): RendererStatistics;
 }
@@ -56,6 +57,7 @@ export async function createUnitsRenderer(
       ghostType,
       ghostX,
       ghostZ,
+      ghostRotation,
       ghostValid,
     ): RendererStatistics {
       resetRendererStatistics(statistics);
@@ -72,6 +74,7 @@ export async function createUnitsRenderer(
           ghostType,
           ghostX,
           ghostZ,
+          ghostRotation,
           ghostValid,
         ),
       );

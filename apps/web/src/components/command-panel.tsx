@@ -97,7 +97,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         ariaLabel="Commands"
         className="fixed bottom-0 left-32 z-10 h-[9.625rem] w-48 select-none sm:left-36 sm:h-[8.375rem] sm:w-60"
       >
-        <div className="relative grid grid-cols-3 content-start gap-1 px-3 pt-3 sm:grid-cols-5 sm:pt-2.5">
+        <div className="relative grid h-full grid-cols-3 content-start gap-1 overflow-y-auto px-3 pt-3 pb-3 sm:grid-cols-5 sm:pt-2.5">
           {commandCells.map((cell, commandSlot) => {
             if (cell === null) {
               return <div key={`empty-${commandSlot}`} aria-hidden="true" />;
