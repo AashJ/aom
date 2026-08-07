@@ -14,6 +14,7 @@ import {
   NO_AGE,
   NO_TARGET,
   NO_UNIT_TYPE,
+  PLAYER_RESEARCH_STRIDE,
   registerPlayer,
   RESOURCE_COUNT,
   setSelected,
@@ -163,6 +164,7 @@ function recordingSink(): CommandSink & {
     submitTrain: () => calls.push("train"),
     submitCancelTrain: () => calls.push("cancel-train"),
     submitAdvanceAge: () => calls.push("advance-age"),
+    submitResearch: () => calls.push("research"),
     submitCheat: () => calls.push("cheat"),
   };
 }
@@ -235,6 +237,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     favorRateMilliPerMinute: 0,
     townBellActive: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    completedResearch: new Uint8Array(PLAYER_RESEARCH_STRIDE),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
     lifespanRemaining: new Uint16Array(xs.length),

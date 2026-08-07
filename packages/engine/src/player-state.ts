@@ -8,6 +8,10 @@ import {
   MAX_TRAIN_QUEUE,
   NO_AGE,
   NO_GOD,
+  PLAYER_RESEARCH_STRIDE,
+  RESEARCH_FORTIFIED_TOWN_CENTER,
+  TYPE_EGYPTIAN_TOWN_CENTER,
+  TYPE_GREEK_TOWN_CENTER,
   RESOURCE_COUNT,
   UNIT_TYPES,
   WOOD,
@@ -28,6 +32,7 @@ export interface PlayerState {
   pop: number;
   popCap: number;
   completedBuildings: Uint8Array;
+  completedResearch: Uint8Array;
   ownedOrQueuedUnitCounts: Uint32Array;
   ageAdvancement: AgeAdvancementState | null;
 }
@@ -93,6 +98,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     pop: 0,
     popCap: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    completedResearch: new Uint8Array(PLAYER_RESEARCH_STRIDE),
     ownedOrQueuedUnitCounts: new Uint32Array(UNIT_TYPES.length),
     ageAdvancement: null,
   };
@@ -143,7 +149,12 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       }
 
       if (stats.footprint > 0 && snapshot.buildProgress[index]! >= stats.buildTicks) {
-        popCap += stats.popBonus;
+        popCap +=
+          stats.popBonus +
+          ((stats.id === TYPE_GREEK_TOWN_CENTER || stats.id === TYPE_EGYPTIAN_TOWN_CENTER) &&
+          snapshot.completedResearch[RESEARCH_FORTIFIED_TOWN_CENTER] === 1
+            ? 5
+            : 0);
       }
     }
 
@@ -165,6 +176,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       ageAdvancement?.totalTicks === state.ageAdvancement?.totalTicks &&
       ageAdvancement?.buildingId === state.ageAdvancement?.buildingId &&
       arraysEqual(state.completedBuildings, snapshot.completedBuildings) &&
+      arraysEqual(state.completedResearch, snapshot.completedResearch) &&
       arraysEqual(state.ownedOrQueuedUnitCounts, ownedOrQueuedUnitCounts)
     ) {
       return;
@@ -183,6 +195,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       pop,
       popCap,
       completedBuildings: snapshot.completedBuildings.slice(),
+      completedResearch: snapshot.completedResearch.slice(),
       ownedOrQueuedUnitCounts,
       ageAdvancement,
     };

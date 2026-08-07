@@ -20,6 +20,7 @@ import {
   COMMAND_PLACE,
   COMMAND_PLACE_WALL,
   COMMAND_PRAY,
+  COMMAND_RESEARCH,
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TOWN_BELL,
@@ -64,7 +65,15 @@ import {
 import { integrateGroundMotion } from "./ground-contact";
 import { clearAttackOrder } from "./attack-state";
 import { tickActiveBeamAttack } from "./beam-combat";
-import { effectiveAttackDamageMultiplier, effectiveAttackRange, effectiveMaxHp } from "./unit-age";
+import {
+  attackRangeForPlayer,
+  attackDamageMultiplierForPlayer,
+  armorAdjustedDamage,
+  closeAttackForPlayer,
+  effectiveMaxHpForPlayer,
+  effectivePopBonusForPlayer,
+  primaryAttackForPlayer,
+} from "./building-technology-effects";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickFavor } from "./favor";
@@ -93,6 +102,7 @@ import {
 } from "./navigation";
 import { MAX_PROJECTILE_BODY_RADIUS, MAX_TARGET_BODY_RADIUS } from "./unit-catalog-bounds";
 import { AGE_COUNT, GOD_OSIRIS, NO_GOD } from "./progression";
+import { PLAYER_RESEARCH_STRIDE } from "./technologies";
 import {
   activeTrainType,
   cancelProduction,
@@ -161,6 +171,7 @@ import {
   isBuildingResearching,
   tickBuildingResearch,
   tryStartAgeAdvance,
+  tryStartTechnology,
 } from "./research";
 import {
   BUILD_PER_STRIKE,
@@ -378,6 +389,9 @@ export interface World {
   playerAge: Uint8Array;
   playerMajorGod: Uint8Array;
   playerMinorGods: Uint8Array;
+  // Completed deterministic technologies, indexed by player id and stable
+  // research id. Age advances remain building-owned orders, not bit flags.
+  playerResearch: Uint8Array;
   // Fractional Favor is authoritative because it determines the tick on which
   // the next whole resource becomes spendable.
   playerFavorProgress: Uint32Array;
@@ -563,6 +577,7 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     playerAge: new Uint8Array(256),
     playerMajorGod,
     playerMinorGods,
+    playerResearch: new Uint8Array(256 * PLAYER_RESEARCH_STRIDE),
     playerFavorProgress: new Uint32Array(256),
     wonderVictoryProgress: new Uint32Array(256),
     settlementVictoryProgress: new Uint32Array(256),
@@ -798,7 +813,7 @@ export function spawnUnit(
   world.owner[index] = owner;
   world.unitType[index] = type;
   world.containedBy[index] = NO_TARGET;
-  world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
+  world.hp[index] = effectiveMaxHpForPlayer(world, owner, UNIT_TYPES[type]!);
   world.buildProgress[index] = 0;
   world.buildingCells[index] = null;
   world.wallGroup[index] = 0;
@@ -1051,7 +1066,7 @@ function replaceBuildingSite(world: World, index: number, owner: number, type: n
   clearProductionQueue(world, index);
   world.owner[index] = owner;
   world.unitType[index] = type;
-  world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
+  world.hp[index] = effectiveMaxHpForPlayer(world, owner, UNIT_TYPES[type]!);
   world.buildProgress[index] = 0;
   world.wallGroup[index] = 0;
   world.attackCooldown[index] = 0;
@@ -1235,13 +1250,13 @@ export function transformPharaohToSonOfOsiris(world: World, id: number): boolean
   if (!hasOsiris) return false;
 
   const hpFraction =
-    world.hp[index]! / effectiveMaxHp(UNIT_TYPES[TYPE_PHARAOH]!, world.playerAge[owner]!);
+    world.hp[index]! / effectiveMaxHpForPlayer(world, owner, UNIT_TYPES[TYPE_PHARAOH]!);
   clearAttackOrder(world, index);
   clearUnitTask(world, index);
   clearSpecialAttack(world, index);
   world.unitType[index] = TYPE_SON_OF_OSIRIS;
   world.hp[index] =
-    effectiveMaxHp(UNIT_TYPES[TYPE_SON_OF_OSIRIS]!, world.playerAge[owner]!) * hpFraction;
+    effectiveMaxHpForPlayer(world, owner, UNIT_TYPES[TYPE_SON_OF_OSIRIS]!) * hpFraction;
   world.pharaohRespawnRemaining[owner] = 0;
   return true;
 }
@@ -2250,7 +2265,7 @@ function repairCostPaidAtHp(cost: number, hp: number, maxHp: number): number {
 function repairBuilding(world: World, target: number, desiredHitPoints: number): boolean {
   const stats = UNIT_TYPES[world.unitType[target]!]!;
   const owner = world.owner[target]!;
-  const maxHp = effectiveMaxHp(stats, world.playerAge[owner]!);
+  const maxHp = effectiveMaxHpForPlayer(world, owner, stats);
   const beforeHp = Math.min(maxHp, world.hp[target]!);
   let afterHp = Math.min(maxHp, beforeHp + desiredHitPoints);
 
@@ -2542,7 +2557,7 @@ export function tickWorld(world: World): void {
     if (world.dying[i] === 1 || world.hp[i]! <= 0) continue;
     const stats = UNIT_TYPES[world.unitType[i]!]!;
     const rate = stats.regenerationPerSecond;
-    const maxHp = effectiveMaxHp(stats, world.playerAge[world.owner[i]!]!);
+    const maxHp = effectiveMaxHpForPlayer(world, world.owner[i]!, stats);
     if (rate !== undefined && world.hp[i]! < maxHp) {
       world.hp[i] = Math.min(maxHp, world.hp[i]! + rate * TICK_S);
     }
@@ -2561,7 +2576,7 @@ export function tickWorld(world: World): void {
       currentTargetStats !== null &&
       (currentTargetStats.classes & UNIT_CLASS_BUILDING) !== 0
         ? stats.buildingAttack
-        : stats.attack;
+        : primaryAttackForPlayer(world, world.owner[i]!, stats);
     const currentTargetDx = currentTarget >= 0 ? world.posX[currentTarget]! - world.posX[i]! : 0;
     const currentTargetDz = currentTarget >= 0 ? world.posZ[currentTarget]! - world.posZ[i]! : 0;
     const closeRange =
@@ -2569,11 +2584,11 @@ export function tickWorld(world: World): void {
         ? (defaultAttack.minimumRange ?? 0) + currentTargetStats.bodyRadius
         : 0;
     const attack =
-      stats.closeAttack !== undefined &&
+      closeAttackForPlayer(world, world.owner[i]!, stats) !== undefined &&
       closeRange > 0 &&
       currentTargetDx * currentTargetDx + currentTargetDz * currentTargetDz <
         closeRange * closeRange
-        ? stats.closeAttack
+        ? closeAttackForPlayer(world, world.owner[i]!, stats)!
         : defaultAttack;
     const special = stats.specialAttack;
 
@@ -2891,11 +2906,7 @@ export function tickWorld(world: World): void {
         const dz = targetZ - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
         const targetStats = UNIT_TYPES[world.unitType[target]!]!;
-        const authoredAttackRange = effectiveAttackRange(
-          stats,
-          attack,
-          world.playerAge[world.owner[i]!]!,
-        );
+        const authoredAttackRange = attackRangeForPlayer(world, world.owner[i]!, stats, attack);
         const surfaceAttackRange =
           attack.kind === "melee"
             ? centerDistanceForEdgeRange(authoredAttackRange, stats, targetStats)
@@ -3170,7 +3181,7 @@ export function tickWorld(world: World): void {
         world.dying[target] === 1 ||
         world.hp[target] === 0 ||
         !eat.resourceTypes.includes(targetStats.resource) ||
-        world.hp[i]! >= effectiveMaxHp(workerStats, world.playerAge[world.owner[i]!]!)
+        world.hp[i]! >= effectiveMaxHpForPlayer(world, world.owner[i]!, workerStats)
       ) {
         clearUnitTask(world, i);
         continue;
@@ -3183,7 +3194,7 @@ export function tickWorld(world: World): void {
         world.moving[i] = 0;
         world.unitField[i] = null;
         setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
-        const workerMaxHp = effectiveMaxHp(workerStats, world.playerAge[world.owner[i]!]!);
+        const workerMaxHp = effectiveMaxHpForPlayer(world, world.owner[i]!, workerStats);
         const maxForMissingHealth =
           ((workerMaxHp - world.hp[i]!) * eat.consumePerSecond) / eat.healPerSecond;
         const consumed = Math.min(
@@ -3617,7 +3628,7 @@ export function tickWorld(world: World): void {
       }
 
       const siteStats = UNIT_TYPES[world.unitType[target]!]!;
-      const siteMaxHp = effectiveMaxHp(siteStats, world.playerAge[world.owner[target]!]!);
+      const siteMaxHp = effectiveMaxHpForPlayer(world, world.owner[target]!, siteStats);
       const constructionComplete = world.buildProgress[target]! >= siteStats.buildTicks;
 
       if (constructionComplete && world.hp[target]! >= siteMaxHp) {
@@ -4078,9 +4089,10 @@ function resolvePrimaryMeleeImpact(
     attack,
     world.combatExperienceKills[attacker]!,
   );
-  const ageMultiplier = effectiveAttackDamageMultiplier(
+  const ageMultiplier = attackDamageMultiplierForPlayer(
+    world,
+    world.owner[attacker]!,
     UNIT_TYPES[world.unitType[attacker]!]!,
-    world.playerAge[world.owner[attacker]!]!,
   );
 
   if (attack.impactArea !== undefined) {
@@ -4096,7 +4108,12 @@ function resolvePrimaryMeleeImpact(
       NEUTRAL_OWNER,
       (state, hitTarget, damage) => {
         applyMeleeSnare(state, hitTarget);
-        dealDamage(state, hitTarget, damage, attacker);
+        dealDamage(
+          state,
+          hitTarget,
+          armorAdjustedDamage(state, hitTarget, attack, damage),
+          attacker,
+        );
       },
       attacker,
     );
@@ -4108,7 +4125,8 @@ function resolvePrimaryMeleeImpact(
     cycle === undefined
       ? resolveMeleeDamage(attack, UNIT_TYPES[world.unitType[target]!]!)
       : resolveMeleeCycleDamage(attack, cycle, UNIT_TYPES[world.unitType[target]!]!);
-  dealDamage(world, target, damage * experienceMultiplier * ageMultiplier, attacker);
+  const scaledDamage = damage * experienceMultiplier * ageMultiplier;
+  dealDamage(world, target, armorAdjustedDamage(world, target, attack, scaledDamage), attacker);
 }
 
 function applyDeaths(world: World): void {
@@ -4569,7 +4587,7 @@ function applyPendingCommands(world: World): void {
           if (
             eat !== undefined &&
             eat.resourceTypes.includes(targetStats.resource) &&
-            world.hp[index]! < effectiveMaxHp(gathererStats, world.playerAge[world.owner[index]!]!)
+            world.hp[index]! < effectiveMaxHpForPlayer(world, world.owner[index]!, gathererStats)
           ) {
             clearUnitTask(world, index);
             world.mode[index] = MODE_EATING_RESOURCE;
@@ -4609,7 +4627,7 @@ function applyPendingCommands(world: World): void {
         world.owner[target] === command.issuer &&
         targetStats.footprint > 0 &&
         (world.buildProgress[target]! < targetStats.buildTicks ||
-          world.hp[target]! < effectiveMaxHp(targetStats, world.playerAge[command.issuer]!))
+          world.hp[target]! < effectiveMaxHpForPlayer(world, command.issuer, targetStats))
       ) {
         for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
           const id = command.unitIds[unitIndex]!;
@@ -4712,7 +4730,7 @@ function applyPendingCommands(world: World): void {
                 pop += UNIT_TYPES[world.trainQueueTypes[queueStart + queueIndex]!]!.populationCost;
               }
               if (js.footprint > 0 && world.buildProgress[j]! >= js.buildTicks) {
-                popCap += js.popBonus;
+                popCap += effectivePopBonusForPlayer(world, command.issuer, js);
               }
             }
 
@@ -4761,6 +4779,10 @@ function applyPendingCommands(world: World): void {
       const building = resolveId(world, command.buildingId);
 
       tryStartAgeAdvance(world, command.issuer, building, command.minorGod);
+    } else if (command.type === COMMAND_RESEARCH) {
+      const building = resolveId(world, command.buildingId);
+
+      tryStartTechnology(world, command.issuer, building, command.researchId);
     } else if (command.type === COMMAND_CHEAT) {
       const playerId = command.issuer;
       const playerSlot = world.playerSlotById[playerId] ?? -1;

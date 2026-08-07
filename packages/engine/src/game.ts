@@ -15,6 +15,7 @@ import {
   FAVOR,
   FOOD,
   GOLD,
+  getTechnology,
   GOD_RA,
   GOD_ZEUS,
   hashWorld,
@@ -28,6 +29,7 @@ import {
   resolveId,
   tickWorld,
   townCenterTypeForCulture,
+  technologyOptionsForProducer,
   TRAIN_OPTIONS_BY_PRODUCER,
   unitIdAt,
   UNIT_TYPES,
@@ -42,6 +44,7 @@ import {
   type CheatId,
   type MapId,
   type TypeCommandRelationship,
+  type TechnologyDefinition,
 } from "@aom/sim";
 import { createGameAudio } from "./audio/audio";
 import {
@@ -117,6 +120,9 @@ export interface SelectionSummary {
     type: number;
     complete: boolean;
     trainOptions: readonly TypeCommandRelationship[];
+    researchOptions: readonly TechnologyDefinition[];
+    researchId: number;
+    researchProgress: number;
     queueTypes: readonly number[];
     progress: number;
   } | null;
@@ -138,6 +144,7 @@ export interface GameHandle {
   ungarrison(containerId: number): void;
   toggleTownBell(buildingId: number): void;
   advanceAge(buildingId: number, minorGod: number): void;
+  researchSelected(researchId: number): void;
   submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
@@ -178,6 +185,17 @@ function optionListsEqual(
     ) {
       return false;
     }
+  }
+  return true;
+}
+
+function technologyListsEqual(
+  left: readonly TechnologyDefinition[],
+  right: readonly TechnologyDefinition[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index]!.id !== right[index]!.id) return false;
   }
   return true;
 }
@@ -810,18 +828,29 @@ export async function createGame(
         };
       }
 
-      if (producer === null && TRAIN_OPTIONS_BY_PRODUCER[unitType] !== undefined) {
+      const researchOptions = technologyOptionsForProducer(unitType, selfCulture);
+      if (
+        producer === null &&
+        (TRAIN_OPTIONS_BY_PRODUCER[unitType] !== undefined || researchOptions.length > 0)
+      ) {
         const remaining = world.trainRemaining[i]!;
         const queueStart = i * MAX_TRAIN_QUEUE;
         const queueTypes = Array.from(
           world.trainQueueTypes.subarray(queueStart, queueStart + world.trainQueueLength[i]!),
         );
 
+        const activeTechnology = getTechnology(world.researchId[i]!);
         producer = {
           id: unitIdAt(world, i),
           type: unitType,
           complete: world.buildProgress[i]! >= unitStats.buildTicks,
-          trainOptions: TRAIN_OPTIONS_BY_PRODUCER[unitType]!,
+          trainOptions: TRAIN_OPTIONS_BY_PRODUCER[unitType] ?? NO_OPTIONS,
+          researchOptions,
+          researchId: activeTechnology?.id ?? -1,
+          researchProgress:
+            activeTechnology === undefined
+              ? 0
+              : 1 - world.researchRemaining[i]! / activeTechnology.durationTicks,
           queueTypes,
           progress:
             remaining > 0 && queueTypes.length > 0
@@ -852,6 +881,9 @@ export async function createGame(
         producer?.trainOptions ?? NO_OPTIONS,
         lastProducer?.trainOptions ?? NO_OPTIONS,
       ) ||
+      !technologyListsEqual(producer?.researchOptions ?? [], lastProducer?.researchOptions ?? []) ||
+      producer?.researchId !== lastProducer?.researchId ||
+      producer?.researchProgress !== lastProducer?.researchProgress ||
       !typeListsEqual(producer?.queueTypes ?? NO_TYPES, lastProducer?.queueTypes ?? NO_TYPES) ||
       producer?.progress !== lastProducer?.progress ||
       garrison?.id !== lastGarrison?.id ||
@@ -1144,6 +1176,30 @@ export async function createGame(
       // revalidated by the deterministic sim when the command lands.
       sink.submitAdvanceAge(buildingId, minorGod);
       audio.uiClick();
+    },
+    researchSelected(researchId: number): void {
+      for (let building = 0; building < world.count; building += 1) {
+        if (
+          world.selected[building] !== 1 ||
+          world.owner[building] !== selfPlayerId ||
+          world.dying[building] === 1 ||
+          world.hp[building]! <= 0
+        ) {
+          continue;
+        }
+        const stats = UNIT_TYPES[world.unitType[building]!]!;
+        if (
+          world.buildProgress[building]! < stats.buildTicks ||
+          !technologyOptionsForProducer(stats.id, selfCulture).some(
+            (technology) => technology.id === researchId,
+          )
+        ) {
+          continue;
+        }
+        sink.submitResearch(unitIdAt(world, building), researchId);
+        audio.uiClick();
+        return;
+      }
     },
     submitCheat(code: string): boolean {
       const cheat = cheatFromChat(code);

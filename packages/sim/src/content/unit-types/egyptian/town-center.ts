@@ -21,7 +21,7 @@ export const definition = {
   label: "Town Center",
   culture: CULTURE_EGYPTIAN,
   classes: UNIT_CLASS_BUILDING,
-  maxHp: 2800,
+  maxHp: 2400,
   lineOfSight: 24,
   movementSpeed: 0,
   armor: [0.55, 0.96, 0.1],

@@ -7,13 +7,28 @@ import {
   getAgeAdvanceProducerType,
   GOLD,
   GOD_ATHENA,
+  GOD_ANUBIS,
+  GOD_APHRODITE,
+  GOD_APOLLO,
+  GOD_ARES,
+  GOD_ARTEMIS,
   GOD_BAST,
+  GOD_DIONYSUS,
+  GOD_HATHOR,
+  GOD_HEPHAESTUS,
+  GOD_HERA,
   GOD_HERMES,
+  GOD_HORUS,
+  GOD_NEPHTHYS,
+  GOD_OSIRIS,
   GOD_PTAH,
+  GOD_SEKHMET,
+  GOD_THOTH,
   isAutomaticWallSegmentType,
   isWallConnectorType,
   NO_AGE,
   TYPE_ICONS,
+  technologyCost,
   typeAvailabilityForPlayerState,
   UNIT_TYPES,
   WOOD,
@@ -24,6 +39,7 @@ import {
   type SelectionSummary,
   type TypeCommandRelationship,
   type TypeAvailability,
+  type TechnologyDefinition,
 } from "@aom/engine";
 import favorIconUrl from "@/assets/resource-favor.png";
 import foodIconUrl from "@/assets/resource-food.png";
@@ -125,6 +141,32 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
             );
           })}
 
+          {producer?.complete &&
+            producer.researchOptions
+              .filter((technology) => playerState?.completedResearch[technology.id] !== 1)
+              .map((technology) => {
+                const cost = technologyCost(technology, playerState?.majorGod ?? -1);
+                const unavailableReason = researchUnavailableReason(
+                  technology,
+                  producer.researchId,
+                  playerState,
+                );
+                return (
+                  <CommandTile
+                    key={`research-${technology.id}`}
+                    symbol="◆"
+                    label={technology.label}
+                    costFood={cost[FOOD]}
+                    costWood={cost[WOOD]}
+                    costGold={cost[GOLD]}
+                    costFavor={cost[FAVOR]}
+                    unavailableReason={unavailableReason}
+                    disabled={unavailableReason !== undefined}
+                    onClick={() => game.researchSelected(technology.id)}
+                  />
+                );
+              })}
+
           {producer &&
             producer.complete &&
             ageAdvanceRule &&
@@ -193,6 +235,19 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
           progress={producer.progress}
           onCancel={(queueIndex) => game.cancelTraining(producer.id, queueIndex)}
         />
+      )}
+
+      {producer && producer.researchId >= 0 && (
+        <ClassicHudPanel
+          as="section"
+          ariaLabel="Research progress"
+          className="fixed bottom-[9.625rem] left-0 z-10 h-12 w-full select-none px-4 py-2 font-serif text-sm text-[#eee9d7] sm:bottom-[8.375rem] lg:bottom-0 lg:left-[35rem] lg:w-[min(32rem,calc(100vw-51rem))]"
+        >
+          Researching{" "}
+          {producer.researchOptions.find((option) => option.id === producer.researchId)?.label ??
+            "technology"}{" "}
+          · {Math.round(producer.researchProgress * 100)}%
+        </ClassicHudPanel>
       )}
 
       {choosingMinorGod &&
@@ -367,9 +422,60 @@ function minorGodPresentation(minorGod: number): { name: string; detail: string 
       return { name: "Bast", detail: "Eclipse · Sphinx" };
     case GOD_PTAH:
       return { name: "Ptah", detail: "Shifting Sands · Wadjet" };
+    case GOD_ARES:
+      return { name: "Ares", detail: "Pestilence · Cyclops" };
+    case GOD_APOLLO:
+      return { name: "Apollo", detail: "Underworld Passage · Manticore" };
+    case GOD_DIONYSUS:
+      return { name: "Dionysus", detail: "Bronze · Hydra" };
+    case GOD_APHRODITE:
+      return { name: "Aphrodite", detail: "Curse · Nemean Lion" };
+    case GOD_HERA:
+      return { name: "Hera", detail: "Lightning Storm · Medusa" };
+    case GOD_HEPHAESTUS:
+      return { name: "Hephaestus", detail: "Plenty · Colossus" };
+    case GOD_ARTEMIS:
+      return { name: "Artemis", detail: "Earthquake · Chimera" };
+    case GOD_ANUBIS:
+      return { name: "Anubis", detail: "Plague of Serpents · Anubite" };
+    case GOD_HATHOR:
+      return { name: "Hathor", detail: "Locust Swarm · Petsuchos" };
+    case GOD_SEKHMET:
+      return { name: "Sekhmet", detail: "Citadel · Scarab" };
+    case GOD_NEPHTHYS:
+      return { name: "Nephthys", detail: "Ancestors · Scorpion Man" };
+    case GOD_HORUS:
+      return { name: "Horus", detail: "Tornado · Avenger" };
+    case GOD_OSIRIS:
+      return { name: "Osiris", detail: "Son of Osiris · Mummy" };
+    case GOD_THOTH:
+      return { name: "Thoth", detail: "Meteor · Phoenix" };
     default:
       return { name: `God ${minorGod}`, detail: "Minor god" };
   }
+}
+
+function researchUnavailableReason(
+  technology: TechnologyDefinition,
+  activeResearchId: number,
+  playerState: PlayerState | null,
+): string | undefined {
+  if (!playerState) return "Checking availability";
+  if (activeResearchId >= 0) return "Research already in progress";
+  if (playerState.age < technology.requiredAge) {
+    return `Requires ${AGE_NAMES[technology.requiredAge] ?? "a later age"}`;
+  }
+  for (const prerequisite of technology.prerequisiteResearch) {
+    if (playerState.completedResearch[prerequisite] !== 1) return "Requires prior upgrade";
+  }
+  const cost = technologyCost(technology, playerState.majorGod);
+  const resources = [playerState.food, playerState.wood, playerState.gold, playerState.favor];
+  for (let resource = 0; resource < cost.length; resource += 1) {
+    if (resources[resource]! < cost[resource]!) {
+      return `Requires ${cost[resource]} ${resourceLabel(resource).toLowerCase()}`;
+    }
+  }
+  return undefined;
 }
 
 function MinorGodButton({

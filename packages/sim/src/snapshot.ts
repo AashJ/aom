@@ -20,6 +20,7 @@ import { NO_MELEE_ATTACK_VARIANT } from "./ecs/melee-attack-cycles";
 import { jumpElevation } from "./ecs/special-attacks";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
+import { PLAYER_RESEARCH_STRIDE } from "./ecs/technologies";
 import {
   isEntityVisibleTo,
   isPositionVisibleTo,
@@ -99,6 +100,7 @@ export interface RenderSnapshot {
   favorRateMilliPerMinute: number;
   townBellActive: number;
   completedBuildings: Uint8Array;
+  completedResearch: Uint8Array;
   winner: number;
 }
 
@@ -178,6 +180,7 @@ export function createSnapshot(
     favorRateMilliPerMinute: 0,
     townBellActive: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    completedResearch: new Uint8Array(PLAYER_RESEARCH_STRIDE),
     winner: -1,
   };
 }
@@ -244,6 +247,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.playerMajorGods.set(world.playerMajorGod);
   out.playerAges.set(world.playerAge);
   out.completedBuildings.fill(0);
+  out.completedResearch.fill(0);
   out.carriedRelicCount.fill(0);
   out.poisoned.fill(0);
   out.poisonElapsedTicks.fill(0);
@@ -270,6 +274,10 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
           : egyptianMonumentRateMilliPerMinute(world, viewerId);
     const minorGodStart = viewerId * AGE_COUNT;
     out.minorGods.set(world.playerMinorGods.subarray(minorGodStart, minorGodStart + AGE_COUNT));
+    const researchStart = viewerId * PLAYER_RESEARCH_STRIDE;
+    out.completedResearch.set(
+      world.playerResearch.subarray(researchStart, researchStart + PLAYER_RESEARCH_STRIDE),
+    );
     const researchBuilding = findAgeAdvanceResearch(world, viewerId);
 
     if (researchBuilding >= 0) {
@@ -350,8 +358,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
       stats.buildingAttack !== undefined &&
       ((actionTarget >= 0 &&
         (UNIT_TYPES[world.unitType[actionTarget]!]!.classes & UNIT_CLASS_BUILDING) !== 0) ||
-        (secondaryCycles !== undefined &&
-          world.meleeActionVariant[i]! < secondaryCycles.length))
+        (secondaryCycles !== undefined && world.meleeActionVariant[i]! < secondaryCycles.length))
         ? 1
         : 0;
     const attack = stats.attack;

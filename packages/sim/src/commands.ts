@@ -24,6 +24,7 @@ export const COMMAND_EMPOWER = 17;
 export const COMMAND_CONVERT = 18;
 export const COMMAND_TOWN_BELL = 19;
 export const COMMAND_PLACE_WALL = 20;
+export const COMMAND_RESEARCH = 21;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -227,6 +228,14 @@ export interface AdvanceAgeCommand {
   minorGod: number;
 }
 
+export interface ResearchCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_RESEARCH;
+  buildingId: number;
+  researchId: number;
+}
+
 export interface CheatCommand {
   tick: number;
   issuer: number;
@@ -255,6 +264,7 @@ export type Command =
   | ConvertCommand
   | TownBellCommand
   | AdvanceAgeCommand
+  | ResearchCommand
   | CheatCommand;
 
 export function enqueueCommand(world: World, command: Command): void {

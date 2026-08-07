@@ -21,6 +21,7 @@ import {
   COMMAND_PLACE,
   COMMAND_PLACE_WALL,
   COMMAND_PRAY,
+  COMMAND_RESEARCH,
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TRADE,
@@ -55,6 +56,7 @@ export interface CommandSink {
   submitTrain(buildingId: number, unitType: number): void;
   submitCancelTrain(buildingId: number, queueIndex: number): void;
   submitAdvanceAge(buildingId: number, minorGod: number): void;
+  submitResearch(buildingId: number, researchId: number): void;
   submitCheat(cheat: CheatId): void;
   submitPlace(
     buildingType: number,
@@ -259,6 +261,15 @@ export function createLoopbackSink(world: World): CommandSink {
         type: COMMAND_ADVANCE_AGE,
         buildingId,
         minorGod,
+      });
+    },
+    submitResearch(buildingId: number, researchId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_RESEARCH,
+        buildingId,
+        researchId,
       });
     },
     submitCheat(cheat: CheatId): void {

@@ -1,11 +1,7 @@
 import { TICK_HZ } from "../../../clock";
 import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
 import { buildingArrowAttack } from "../../building-attacks";
-import {
-  TYPE_GREEK_TOWN_CENTER,
-  TYPE_GREEK_VILLAGER,
-  TYPE_SETTLEMENT,
-} from "../../unit-type-ids";
+import { TYPE_GREEK_TOWN_CENTER, TYPE_GREEK_VILLAGER, TYPE_SETTLEMENT } from "../../unit-type-ids";
 import {
   CULTURE_GREEK,
   NO_PREREQUISITE_BUILDINGS,
@@ -21,7 +17,7 @@ export const definition = {
   label: "Town Center",
   culture: CULTURE_GREEK,
   classes: UNIT_CLASS_BUILDING,
-  maxHp: 2800,
+  maxHp: 2400,
   lineOfSight: 24,
   movementSpeed: 0,
   armor: [0.55, 0.96, 0.1],

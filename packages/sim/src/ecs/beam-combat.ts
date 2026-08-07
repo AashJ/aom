@@ -5,6 +5,7 @@ import { resolveStableId } from "./id";
 import { setFacingToward } from "./navigation";
 import { effectiveAttackDamageMultiplier, effectiveAttackRange } from "./unit-age";
 import { UNIT_TYPES } from "./types";
+import { armorAdjustedDamage } from "./building-technology-effects";
 import type { World } from "./world";
 
 export function tickActiveBeamAttack(
@@ -53,7 +54,8 @@ export function tickActiveBeamAttack(
       const reach = effectiveAttackRange(attackerStats, attack, age) + targetStats.bodyRadius;
       if (dx * dx + dz * dz <= reach * reach) {
         const ageMultiplier = effectiveAttackDamageMultiplier(attackerStats, age);
-        dealDamage(world, target, resolveDamage(attack, targetStats) * ageMultiplier, attacker);
+        const damage = resolveDamage(attack, targetStats) * ageMultiplier;
+        dealDamage(world, target, armorAdjustedDamage(world, target, attack, damage), attacker);
 
         const chain = attack.chain;
         if (chain !== undefined && chain.maxTargets > 1) {

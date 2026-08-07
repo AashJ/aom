@@ -9,6 +9,7 @@ import type { World } from "./ecs/world";
 import { AGE_COUNT } from "./ecs/progression";
 import { VISIBILITY_TILES } from "./visibility";
 import { MAP_RIVER_NILE } from "./maps";
+import { PLAYER_RESEARCH_STRIDE } from "./ecs/technologies";
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -109,6 +110,13 @@ export function hashWorld(world: World): number {
 
     for (let age = 0; age < AGE_COUNT; age += 1) {
       word = world.playerMinorGods[minorGodStart + age]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+
+    const researchStart = playerId * PLAYER_RESEARCH_STRIDE;
+    for (let researchId = 0; researchId < PLAYER_RESEARCH_STRIDE; researchId += 1) {
+      word = world.playerResearch[researchStart + researchId]!;
       h ^= word;
       h = Math.imul(h, FNV_PRIME);
     }

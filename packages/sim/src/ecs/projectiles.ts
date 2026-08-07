@@ -8,7 +8,11 @@ import { nextFloat, type Pcg32 } from "../math/prng";
 import { advanceProjectileAim, type AttackSequenceState } from "./attack-state";
 import { idGeneration, idIndex, stableIdAt, type StableIdState } from "./id";
 import { resolveDamage, resolveProjectileHitDamage } from "./combat";
-import { effectiveAttackDamageMultiplier } from "./unit-age";
+import {
+  attackDamageMultiplierForPlayer,
+  armorAdjustedDamage,
+  buildingProjectileTargetMultiplier,
+} from "./building-technology-effects";
 import { resolveAreaDamageAt } from "./special-attacks";
 import {
   classicProjectileHits,
@@ -87,6 +91,9 @@ export interface ProjectileWorldState extends UnitSpatialGridState, StableIdStat
   hp: Float64Array;
   dying: Uint8Array;
   unitType: Uint16Array;
+  readonly playerAge?: Uint8Array;
+  readonly playerMajorGod?: Uint8Array;
+  readonly playerResearch?: Uint8Array;
 }
 
 interface ProjectileAttackIssuerState extends ProjectileWorldState, AttackSequenceState {
@@ -184,9 +191,10 @@ export function beginProjectileAttack(
   const targetId = stableIdAt(world, targetIndex);
   const priorShots = advanceProjectileAim(world, sourceIndex, targetId);
   const garrison = unitTypes[sourceType]!.garrison;
-  let sourceDamageMultiplier = effectiveAttackDamageMultiplier(
+  let sourceDamageMultiplier = attackDamageMultiplierForPlayer(
+    world,
+    world.owner[sourceIndex]!,
     unitTypes[sourceType]!,
-    world.playerAge[world.owner[sourceIndex]!]!,
   );
   if (garrison !== undefined) {
     let occupants = 0;
@@ -553,21 +561,43 @@ export function tickProjectileStore<TWorld extends ProjectileWorldState>(
             attack.kind === "projectile"
               ? resolveProjectileHitDamage(attack, targetStats)
               : resolveDamage(attack, targetStats);
-          applyDamage(world, hitIndex, damage * damageMultiplier * store.damageMultipliers[index]!);
+          const technologyMultiplier = buildingProjectileTargetMultiplier(
+            world,
+            store.owners[index]!,
+            store.sourceTypes[index]!,
+            targetStats,
+          );
+          const scaledDamage =
+            damage * damageMultiplier * technologyMultiplier * store.damageMultipliers[index]!;
+          applyDamage(world, hitIndex, armorAdjustedDamage(world, hitIndex, attack, scaledDamage));
         } else {
+          const impactAttack = { ...areaDamageAttack(attack), ...attack.impactArea };
           resolveAreaDamageAt(
             world,
             store.owners[index]!,
             world.posX[hitIndex]!,
             world.posZ[hitIndex]!,
-            { ...areaDamageAttack(attack), ...attack.impactArea },
+            impactAttack,
             unitTypes,
             255,
             (areaWorld, target, damage) =>
               applyDamage(
                 areaWorld,
                 target,
-                damage * damageMultiplier * store.damageMultipliers[index]!,
+                armorAdjustedDamage(
+                  areaWorld,
+                  target,
+                  impactAttack,
+                  damage *
+                    damageMultiplier *
+                    buildingProjectileTargetMultiplier(
+                      areaWorld,
+                      store.owners[index]!,
+                      store.sourceTypes[index]!,
+                      unitTypes[areaWorld.unitType[target]!]!,
+                    ) *
+                    store.damageMultipliers[index]!,
+                ),
               ),
           );
         }
@@ -582,16 +612,26 @@ export function tickProjectileStore<TWorld extends ProjectileWorldState>(
     }
 
     if (attack.impactArea !== undefined && store.expiresBeforeImpact[index] === 0) {
+      const impactAttack = { ...areaDamageAttack(attack), ...attack.impactArea };
       resolveAreaDamageAt(
         world,
         store.owners[index]!,
         store.impactX[index]!,
         store.impactZ[index]!,
-        { ...areaDamageAttack(attack), ...attack.impactArea },
+        impactAttack,
         unitTypes,
         255,
         (areaWorld, target, damage) =>
-          applyDamage(areaWorld, target, damage * store.damageMultipliers[index]!),
+          applyDamage(
+            areaWorld,
+            target,
+            armorAdjustedDamage(
+              areaWorld,
+              target,
+              impactAttack,
+              damage * store.damageMultipliers[index]!,
+            ),
+          ),
       );
     }
     removeProjectile(store, index);

@@ -22,7 +22,7 @@ export const definition = {
   movementSpeed: 0,
   armor: [0.3, 0.85, 0.05],
   attack: buildingArrowAttack({
-    damage: 8,
+    damage: 10,
     range: 20,
     minimumRange: 4,
     projectileCount: 2,
@@ -32,7 +32,7 @@ export const definition = {
   }),
   closeAttack: {
     kind: "melee",
-    damage: [0, 10, 0],
+    damage: [0, 14, 0],
     range: 4,
     aggroRange: 20,
     cooldownTicks: 20,

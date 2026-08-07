@@ -23,6 +23,7 @@ import {
   COMMAND_PLACE,
   COMMAND_PLACE_WALL,
   COMMAND_PRAY,
+  COMMAND_RESEARCH,
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TRADE,
@@ -248,6 +249,14 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_ADVANCE_AGE, buildingId, minorGod }],
+      });
+    },
+
+    submitResearch(buildingId: number, researchId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_RESEARCH, buildingId, researchId }],
       });
     },
 

@@ -13,6 +13,17 @@ export {
   CLASSICAL_AGE_ADVANCE_RULE,
   CLASSICAL_AGE_ADVANCE_TICKS,
   CLASSICAL_AGE_COST_FOOD,
+  HEROIC_AGE_ADVANCE_RULE,
+  HEROIC_AGE_ADVANCE_TICKS,
+  HEROIC_AGE_COST_FOOD,
+  HEROIC_AGE_COST_GOLD,
+  MYTHIC_AGE_ADVANCE_RULE,
+  MYTHIC_AGE_ADVANCE_TICKS,
+  MYTHIC_AGE_COST_FOOD,
+  MYTHIC_AGE_COST_GOLD,
+  RESEARCH_CLASSICAL_AGE,
+  RESEARCH_HEROIC_AGE,
+  RESEARCH_MYTHIC_AGE,
   getAgeAdvanceAvailability,
   getAgeAdvanceProducerType,
   type AgeAdvanceAvailability,
@@ -20,6 +31,9 @@ export {
   type AgeAdvanceRule,
   type ResourceAmounts,
 } from "./ecs/age-advancement";
+export * from "./ecs/technologies";
+export { findTechnologyResearch, tryStartTechnology } from "./ecs/research";
+export { playerHasTechnology } from "./ecs/building-technology-effects";
 export {
   getTypeAvailability,
   hasCompletedBuilding,
