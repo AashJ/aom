@@ -103,6 +103,11 @@ export interface UnitTypeStats {
   // prerequisite without changing the trained unit's age, god, cost, or time.
   readonly trainingSite?: TrainingSiteTraits;
   readonly isDropsite: boolean;
+  // Classic dropsites accept explicit resource classes. Town Centers accept
+  // every carried resource, while Granaries, Storehouses, Lumber Camps, and
+  // Mining Camps each serve only their authored subset. Omitted preserves the
+  // all-resource behavior of legacy Town Center/Dock rows.
+  readonly resourceDropsiteResources?: readonly ResourceType[];
   // Water gatherers must not select an unreachable land dropsite merely because
   // it is geometrically closer. Omitted dropsites serve land gatherers.
   readonly resourceDropsiteDomain?: MovementDomain;
@@ -214,6 +219,8 @@ export type MovementDomain =
   | typeof MOVEMENT_DOMAIN_WATER
   | typeof MOVEMENT_DOMAIN_AMPHIBIOUS
   | typeof MOVEMENT_DOMAIN_AIR;
+
+export type ResourceType = typeof FOOD | typeof WOOD | typeof GOLD | typeof FAVOR;
 
 export interface HeroTraits {
   // Greek heroes use one live-or-queued copy of each identity per player.

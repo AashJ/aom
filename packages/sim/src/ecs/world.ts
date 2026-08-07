@@ -192,6 +192,7 @@ import {
   WOOD,
   type MeleeAttack,
   type MeleeAttackCycle,
+  type ResourceType,
 } from "./types";
 import {
   assignGatherTask,
@@ -1127,10 +1128,16 @@ function gatherCapacity(world: World, index: number): number {
   return UNIT_TYPES[world.unitType[index]!]!.gather?.capacity ?? CARRY_CAPACITY;
 }
 
-function canUseResourceDropsite(workerType: number, dropsiteType: number): boolean {
+function canUseResourceDropsite(
+  workerType: number,
+  dropsiteType: number,
+  resource: number,
+): boolean {
   const dropsite = UNIT_TYPES[dropsiteType]!;
   return (
     dropsite.isDropsite &&
+    (dropsite.resourceDropsiteResources === undefined ||
+      dropsite.resourceDropsiteResources.includes(resource as ResourceType)) &&
     movementDomainForType(workerType) === (dropsite.resourceDropsiteDomain ?? MOVEMENT_DOMAIN_LAND)
   );
 }
@@ -2383,7 +2390,11 @@ export function tickWorld(world: World): void {
 
         for (let j = 0; j < world.count; j += 1) {
           if (
-            !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
+            !canUseResourceDropsite(
+              world.unitType[i]!,
+              world.unitType[j]!,
+              world.carriedResource[i]!,
+            ) ||
             world.owner[j] !== world.owner[i] ||
             world.dying[j] === 1 ||
             world.hp[j] === 0 ||
@@ -2504,7 +2515,11 @@ export function tickWorld(world: World): void {
 
             for (let j = 0; j < world.count; j += 1) {
               if (
-                !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
+                !canUseResourceDropsite(
+                  world.unitType[i]!,
+                  world.unitType[j]!,
+                  world.carriedResource[i]!,
+                ) ||
                 world.owner[j] !== world.owner[i] ||
                 world.dying[j] === 1 ||
                 world.hp[j] === 0 ||
@@ -2629,7 +2644,11 @@ export function tickWorld(world: World): void {
         const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
 
         if (
-          !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
+          !canUseResourceDropsite(
+            world.unitType[i]!,
+            world.unitType[j]!,
+            world.carriedResource[i]!,
+          ) ||
           world.owner[j] !== world.owner[i] ||
           world.dying[j] === 1 ||
           world.hp[j] === 0 ||
@@ -2703,7 +2722,11 @@ export function tickWorld(world: World): void {
 
         for (let j = 0; j < world.count; j += 1) {
           if (
-            !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
+            !canUseResourceDropsite(
+              world.unitType[i]!,
+              world.unitType[j]!,
+              world.carriedResource[i]!,
+            ) ||
             world.owner[j] !== world.owner[i] ||
             world.dying[j] === 1 ||
             world.hp[j] === 0 ||

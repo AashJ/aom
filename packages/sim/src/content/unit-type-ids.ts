@@ -115,6 +115,44 @@ export const TYPE_MERCENARY_CAVALRY = 157;
 export const TYPE_MINION = 192;
 export const TYPE_PHOENIX_EGG = 193;
 
+// Classic Greek/Egyptian building roster. These identities are append-only and
+// culture-specific even when both cultures share one proto row: cost rules,
+// construction rates, god bonuses, and presentation differ by culture.
+export const TYPE_GREEK_GRANARY = 200;
+export const TYPE_GREEK_STOREHOUSE = 201;
+export const TYPE_GREEK_FARM = 202;
+export const TYPE_GREEK_ARMORY = 203;
+export const TYPE_GREEK_TOWER = 204;
+export const TYPE_GREEK_WALL_CONNECTOR = 205;
+export const TYPE_GREEK_WALL_SHORT = 206;
+export const TYPE_GREEK_WALL_MEDIUM = 207;
+export const TYPE_GREEK_WALL_LONG = 208;
+export const TYPE_GREEK_GATE = 209;
+export const TYPE_GREEK_WONDER = 210;
+
+export const TYPE_EGYPTIAN_GRANARY = 211;
+export const TYPE_EGYPTIAN_LUMBER_CAMP = 212;
+export const TYPE_EGYPTIAN_MINING_CAMP = 213;
+export const TYPE_EGYPTIAN_FARM = 214;
+export const TYPE_EGYPTIAN_ARMORY = 215;
+export const TYPE_EGYPTIAN_TOWER = 216;
+export const TYPE_EGYPTIAN_OUTPOST = 217;
+export const TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS = 218;
+export const TYPE_EGYPTIAN_MONUMENT_TO_SOLDIERS = 219;
+export const TYPE_EGYPTIAN_MONUMENT_TO_PRIESTS = 220;
+export const TYPE_EGYPTIAN_MONUMENT_TO_PHARAOHS = 221;
+export const TYPE_EGYPTIAN_MONUMENT_TO_GODS = 222;
+export const TYPE_EGYPTIAN_LIGHTHOUSE = 223;
+export const TYPE_EGYPTIAN_WALL_CONNECTOR = 224;
+export const TYPE_EGYPTIAN_WALL_SHORT = 225;
+export const TYPE_EGYPTIAN_WALL_MEDIUM = 226;
+export const TYPE_EGYPTIAN_WALL_LONG = 227;
+export const TYPE_EGYPTIAN_GATE = 228;
+export const TYPE_EGYPTIAN_WONDER = 229;
+
+// Settlements are neutral map sites, not culture-owned build-menu entries.
+export const TYPE_SETTLEMENT = 230;
+
 export const MAX_RESERVED_UNIT_TYPE_ID = TYPE_MERCENARY_CAVALRY;
 
 // Every independently authored playable Greek/Egyptian unit lane. Workers,
