@@ -9,6 +9,8 @@ import {
   UNIT_CLASS_MELEE,
   UNIT_CLASS_MILITARY,
   UNIT_CLASS_MYTH,
+  UNIT_CONDITION_FROZEN,
+  UNIT_CONDITION_STONE,
   type UnitTypeStats,
 } from "../../unit-type-schema";
 
@@ -42,8 +44,10 @@ export const definition = {
       { kind: "classes", classes: UNIT_CLASS_HUMAN },
       { kind: "classes", classes: UNIT_CLASS_MYTH | UNIT_CLASS_INFANTRY },
     ],
+    invalidTargetConditions: UNIT_CONDITION_FROZEN | UNIT_CONDITION_STONE,
     targetReaction: {
       kind: "thrown",
+      randomDrawOrder: ["distance", "maxVelocity", "maxHeight", "bounces"],
       distanceBase: 8,
       distanceRandomRange: 2,
       maxVelocityBase: 12,

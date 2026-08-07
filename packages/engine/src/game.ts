@@ -7,8 +7,8 @@ import {
   CHEAT_ADD_WOOD,
   CHEAT_FULL_FAVOR,
   CHEAT_REVEAL_MAP,
-  CULTURE_GREEK,
   cultureForMajorGod,
+  countGarrisonedUnits,
   createPlayableWorld,
   createSnapshot,
   FAVOR,
@@ -27,7 +27,6 @@ import {
   tickWorld,
   townCenterTypeForCulture,
   TRAIN_OPTIONS_BY_PRODUCER,
-  TYPE_NEMEAN_LION,
   unitIdAt,
   UNIT_TYPES,
   UNIT_CLASS_HUMAN,
@@ -116,6 +115,11 @@ export interface SelectionSummary {
     queueTypes: readonly number[];
     progress: number;
   } | null;
+  garrison: {
+    id: number;
+    count: number;
+    capacity: number;
+  } | null;
 }
 
 export interface GameHandle {
@@ -126,6 +130,7 @@ export interface GameHandle {
   cancelPlacement(): void;
   trainSelected(unitType: number): void;
   cancelTraining(buildingId: number, queueIndex: number): void;
+  ungarrison(containerId: number): void;
   advanceAge(buildingId: number, minorGod: number): void;
   submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
@@ -269,7 +274,7 @@ export async function createGame(
     beginInfo ? beginInfo.seed : 1337,
     3 * ownerIds.length,
     ownerIds.map((id) => ({ id, majorGod: session ? GOD_ZEUS : soloMajorGod })),
-    session ? { [CULTURE_GREEK]: [TYPE_NEMEAN_LION] } : undefined,
+    undefined,
     mapId,
   );
   const sink = session ? session.sink : createLoopbackSink(world);
@@ -305,6 +310,7 @@ export async function createGame(
     builderType: -1,
     buildOptions: NO_OPTIONS,
     producer: null,
+    garrison: null,
   };
   writeSnapshot(world, prevSnap, selfPlayerId);
   writeSnapshot(world, currSnap, selfPlayerId);
@@ -627,6 +633,7 @@ export async function createGame(
     let builderType = -1;
     let buildOptions = NO_OPTIONS;
     let producer: SelectionSummary["producer"] = null;
+    let garrison: SelectionSummary["garrison"] = null;
 
     for (let i = 0; i < world.count; i += 1) {
       if (world.selected[i] !== 1) {
@@ -662,6 +669,14 @@ export async function createGame(
         }
       }
 
+      if (garrison === null && unitStats.garrison !== undefined) {
+        garrison = {
+          id: unitIdAt(world, i),
+          count: countGarrisonedUnits(world, i),
+          capacity: unitStats.garrison.capacity,
+        };
+      }
+
       if (producer === null && TRAIN_OPTIONS_BY_PRODUCER[unitType] !== undefined) {
         const remaining = world.trainRemaining[i]!;
         const queueStart = i * MAX_TRAIN_QUEUE;
@@ -685,6 +700,7 @@ export async function createGame(
 
     const lastProducer = lastSelection.producer;
     const lastPrimary = lastSelection.primary;
+    const lastGarrison = lastSelection.garrison;
     if (
       primary?.id !== lastPrimary?.id ||
       primary?.type !== lastPrimary?.type ||
@@ -704,7 +720,10 @@ export async function createGame(
         lastProducer?.trainOptions ?? NO_OPTIONS,
       ) ||
       !typeListsEqual(producer?.queueTypes ?? NO_TYPES, lastProducer?.queueTypes ?? NO_TYPES) ||
-      producer?.progress !== lastProducer?.progress
+      producer?.progress !== lastProducer?.progress ||
+      garrison?.id !== lastGarrison?.id ||
+      garrison?.count !== lastGarrison?.count ||
+      garrison?.capacity !== lastGarrison?.capacity
     ) {
       lastSelection = {
         primary,
@@ -714,6 +733,7 @@ export async function createGame(
         builderType,
         buildOptions,
         producer,
+        garrison,
       };
 
       for (const cb of selectionCbs) {
@@ -931,6 +951,20 @@ export async function createGame(
       }
 
       sink.submitCancelTrain(buildingId, queueIndex);
+      audio.uiClick();
+    },
+    ungarrison(containerId: number): void {
+      const container = resolveId(world, containerId);
+      if (
+        container < 0 ||
+        world.selected[container] !== 1 ||
+        world.owner[container] !== selfPlayerId ||
+        UNIT_TYPES[world.unitType[container]!]!.garrison === undefined ||
+        countGarrisonedUnits(world, container) === 0
+      ) {
+        return;
+      }
+      sink.submitUngarrison(containerId);
       audio.uiClick();
     },
     advanceAge(buildingId: number, minorGod: number): void {

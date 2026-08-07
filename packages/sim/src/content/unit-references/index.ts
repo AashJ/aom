@@ -4,12 +4,18 @@ import { GATE_A_UNIT_REFERENCES } from "./gate-a";
 import { GATE_B_UNIT_REFERENCES } from "./gate-b";
 import { GATE_C_UNIT_REFERENCES } from "./gate-c";
 import { GATE_C_MYTH_UNIT_REFERENCES } from "./gate-c-myth";
+import { GATE_D_UNIT_REFERENCES } from "./gate-d";
+import { GATE_E_UNIT_REFERENCES } from "./gate-e";
+import { GATE_F_UNIT_REFERENCES } from "./gate-f";
 
 export const UNIT_REFERENCE_SPECS = [
   ...GATE_A_UNIT_REFERENCES,
   ...GATE_B_UNIT_REFERENCES,
   ...GATE_C_UNIT_REFERENCES,
   ...GATE_C_MYTH_UNIT_REFERENCES,
+  ...GATE_D_UNIT_REFERENCES,
+  ...GATE_E_UNIT_REFERENCES,
+  ...GATE_F_UNIT_REFERENCES,
 ] as const satisfies readonly UnitReferenceSpec[];
 
 validateUnitReferences(UNIT_ROSTER, UNIT_REFERENCE_SPECS);
@@ -26,3 +32,6 @@ export { GATE_A_UNIT_REFERENCES } from "./gate-a";
 export { GATE_B_UNIT_REFERENCES } from "./gate-b";
 export { GATE_C_UNIT_REFERENCES } from "./gate-c";
 export { GATE_C_MYTH_UNIT_REFERENCES } from "./gate-c-myth";
+export { GATE_D_UNIT_REFERENCES } from "./gate-d";
+export { GATE_E_UNIT_REFERENCES } from "./gate-e";
+export { GATE_F_UNIT_REFERENCES } from "./gate-f";

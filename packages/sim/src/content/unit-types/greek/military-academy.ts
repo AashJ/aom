@@ -1,4 +1,5 @@
 import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
+import { poseidonMilitiaDeathSpawn } from "../../death-spawns";
 import { TYPE_GREEK_MILITARY_ACADEMY, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
 import {
   CULTURE_GREEK,
@@ -20,6 +21,7 @@ export const definition = {
   movementSpeed: 0,
   armor: NO_ARMOR,
   attack: null,
+  deathSpawn: poseidonMilitiaDeathSpawn(3),
   isStatic: true,
   resource: -1,
   bodyRadius: 2.2,

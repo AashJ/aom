@@ -1,0 +1,97 @@
+import { TICK_HZ } from "../../../clock";
+import { AGE_MYTHIC, GOD_OSIRIS } from "../../../ecs/progression";
+import { PROJECTILE_MUMMY_FLIES } from "../../../ecs/projectiles";
+import { TYPE_EGYPTIAN_TEMPLE, TYPE_MINION, TYPE_MUMMY } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_DAMAGE_BONUSES,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_HERO,
+  UNIT_CLASS_CARAVAN,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_INFANTRY,
+  UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
+  UNIT_CLASS_SHIP,
+  UNIT_CLASS_SIEGE,
+  UNIT_CLASS_TITAN,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+const CONVERT_EXCLUSIONS =
+  UNIT_CLASS_HERO | UNIT_CLASS_SIEGE | UNIT_CLASS_SHIP | UNIT_CLASS_TITAN | UNIT_CLASS_CARAVAN;
+
+export const definition = {
+  id: TYPE_MUMMY,
+  key: "egyptian-mummy",
+  label: "Mummy",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_MYTH | UNIT_CLASS_INFANTRY | UNIT_CLASS_MILITARY,
+  maxHp: 350,
+  lineOfSight: 18,
+  movementSpeed: 4,
+  armor: [0.35, 0.5, 0.8],
+  attack: {
+    kind: "projectile",
+    damage: [0, 12, 0],
+    range: 12,
+    aggroRange: 18,
+    cooldownTicks: 34,
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.5 }],
+    launchDelayTicks: 16,
+    accuracy: 1,
+    accuracyReductionFactor: 0,
+    aimBonus: 0,
+    spreadFactor: 0,
+    maxSpread: 0,
+    trackRating: 0,
+    unintentionalDamageMultiplier: 1,
+    projectile: {
+      type: PROJECTILE_MUMMY_FLIES,
+      speed: 30,
+      lifespanTicks: 2 * TICK_HZ,
+      collisionRadius: 0.1,
+    },
+  },
+  specialAttack: {
+    kind: "charged-convert",
+    damage: [0, 0, 0],
+    range: 12,
+    bonuses: NO_DAMAGE_BONUSES,
+    rechargeTicks: 25 * TICK_HZ,
+    actionTicks: 4 * TICK_HZ,
+    impactDelayTicks: 48,
+    validTargets: [
+      {
+        kind: "classes",
+        classes: UNIT_CLASS_HUMAN,
+        excludedClasses: CONVERT_EXCLUSIONS,
+      },
+      {
+        kind: "classes",
+        classes: UNIT_CLASS_MYTH,
+        excludedClasses: CONVERT_EXCLUSIONS,
+      },
+    ],
+    spawnUnitType: TYPE_MINION,
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.7,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 0,
+  costWood: 0,
+  costGold: 200,
+  costFavor: 35,
+  buildTicks: 17 * TICK_HZ,
+  populationCost: 5,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_MYTHIC,
+  requiredGod: GOD_OSIRIS,
+  prerequisiteBuildings: [TYPE_EGYPTIAN_TEMPLE],
+  trainedAt: [{ type: TYPE_EGYPTIAN_TEMPLE, commandSlot: 4 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

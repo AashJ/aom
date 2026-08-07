@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createSnapshot } from "@aom/sim";
 import {
   UNIT_POSE_ELEVATION,
+  UNIT_POSE_FACING_X,
+  UNIT_POSE_FACING_Z,
   UNIT_POSE_FLOATS,
   UNIT_POSE_X,
   UNIT_POSE_Z,
@@ -20,9 +22,13 @@ describe("interpolated unit pose", () => {
     prev.posX[0] = 10;
     prev.posZ[0] = 20;
     prev.elevation[0] = 2;
+    prev.facingX[0] = 1;
+    prev.facingZ[0] = 0;
     curr.posX[0] = 14;
     curr.posZ[0] = 28;
     curr.elevation[0] = 6;
+    curr.facingX[0] = 0;
+    curr.facingZ[0] = 1;
     const pose = new Float64Array(UNIT_POSE_FLOATS);
 
     writeInterpolatedUnitPose(pose, prev, curr, 0, 0.25);
@@ -30,6 +36,8 @@ describe("interpolated unit pose", () => {
     expect(pose[UNIT_POSE_X]).toBe(11);
     expect(pose[UNIT_POSE_Z]).toBe(22);
     expect(pose[UNIT_POSE_ELEVATION]).toBe(3);
+    expect(pose[UNIT_POSE_FACING_X]).toBeCloseTo(3 / Math.sqrt(10));
+    expect(pose[UNIT_POSE_FACING_Z]).toBeCloseTo(1 / Math.sqrt(10));
     expect(unitSnapshotDisplacementSquared(prev, curr, 0)).toBe(80);
   });
 
@@ -43,9 +51,13 @@ describe("interpolated unit pose", () => {
     prev.posX[0] = 10;
     prev.posZ[0] = 20;
     prev.elevation[0] = 2;
+    prev.facingX[0] = 1;
+    prev.facingZ[0] = 0;
     curr.posX[0] = 14;
     curr.posZ[0] = 28;
     curr.elevation[0] = 6;
+    curr.facingX[0] = 0.6;
+    curr.facingZ[0] = 0.8;
     const pose = new Float64Array(UNIT_POSE_FLOATS);
 
     writeInterpolatedUnitPose(pose, prev, curr, 0, 0.25);
@@ -53,6 +65,8 @@ describe("interpolated unit pose", () => {
     expect(pose[UNIT_POSE_X]).toBe(14);
     expect(pose[UNIT_POSE_Z]).toBe(28);
     expect(pose[UNIT_POSE_ELEVATION]).toBe(6);
+    expect(pose[UNIT_POSE_FACING_X]).toBeCloseTo(0.6);
+    expect(pose[UNIT_POSE_FACING_Z]).toBeCloseTo(0.8);
     expect(unitSnapshotDisplacementSquared(prev, curr, 0)).toBe(0);
   });
 });

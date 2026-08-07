@@ -6,9 +6,12 @@ import {
   COMMAND_CANCEL_TRAIN,
   COMMAND_MOVE,
   COMMAND_DROP_OFF_RELIC,
+  COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
   COMMAND_PRAY,
+  COMMAND_UNGARRISON,
   COMMAND_STOP,
+  COMMAND_TRADE,
   GOD_HERMES,
 } from "@aom/sim";
 import { PROTOCOL_VERSION, type ClientMessage } from "@aom/relay";
@@ -138,6 +141,38 @@ describe("relay sink", () => {
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_CANCEL_TRAIN, buildingId: 17, queueIndex: 2 }],
+      },
+    ]);
+  });
+
+  test("submits tickless garrison and ungarrison commands", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+    sink.submitGarrison([3, 5], 17);
+    sink.submitUngarrison(17);
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_GARRISON, unitIds: [3, 5], targetId: 17 }],
+      },
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_UNGARRISON, containerId: 17 }],
+      },
+    ]);
+  });
+
+  test("submits tickless caravan trade routes", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+    sink.submitTrade([3, 5], 17);
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TRADE, unitIds: [3, 5], targetId: 17 }],
       },
     ]);
   });

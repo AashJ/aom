@@ -1,0 +1,56 @@
+import { TICK_HZ } from "../../../clock";
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_MINION } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
+  UNIT_CLASS_HERO,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_MINION,
+  key: "egyptian-minion",
+  label: "Minion",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_MYTH | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+  maxHp: 180,
+  lineOfSight: 16,
+  movementSpeed: 5,
+  armor: [0.35, 0.4, 0.99],
+  attack: {
+    kind: "melee",
+    damage: [10, 0, 0],
+    range: 0.1,
+    aggroRange: 16,
+    cooldownTicks: 18,
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.5 }],
+    cycleVariants: [
+      { actionTicks: 16, impactDelayTicks: 8 },
+      { actionTicks: 20, impactDelayTicks: 6 },
+    ],
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.49,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 0,
+  costWood: 0,
+  costGold: 150,
+  costFavor: 10,
+  buildTicks: 0,
+  lifespanTicks: 60 * TICK_HZ,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: [],
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

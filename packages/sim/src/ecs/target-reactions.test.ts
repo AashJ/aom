@@ -4,7 +4,7 @@ import { createWorld, killUnit, resolveId, spawnUnit, tickWorld } from "./world"
 import { hashWorld } from "../hash";
 import { nextFloat, nextU32 } from "../math/prng";
 import { TYPE_HOPLITE } from "../content/unit-type-ids";
-import type { ThrownTargetReaction } from "../content/unit-type-schema";
+import { MOVEMENT_DOMAIN_WATER, type ThrownTargetReaction } from "../content/unit-type-schema";
 import {
   clearTargetReaction,
   copyTargetReaction,
@@ -20,6 +20,7 @@ import {
 
 const CLASSIC_GORE_THROW = {
   kind: "thrown",
+  randomDrawOrder: ["distance", "maxVelocity", "maxHeight", "bounces"],
   distanceBase: 8,
   distanceRandomRange: 2,
   maxVelocityBase: 12,
@@ -73,7 +74,7 @@ describe("authoritative target reactions", () => {
     expect(world.targetReactions.maxVelocity[0]).toBe(expectedVelocity);
     expect(world.targetReactions.maxHeight[0]).toBe(expectedHeight);
     expect(world.targetReactions.numberBounces[0]).toBe(expectedBounces);
-    expect(world.targetReactions.numberBouncesDone[0]).toBe(-1);
+    expect(world.targetReactions.numberBouncesDone[0]).toBe(0);
     expect(world.rng).toEqual(expectedRng);
     expect(targetReactionCapabilitiesAt(world.targetReactions, 0)).toEqual({
       blocksOrderExecution: true,
@@ -98,7 +99,7 @@ describe("authoritative target reactions", () => {
     }
 
     let distanceMultiplier = 1;
-    for (let divisor = 1; divisor <= numberBounces + 1; divisor += 1) {
+    for (let divisor = 2; divisor <= numberBounces + 1; divisor += 1) {
       distanceMultiplier += 1 / divisor;
     }
     expect(ticks).toBeLessThan(500);
@@ -107,6 +108,45 @@ describe("authoritative target reactions", () => {
     expect(world.targetReactions.elevation[0]).toBe(0);
     expect(world.posX[0]).toBeCloseTo(startX + distance * distanceMultiplier, 10);
     expect(world.posZ[0]).toBe(20);
+  });
+
+  test("preserves BuckAttack's distinct RNG order, exact zero bounces, and water landing", () => {
+    const { world } = flatWorld(51);
+    world.walkable.fill(0);
+    world.waterWalkable.fill(1);
+    const buckThrow = {
+      kind: "thrown",
+      randomDrawOrder: ["maxVelocity", "maxHeight", "distance"],
+      distanceBase: 5,
+      distanceRandomRange: 1.5,
+      maxVelocityBase: 14,
+      maxVelocityRandomRange: 4,
+      maxHeightBase: 6,
+      maxHeightRandomRange: 2,
+      bounceBase: 0,
+      bounceRandomRange: 0,
+    } as const satisfies ThrownTargetReaction;
+    const expectedRng = { ...world.rng };
+    const expectedVelocity = 14 + nextFloat(expectedRng) * 4;
+    const expectedHeight = 6 + nextFloat(expectedRng) * 2;
+    const expectedDistance = 5 + nextFloat(expectedRng) * 1.5;
+
+    expect(installTargetReaction(world, 0, 19, 20, buckThrow, MOVEMENT_DOMAIN_WATER)).toBe(true);
+    expect(world.targetReactions.maxVelocity[0]).toBe(expectedVelocity);
+    expect(world.targetReactions.maxHeight[0]).toBe(expectedHeight);
+    expect(world.targetReactions.distance[0]).toBe(expectedDistance);
+    expect(world.targetReactions.numberBounces[0]).toBe(0);
+    expect(world.targetReactions.numberBouncesDone[0]).toBe(0);
+    expect(world.targetReactions.landingDomain[0]).toBe(MOVEMENT_DOMAIN_WATER);
+    expect(world.rng).toEqual(expectedRng);
+
+    let ticks = 0;
+    while (isTargetReactionActive(world.targetReactions, 0) && ticks < 200) {
+      tickTargetReactions(world);
+      ticks += 1;
+    }
+    expect(ticks).toBeLessThan(200);
+    expect(world.posX[0]).toBeCloseTo(20 + expectedDistance, 10);
   });
 
   test("uses Classic's short horizontal fallback when the initial landing is invalid", () => {
@@ -138,7 +178,7 @@ describe("authoritative target reactions", () => {
       bounceRandomRange: 1,
     };
     expect(installTargetReaction(world, 0, 19, 20, fixedThrow)).toBe(true);
-    world.walkable[20 * 256 + 36] = 0;
+    world.walkable[20 * 256 + 32] = 0;
 
     let ticks = 0;
     while (isTargetReactionActive(world.targetReactions, 0) && ticks < 200) {

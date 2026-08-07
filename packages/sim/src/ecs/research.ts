@@ -10,6 +10,8 @@ import {
 import { hasCompletedBuilding } from "./availability";
 import { AGE_COUNT, NO_AGE, NO_GOD } from "./progression";
 import { FAVOR, FOOD, GOLD, RESOURCE_COUNT, UNIT_TYPES, WOOD } from "./types";
+import { empowermentAt } from "./support-actions";
+import { effectiveMaxHp } from "./unit-age";
 import type { World } from "./world";
 
 function activeAgeAdvanceRule(world: World, building: number): AgeAdvanceRule | undefined {
@@ -32,6 +34,7 @@ function clearBuildingResearch(world: World, building: number): void {
   world.researchId[building] = NO_RESEARCH;
   world.researchChoice[building] = NO_GOD;
   world.researchRemaining[building] = 0;
+  world.empowerResearchProgress[building] = 0;
 }
 
 function playerResources(world: World, playerId: number): ResourceAmounts {
@@ -134,7 +137,16 @@ export function tickBuildingResearch(world: World, building: number): boolean {
   }
 
   if (world.researchRemaining[building]! > 0) {
-    world.researchRemaining[building] = world.researchRemaining[building]! - 1;
+    const researchWork = empowermentAt(world, building)?.trainWorkMultiplier ?? 1;
+    world.empowerResearchProgress[building] =
+      world.empowerResearchProgress[building]! + researchWork;
+    const completedWork = Math.floor(world.empowerResearchProgress[building]!);
+    world.empowerResearchProgress[building] =
+      world.empowerResearchProgress[building]! - completedWork;
+    world.researchRemaining[building] = Math.max(
+      0,
+      world.researchRemaining[building]! - completedWork,
+    );
   }
 
   if (world.researchRemaining[building] !== 0) {
@@ -143,6 +155,15 @@ export function tickBuildingResearch(world: World, building: number): boolean {
 
   const playerId = world.owner[building]!;
   const minorGod = world.researchChoice[building]!;
+  const oldAge = world.playerAge[playerId]!;
+
+  for (let unit = 0; unit < world.count; unit += 1) {
+    if (world.owner[unit] !== playerId || world.dying[unit] === 1 || world.hp[unit]! <= 0) continue;
+    const stats = UNIT_TYPES[world.unitType[unit]!]!;
+    const oldMaxHp = effectiveMaxHp(stats, oldAge);
+    const newMaxHp = effectiveMaxHp(stats, rule.targetAge);
+    if (newMaxHp !== oldMaxHp) world.hp[unit] = (world.hp[unit]! / oldMaxHp) * newMaxHp;
+  }
 
   world.playerAge[playerId] = rule.targetAge;
   world.playerMinorGods[playerId * AGE_COUNT + rule.targetAge] = minorGod;

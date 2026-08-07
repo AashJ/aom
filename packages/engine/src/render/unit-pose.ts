@@ -3,7 +3,9 @@ import type { RenderSnapshot } from "@aom/sim";
 export const UNIT_POSE_X = 0;
 export const UNIT_POSE_Z = 1;
 export const UNIT_POSE_ELEVATION = 2;
-export const UNIT_POSE_FLOATS = 3;
+export const UNIT_POSE_FACING_X = 3;
+export const UNIT_POSE_FACING_Z = 4;
+export const UNIT_POSE_FLOATS = 5;
 
 export function snapshotsAlignAt(
   prev: RenderSnapshot,
@@ -40,4 +42,19 @@ export function writeInterpolatedUnitPose(
   out[UNIT_POSE_X] = prevX + (curr.posX[index]! - prevX) * alpha;
   out[UNIT_POSE_Z] = prevZ + (curr.posZ[index]! - prevZ) * alpha;
   out[UNIT_POSE_ELEVATION] = prevElevation + (curr.elevation[index]! - prevElevation) * alpha;
+
+  const prevFacingX = aligned ? prev.facingX[index]! : curr.facingX[index]!;
+  const prevFacingZ = aligned ? prev.facingZ[index]! : curr.facingZ[index]!;
+  let facingX = prevFacingX + (curr.facingX[index]! - prevFacingX) * alpha;
+  let facingZ = prevFacingZ + (curr.facingZ[index]! - prevFacingZ) * alpha;
+  const facingLength = Math.hypot(facingX, facingZ);
+  if (facingLength > 1e-6) {
+    facingX /= facingLength;
+    facingZ /= facingLength;
+  } else {
+    facingX = 0;
+    facingZ = 1;
+  }
+  out[UNIT_POSE_FACING_X] = facingX;
+  out[UNIT_POSE_FACING_Z] = facingZ;
 }

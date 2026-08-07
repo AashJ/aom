@@ -8,6 +8,8 @@ import {
   setSelected,
   SIM_MAP_SIZE,
   UNIT_CLASS_TEMPLE,
+  UNIT_CLASS_BUILDING,
+  UNIT_CLASS_HUNTABLE,
   UNIT_CLASS_RELIC,
   UNIT_CLASS_WORKER,
   UNIT_TYPES,
@@ -41,9 +43,24 @@ interface SelectedCommandUnits {
   hasGreekWorker: boolean;
   hasRelicHero: boolean;
   hasRelicCarrier: boolean;
+  hasTradeUnit: boolean;
+  hasHealer: boolean;
+  hasEmpowerer: boolean;
+  hasConverter: boolean;
 }
 
-type TargetCommand = "attack" | "build" | "drop-off-relic" | "gather" | "pick-up-relic" | "pray";
+type TargetCommand =
+  | "attack"
+  | "build"
+  | "convert"
+  | "drop-off-relic"
+  | "garrison"
+  | "gather"
+  | "heal"
+  | "empower"
+  | "pick-up-relic"
+  | "pray"
+  | "trade";
 
 function collectSelectedCommandUnits(
   snapshot: RenderSnapshot,
@@ -53,6 +70,10 @@ function collectSelectedCommandUnits(
   let hasGreekWorker = false;
   let hasRelicHero = false;
   let hasRelicCarrier = false;
+  let hasTradeUnit = false;
+  let hasHealer = false;
+  let hasEmpowerer = false;
+  let hasConverter = false;
 
   // Allocation is fine at click/key rate; commands are serializable plain data.
   for (let index = 0; index < snapshot.count; index += 1) {
@@ -66,9 +87,22 @@ function collectSelectedCommandUnits(
     hasGreekWorker ||= (stats.classes & UNIT_CLASS_WORKER) !== 0 && stats.culture === CULTURE_GREEK;
     hasRelicHero ||= (stats.hero?.relicCapacity ?? 0) > 0;
     hasRelicCarrier ||= stats.hero !== undefined && snapshot.carriedRelicCount[index]! > 0;
+    hasTradeUnit ||= stats.trade !== undefined;
+    hasHealer ||= stats.heal !== undefined;
+    hasEmpowerer ||= stats.empower !== undefined;
+    hasConverter ||= stats.convert !== undefined;
   }
 
-  return { ids, hasGreekWorker, hasRelicHero, hasRelicCarrier };
+  return {
+    ids,
+    hasGreekWorker,
+    hasRelicHero,
+    hasRelicCarrier,
+    hasTradeUnit,
+    hasHealer,
+    hasEmpowerer,
+    hasConverter,
+  };
 }
 
 function classifyTargetCommand(
@@ -78,6 +112,10 @@ function classifyTargetCommand(
   canPray: boolean,
   canPickUpRelic: boolean,
   canDropOffRelic: boolean,
+  canTrade: boolean,
+  canHeal: boolean,
+  canEmpower: boolean,
+  canConvert: boolean,
 ): TargetCommand | null {
   if (hit < 0) {
     return null;
@@ -85,6 +123,41 @@ function classifyTargetCommand(
 
   const type = snapshot.unitType[hit]!;
   const stats = UNIT_TYPES[type]!;
+
+  if (
+    canHeal &&
+    snapshot.owner[hit] === selfPlayerId &&
+    stats.healable !== false &&
+    (stats.classes & UNIT_CLASS_BUILDING) === 0 &&
+    snapshot.hp[hit]! < stats.maxHp
+  ) {
+    return "heal";
+  }
+
+  if (
+    canEmpower &&
+    snapshot.owner[hit] === selfPlayerId &&
+    (stats.classes & UNIT_CLASS_BUILDING) !== 0
+  ) {
+    return "empower";
+  }
+
+  if (
+    canConvert &&
+    snapshot.owner[hit] === NEUTRAL_OWNER &&
+    (stats.classes & UNIT_CLASS_HUNTABLE) !== 0
+  ) {
+    return "convert";
+  }
+
+  if (
+    canTrade &&
+    snapshot.owner[hit] === selfPlayerId &&
+    stats.tradeSite === "town-center" &&
+    snapshot.buildProgress[hit]! >= stats.buildTicks
+  ) {
+    return "trade";
+  }
 
   if ((stats.classes & UNIT_CLASS_RELIC) !== 0) {
     return canPickUpRelic ? "pick-up-relic" : null;
@@ -103,6 +176,10 @@ function classifyTargetCommand(
     snapshot.buildProgress[hit]! >= stats.buildTicks
   ) {
     return "drop-off-relic";
+  }
+
+  if (snapshot.owner[hit] === selfPlayerId && stats.garrison !== undefined) {
+    return "garrison";
   }
 
   if (
@@ -316,6 +393,10 @@ export function consumeCommandInput(
     selected.hasGreekWorker && isGreekMajorGod(curr.majorGod),
     selected.hasRelicHero,
     selected.hasRelicCarrier,
+    selected.hasTradeUnit,
+    selected.hasHealer,
+    selected.hasEmpowerer,
+    selected.hasConverter,
   );
 
   if (targetCommand && selected.ids.length > 0) {
@@ -331,9 +412,25 @@ export function consumeCommandInput(
         sink.submitBuild(selected.ids, targetId);
         issued = 4;
         break;
+      case "heal":
+        sink.submitHeal(selected.ids, targetId);
+        issued = 1;
+        break;
+      case "empower":
+        sink.submitEmpower(selected.ids, targetId);
+        issued = 1;
+        break;
+      case "convert":
+        sink.submitConvert(selected.ids, targetId);
+        issued = 1;
+        break;
       case "gather":
         sink.submitGather(selected.ids, targetId);
         issued = 3;
+        break;
+      case "garrison":
+        sink.submitGarrison(selected.ids, targetId);
+        issued = 1;
         break;
       case "pray":
         sink.submitPray(selected.ids, targetId);
@@ -345,6 +442,10 @@ export function consumeCommandInput(
         break;
       case "drop-off-relic":
         sink.submitDropOffRelic(selected.ids, targetId);
+        issued = 1;
+        break;
+      case "trade":
+        sink.submitTrade(selected.ids, targetId);
         issued = 1;
         break;
     }

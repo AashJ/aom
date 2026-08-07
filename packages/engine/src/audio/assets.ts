@@ -90,6 +90,7 @@ export interface AudioCue {
   files: readonly string[];
   volume: number;
   maxVoices: number;
+  delaySeconds?: number;
 }
 
 function cue(files: readonly string[], volume: number, maxVoices = 3): AudioCue {

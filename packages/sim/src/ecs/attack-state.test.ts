@@ -38,6 +38,8 @@ describe("canonical attack-sequence state", () => {
       attackCooldown: new Uint16Array([12]),
       meleeActionVariant: new Uint8Array([1]),
       meleeActionImpactPending: new Uint8Array([1]),
+      beamActionImpactPending: new Uint8Array([1]),
+      beamActionActive: new Uint8Array([1]),
       moving: new Uint8Array([1]),
       unitField: [
         {
@@ -57,6 +59,8 @@ describe("canonical attack-sequence state", () => {
     expect(state.attackAimShots[0]).toBe(0);
     expect(state.meleeActionVariant[0]).toBe(NO_MELEE_ATTACK_VARIANT);
     expect(state.meleeActionImpactPending[0]).toBe(0);
+    expect(state.beamActionImpactPending[0]).toBe(0);
+    expect(state.beamActionActive[0]).toBe(0);
     expect(state.moving[0]).toBe(0);
     expect(state.unitField[0]).toBeNull();
   });

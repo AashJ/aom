@@ -1,4 +1,5 @@
 import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { poseidonMilitiaDeathSpawn } from "../../death-spawns";
 import { TYPE_GREEK_FORTRESS, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
 import {
   CULTURE_GREEK,
@@ -19,6 +20,7 @@ export const definition = {
   movementSpeed: 0,
   armor: [0.3, 0.96, 0.05],
   attack: null,
+  deathSpawn: poseidonMilitiaDeathSpawn(6),
   isStatic: true,
   resource: -1,
   bodyRadius: 2.9,

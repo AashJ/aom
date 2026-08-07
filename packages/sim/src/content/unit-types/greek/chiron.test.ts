@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { hashWorld } from "../../../hash";
 import { createSnapshot, writeProjectileSnapshot } from "../../../snapshot";
-import { resolveAttackDamage } from "../../../ecs/combat";
+import { resolveAttackDamage, resolveProjectileHitDamage } from "../../../ecs/combat";
 import { registerPlayer } from "../../../ecs/players";
 import {
   NO_PROJECTILE_TICK,
@@ -121,7 +121,10 @@ describe("Chiron unit pack", () => {
     expect(snapshot.projectileTypes[0]).toBe(definition.attack.projectile.type);
 
     const targetHpBeforeImpact = first.world.hp[1]!;
-    const expectedDamage = resolveAttackDamage(definition.attack, first.unitTypes[TYPE_SPEARMAN]!);
+    const expectedDamage = resolveProjectileHitDamage(
+      definition.attack,
+      first.unitTypes[TYPE_SPEARMAN]!,
+    );
     let flightTicks = 0;
     while (first.world.projectiles.count > 0) {
       expect(first.world.hp[1]).toBe(targetHpBeforeImpact);

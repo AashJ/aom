@@ -1,0 +1,48 @@
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_CARAVAN, TYPE_EGYPTIAN_MARKET } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_CARAVAN,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_CARAVAN,
+  key: "egyptian-caravan",
+  label: "Camel Caravan",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_CARAVAN,
+  maxHp: 115,
+  lineOfSight: 16,
+  movementSpeed: 3.8,
+  armor: [0.4, 0.4, 0.99],
+  attack: null,
+  trade: {
+    capacity: 1000,
+    interactionRange: 2,
+    townCenterWorkRate: 0.511,
+    townCenterMinimumRate: 0.066,
+    incomeMultiplier: 0.9,
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.7,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 100,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 15 * 20,
+  populationCost: 1,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: [{ type: TYPE_EGYPTIAN_MARKET, commandSlot: 0 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

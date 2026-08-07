@@ -141,6 +141,19 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 onClick={() => setChoosingMinorGod(true)}
               />
             )}
+
+          {selection?.garrison && selection.garrison.count > 0 && (
+            <CommandTile
+              symbol="↗"
+              label={`Eject ${selection.garrison.count} garrisoned unit${selection.garrison.count === 1 ? "" : "s"}`}
+              costFood={0}
+              costWood={0}
+              costGold={0}
+              costFavor={0}
+              disabled={false}
+              onClick={() => game.ungarrison(selection.garrison!.id)}
+            />
+          )}
         </div>
 
         {producer && !producer.complete && (

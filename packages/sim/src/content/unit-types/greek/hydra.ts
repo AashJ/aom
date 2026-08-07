@@ -1,0 +1,67 @@
+import { TICK_HZ } from "../../../clock";
+import { AGE_HEROIC, GOD_DIONYSUS } from "../../../ecs/progression";
+import { TYPE_GREEK_TEMPLE, TYPE_HYDRA } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_CAVALRY,
+  UNIT_CLASS_HERO,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_HYDRA,
+  key: "greek-hydra",
+  label: "Hydra",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_MYTH | UNIT_CLASS_CAVALRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+  maxHp: 800,
+  lineOfSight: 16,
+  movementSpeed: 4,
+  armor: [0.6, 0.4, 0.8],
+  attack: {
+    kind: "melee",
+    damage: [20, 0, 10],
+    range: 2,
+    aggroRange: 16,
+    cooldownTicks: TICK_HZ,
+    bonuses: [
+      { target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.5 },
+      { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 2 },
+    ],
+    cycleVariants: [
+      { actionTicks: 30, impactDelayTicks: 15 },
+      { actionTicks: 30, impactDelayTicks: 16 },
+      { actionTicks: 30, impactDelayTicks: 16 },
+      { actionTicks: 30, impactDelayTicks: 16 },
+      { actionTicks: 30, impactDelayTicks: 16 },
+    ],
+    killScaling: {
+      damageMultiplierPerKill: 1 / 6,
+      maxKills: 12,
+      killsPerVariant: 3,
+    },
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.99,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 250,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 28,
+  buildTicks: 20 * TICK_HZ,
+  populationCost: 5,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_HEROIC,
+  requiredGod: GOD_DIONYSUS,
+  prerequisiteBuildings: [TYPE_GREEK_TEMPLE],
+  trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 2 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

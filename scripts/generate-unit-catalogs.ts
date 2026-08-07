@@ -125,8 +125,11 @@ function relationshipSource(
     throw new Error(`${target.key} has a culture-incompatible ${kind} source ${source.key}.`);
   }
 
-  const requiredClass = kind === "trainedAt" ? UNIT_CLASS_BUILDING : UNIT_CLASS_WORKER;
-  if ((source.classes & requiredClass) === 0) {
+  const validSource =
+    kind === "trainedAt"
+      ? (source.classes & UNIT_CLASS_BUILDING) !== 0
+      : (source.classes & UNIT_CLASS_WORKER) !== 0 || source.construction !== undefined;
+  if (!validSource) {
     throw new Error(`${target.key} has invalid ${kind} source ${source.key}.`);
   }
 
@@ -158,8 +161,8 @@ for (const entry of entries) {
   }
   if (
     definition.hero !== undefined &&
-    (!Number.isInteger(definition.hero.trainLimit) ||
-      definition.hero.trainLimit < 1 ||
+    ((definition.hero.trainLimit !== undefined &&
+      (!Number.isInteger(definition.hero.trainLimit) || definition.hero.trainLimit < 1)) ||
       !Number.isInteger(definition.hero.relicCapacity) ||
       definition.hero.relicCapacity < 0 ||
       !Number.isFinite(definition.hero.relicPickupRange) ||
@@ -213,6 +216,18 @@ for (const entry of entries) {
         attack.trackRating < 0 ||
         !Number.isFinite(attack.unintentionalDamageMultiplier) ||
         attack.unintentionalDamageMultiplier < 0 ||
+        (attack.projectileCount !== undefined &&
+          (!Number.isInteger(attack.projectileCount) ||
+            attack.projectileCount < 1 ||
+            attack.projectileCount > 255)) ||
+        (attack.impactArea !== undefined &&
+          (!Number.isFinite(attack.impactArea.radius) ||
+            attack.impactArea.radius <= 0 ||
+            attack.impactArea.falloff !== "linear" ||
+            (attack.impactArea.damageRelations &
+              ~(AREA_DAMAGE_ENEMIES | AREA_DAMAGE_NEUTRAL_UNITS)) !==
+              0 ||
+            (attack.impactArea.damageRelations & AREA_DAMAGE_ENEMIES) === 0)) ||
         !Number.isInteger(flight.type) ||
         flight.type < 0 ||
         flight.type >= PROJECTILE_TYPE_COUNT ||
@@ -229,9 +244,17 @@ for (const entry of entries) {
       if (maximumTravel < attack.range) {
         throw new Error(`${definition.key} projectile lifespan cannot cover its attack range.`);
       }
+    } else if (attack.kind === "beam") {
+      if (
+        !Number.isInteger(attack.impactDelayTicks) ||
+        attack.impactDelayTicks < 1 ||
+        attack.impactDelayTicks > attack.cooldownTicks
+      ) {
+        throw new Error(`${definition.key} has an invalid beam impact tag.`);
+      }
     } else if (
       attack.cycleVariants !== undefined &&
-      (attack.cycleVariants.length < 2 ||
+      (attack.cycleVariants.length < 1 ||
         attack.cycleVariants.length > 0xfe ||
         attack.cycleVariants.some(
           (cycle) =>
@@ -262,14 +285,14 @@ for (const entry of entries) {
       special.actionTicks > 0xffff ||
       !Number.isInteger(special.impactDelayTicks) ||
       special.impactDelayTicks < 1 ||
-      special.impactDelayTicks >= special.actionTicks ||
+      special.impactDelayTicks > special.actionTicks ||
       special.validTargets.length === 0)
   ) {
     throw new Error(`${definition.key} has an invalid charged special-attack contract.`);
   }
 
   if (
-    special?.kind === "charged-area-pulse" &&
+    (special?.kind === "charged-area-pulse" || special?.kind === "charged-area-poison") &&
     (!Number.isFinite(special.radius) ||
       special.radius <= 0 ||
       special.falloff !== "linear" ||
@@ -278,10 +301,100 @@ for (const entry of entries) {
   ) {
     throw new Error(`${definition.key} has an invalid charged area-pulse contract.`);
   }
+  if (
+    special?.kind === "charged-area-poison" &&
+    (!Number.isInteger(special.poisonDurationTicks) ||
+      special.poisonDurationTicks < 1 ||
+      special.poisonDurationTicks > 0xffff)
+  ) {
+    throw new Error(`${definition.key} has an invalid charged area-poison contract.`);
+  }
+
+  if (
+    special?.kind === "charged-jump" &&
+    (!Number.isFinite(special.minimumRange) ||
+      special.minimumRange < 0 ||
+      special.minimumRange > special.range ||
+      !Number.isInteger(special.takeoffTicks) ||
+      special.takeoffTicks < 0 ||
+      !Number.isInteger(special.flightTicks) ||
+      special.flightTicks < 1 ||
+      !Number.isInteger(special.landingTicks) ||
+      special.landingTicks < 0 ||
+      special.takeoffTicks + special.flightTicks + special.landingTicks !== special.actionTicks ||
+      special.takeoffTicks + special.flightTicks !== special.impactDelayTicks ||
+      !Number.isFinite(special.jumpHeight) ||
+      special.jumpHeight < 0 ||
+      (special.delivery === "area" &&
+        (!Number.isFinite(special.radius) ||
+          special.radius <= 0 ||
+          special.falloff !== "constant" ||
+          (special.damageRelations & ~(AREA_DAMAGE_ENEMIES | AREA_DAMAGE_NEUTRAL_UNITS)) !== 0 ||
+          (special.damageRelations & AREA_DAMAGE_ENEMIES) === 0)))
+  ) {
+    throw new Error(`${definition.key} has an invalid charged jump contract.`);
+  }
+
+  if (special?.kind === "charged-projectile") {
+    const flight = special.projectile;
+    if (
+      !Number.isFinite(special.accuracy) ||
+      special.accuracy < 0 ||
+      special.accuracy > 1 ||
+      !Number.isFinite(special.accuracyReductionFactor) ||
+      special.accuracyReductionFactor < 0 ||
+      !Number.isFinite(special.aimBonus) ||
+      special.aimBonus < 0 ||
+      !Number.isFinite(special.spreadFactor) ||
+      special.spreadFactor < 0 ||
+      !Number.isFinite(special.maxSpread) ||
+      special.maxSpread < 0 ||
+      !Number.isFinite(special.trackRating) ||
+      special.trackRating < 0 ||
+      !Number.isFinite(special.unintentionalDamageMultiplier) ||
+      special.unintentionalDamageMultiplier < 0 ||
+      (special.projectileCount !== undefined &&
+        (!Number.isInteger(special.projectileCount) ||
+          special.projectileCount < 1 ||
+          special.projectileCount > 255)) ||
+      (special.impactArea !== undefined &&
+        (!Number.isFinite(special.impactArea.radius) ||
+          special.impactArea.radius <= 0 ||
+          special.impactArea.falloff !== "linear" ||
+          (special.impactArea.damageRelations &
+            ~(AREA_DAMAGE_ENEMIES | AREA_DAMAGE_NEUTRAL_UNITS)) !==
+            0 ||
+          (special.impactArea.damageRelations & AREA_DAMAGE_ENEMIES) === 0)) ||
+      !Number.isInteger(flight.type) ||
+      flight.type < 0 ||
+      flight.type >= PROJECTILE_TYPE_COUNT ||
+      !Number.isFinite(flight.speed) ||
+      flight.speed <= 0 ||
+      !Number.isInteger(flight.lifespanTicks) ||
+      flight.lifespanTicks < 1 ||
+      !Number.isFinite(flight.collisionRadius) ||
+      flight.collisionRadius < 0 ||
+      flight.speed * (flight.lifespanTicks / TICK_HZ) < special.range
+    ) {
+      throw new Error(`${definition.key} has an invalid charged projectile contract.`);
+    }
+  }
 
   const reaction = special?.kind === "charged-melee" ? special.targetReaction : undefined;
   if (reaction !== undefined && !isValidTargetReactionContract(reaction)) {
     throw new Error(`${definition.key} has an invalid thrown target-reaction contract.`);
+  }
+
+  if (
+    definition.construction !== undefined &&
+    (!Number.isFinite(definition.construction.range) ||
+      definition.construction.range < 0 ||
+      !Number.isFinite(definition.construction.ratePerSecond) ||
+      definition.construction.ratePerSecond <= 0 ||
+      !Number.isFinite(definition.construction.baselineRatePerSecond) ||
+      definition.construction.baselineRatePerSecond <= 0)
+  ) {
+    throw new Error(`${definition.key} has an invalid construction contract.`);
   }
 
   for (const prerequisiteType of definition.prerequisiteBuildings) {
@@ -328,6 +441,20 @@ for (const entry of entries) {
 
   const isResource = (definition.classes & UNIT_CLASS_RESOURCE) !== 0;
   const isBuilding = (definition.classes & UNIT_CLASS_BUILDING) !== 0;
+  if (
+    definition.lifespanTicks !== undefined &&
+    (!Number.isInteger(definition.lifespanTicks) ||
+      definition.lifespanTicks < 1 ||
+      definition.lifespanTicks > 0xffff)
+  ) {
+    throw new Error(`${definition.key} has an invalid fixed-lifetime contract.`);
+  }
+  if (
+    definition.regenerationPerSecond !== undefined &&
+    (!Number.isFinite(definition.regenerationPerSecond) || definition.regenerationPerSecond <= 0)
+  ) {
+    throw new Error(`${definition.key} has an invalid persistent-regeneration contract.`);
+  }
   if (definition.resourceGathererDomain !== undefined && !isResource) {
     throw new Error(`${definition.key} restricts gatherer movement domain but is not a resource.`);
   }
@@ -342,6 +469,74 @@ for (const entry of entries) {
   }
   if (isBuilding && definition.footprint > 0 && definition.builtBy.length === 0) {
     throw new Error(`${definition.key} is buildable but declares no builtBy source.`);
+  }
+}
+
+for (const entry of entries) {
+  const definition = entry.definition;
+  const meleeArea = definition.attack?.kind === "melee" ? definition.attack.impactArea : undefined;
+  if (meleeArea !== undefined) {
+    const componentDamage = [0, 0, 0];
+    for (const component of meleeArea.components) {
+      for (let damageType = 0; damageType < component.damage.length; damageType += 1) {
+        const value = component.damage[damageType]!;
+        if (!Number.isFinite(value) || value < 0) {
+          throw new Error(`${definition.key} has invalid melee impact-area damage.`);
+        }
+        componentDamage[damageType] = componentDamage[damageType]! + value;
+      }
+      if (!Number.isInteger(component.damageRelations) || component.damageRelations <= 0) {
+        throw new Error(`${definition.key} has invalid melee impact-area relations.`);
+      }
+    }
+    if (
+      !Number.isFinite(meleeArea.radius) ||
+      meleeArea.radius <= 0 ||
+      !componentDamage.every((value, index) => value === definition.attack!.damage[index])
+    ) {
+      throw new Error(`${definition.key} has an invalid melee impact-area contract.`);
+    }
+  }
+
+  const trainingSite = definition.trainingSite;
+  if (
+    trainingSite !== undefined &&
+    ((definition.classes & UNIT_CLASS_BUILDING) === 0 ||
+      !entries.some((candidate) =>
+        candidate.definition.trainedAt.some((relationship) => relationship.type === definition.id),
+      ))
+  ) {
+    throw new Error(`${definition.key} has an invalid one-time training-site contract.`);
+  }
+
+  const replacement = definition.deathReplacement;
+  if (replacement !== undefined) {
+    const replacementDefinition = definitionsById.get(replacement.unitType);
+    if (
+      replacement.trigger !== "death" ||
+      replacementDefinition === undefined ||
+      replacementDefinition.culture !== definition.culture ||
+      replacementDefinition.trainedAt.length !== 0
+    ) {
+      throw new Error(`${definition.key} has an invalid death-replacement contract.`);
+    }
+  }
+
+  const deathSpawn = definition.deathSpawn;
+  if (deathSpawn === undefined) continue;
+  const spawnedDefinition = definitionsById.get(deathSpawn.unitType);
+  if (
+    (definition.classes & UNIT_CLASS_BUILDING) === 0 ||
+    deathSpawn.trigger !== "destroyed-by-damage" ||
+    !Number.isInteger(deathSpawn.count) ||
+    deathSpawn.count < 1 ||
+    !Number.isInteger(deathSpawn.liveLimit) ||
+    deathSpawn.liveLimit < deathSpawn.count ||
+    spawnedDefinition === undefined ||
+    spawnedDefinition.culture !== definition.culture ||
+    spawnedDefinition.trainedAt.length !== 0
+  ) {
+    throw new Error(`${definition.key} has an invalid damage-death spawn contract.`);
   }
 }
 
@@ -391,7 +586,7 @@ for (const lane of UNIT_ROSTER) {
     if (
       lane.status !== "blocked" &&
       lane.family === "myth" &&
-      ((definition.classes & UNIT_CLASS_MYTH) === 0 || definition.attack === null)
+      (definition.classes & UNIT_CLASS_MYTH) === 0
     ) {
       throw new Error(`${lane.key} must satisfy the serial myth-unit family contract.`);
     }
@@ -407,6 +602,20 @@ for (const lane of UNIT_ROSTER) {
       definition.specialAttack === undefined
     ) {
       throw new Error(`${lane.key} must satisfy its charged special-action foundation.`);
+    }
+    if (
+      lane.status !== "blocked" &&
+      lane.foundationLanes.includes("serial-temporary-units") &&
+      definition.lifespanTicks === undefined
+    ) {
+      throw new Error(`${lane.key} must satisfy its temporary-unit foundation.`);
+    }
+    if (
+      lane.status !== "blocked" &&
+      lane.foundationLanes.includes("serial-unit-regeneration") &&
+      definition.regenerationPerSecond === undefined
+    ) {
+      throw new Error(`${lane.key} must satisfy its persistent-regeneration foundation.`);
     }
 
     const reference = unitReferenceEntry(lane.key);
@@ -543,7 +752,12 @@ for (const entry of mediaEntries) {
 
   const reference = unitReferenceEntry(media.key);
   const particleEvidence =
-    reference?.family === "myth" ? (reference.source.assetInventory.specialParticles ?? []) : [];
+    reference?.family === "myth"
+      ? [
+          ...(reference.source.assetInventory.specialParticles ?? []),
+          ...(reference.source.assetInventory.beamParticles ?? []),
+        ]
+      : [];
   const particleEffects = media.effects ?? [];
   if (particleEffects.length !== particleEvidence.length) {
     throw new Error(`${media.key} particle media and source evidence must match one-for-one.`);
@@ -557,19 +771,51 @@ for (const entry of mediaEntries) {
     if (evidence === undefined) {
       throw new Error(`${media.key} particle effect ${effect.key} has no keyed source evidence.`);
     }
+    const evidenceTrigger = evidence.trigger ?? "special-attack";
+    const effectWindowTicks =
+      evidenceTrigger === "poisoned-status" && sim.specialAttack?.kind === "charged-area-poison"
+        ? sim.specialAttack.poisonDurationTicks
+        : evidenceTrigger === "beam-attack" && sim.attack?.kind === "beam"
+          ? sim.attack.cooldownTicks
+          : sim.specialAttack?.actionTicks;
     if (
-      effect.trigger !== "special-attack" ||
-      sim.specialAttack === undefined ||
-      effect.textureUrl.trim().length === 0
+      effect.trigger !== evidenceTrigger ||
+      effectWindowTicks === undefined ||
+      effect.textureUrl.trim().length === 0 ||
+      (effect.additionalTextureUrls?.some((url) => url.trim().length === 0) ?? false) ||
+      1 + (effect.additionalTextureUrls?.length ?? 0) !==
+        1 + (evidence.additionalTextures?.length ?? 0)
     ) {
       throw new Error(`${media.key} has an invalid particle effect ${effect.key}.`);
     }
-    compiledParticleParameters.push(
-      compileParticleEffectParameters(evidence, sim.specialAttack.actionTicks),
-    );
+    compiledParticleParameters.push(compileParticleEffectParameters(evidence, effectWindowTicks));
   }
   if (compiledParticleParameters.length > 0) {
     particleParametersByType.set(media.type, compiledParticleParameters);
+  }
+  if (sim.attack?.kind === "beam") {
+    const beam = media.beam;
+    if (
+      beam === undefined ||
+      beam.beamTextureUrl.trim().length === 0 ||
+      beam.headTextureUrl.trim().length === 0 ||
+      beam.blend !== "additive" ||
+      beam.startTicks !== sim.attack.impactDelayTicks ||
+      beam.endTicks !== sim.attack.cooldownTicks ||
+      !Number.isFinite(beam.width) ||
+      beam.width <= 0 ||
+      !Number.isFinite(beam.headLength) ||
+      beam.headLength <= 0 ||
+      !Number.isFinite(beam.sourceHeight) ||
+      beam.sourceHeight < 0 ||
+      !Number.isFinite(beam.targetHeightFactor) ||
+      beam.targetHeightFactor < 0 ||
+      beam.targetHeightFactor > 1
+    ) {
+      throw new Error(`${media.key} has an invalid beam presentation.`);
+    }
+  } else if (media.beam !== undefined) {
+    throw new Error(`${media.key} has beam media without a beam attack.`);
   }
 }
 
@@ -595,15 +841,65 @@ for (const media of PROJECTILE_MEDIA_DEFINITIONS) {
   ) {
     throw new Error(`${media.key} has invalid projectile presentation heights.`);
   }
-  if ("attachments" in media.model) {
-    throw new Error(`${media.key} projectile media cannot own model attachments.`);
-  }
-  if (modelsByKey.has(media.model.key)) {
-    throw new Error(`Duplicate model key ${media.model.key}.`);
+  if (media.kind === "model") {
+    if (media.models.length === 0) {
+      throw new Error(`${media.key} projectile media requires at least one model.`);
+    }
+    for (const model of media.models) {
+      if ("attachments" in model) {
+        throw new Error(`${media.key} projectile media cannot own model attachments.`);
+      }
+      if (modelsByKey.has(model.key)) {
+        throw new Error(`Duplicate model key ${model.key}.`);
+      }
+      modelsByKey.set(model.key, model);
+    }
+  } else if (
+    media.kind === "particle" &&
+    (media.textureUrl.trim().length === 0 ||
+      !Number.isInteger(media.particleCount) ||
+      media.particleCount < 1 ||
+      !Number.isFinite(media.trailLength) ||
+      media.trailLength < 0 ||
+      !Number.isFinite(media.baseScale) ||
+      media.baseScale <= 0 ||
+      !Number.isFinite(media.scaleStart) ||
+      !Number.isFinite(media.scaleEnd) ||
+      !Number.isFinite(media.peakOpacity) ||
+      media.peakOpacity < 0)
+  ) {
+    throw new Error(`${media.key} has invalid projectile particle media.`);
+  } else if (media.kind === "particle") {
+    const evidence = entries
+      .filter(
+        ({ definition }) =>
+          definition.attack?.kind === "projectile" &&
+          definition.attack.projectile.type === media.type,
+      )
+      .flatMap(
+        ({ definition }) =>
+          unitReferenceEntry(definition.key)?.source.assetInventory.attackParticles ?? [],
+      )
+      .find((particle) => particle.presentation.projectileType === media.type);
+    const expected = evidence?.presentation;
+    if (
+      expected === undefined ||
+      expected.kind !== "projectile-trail" ||
+      media.flightHeight !== expected.flightHeight ||
+      media.arcHeight !== expected.arcHeight ||
+      media.particleCount !== expected.particleCount ||
+      media.trailLength !== expected.trailLength ||
+      media.baseScale !== expected.baseScale ||
+      media.scaleStart !== expected.scaleStart ||
+      media.scaleEnd !== expected.scaleEnd ||
+      media.peakOpacity !== expected.peakOpacity ||
+      media.blend !== evidence.blend
+    ) {
+      throw new Error(`${media.key} does not match its source-bound projectile particle evidence.`);
+    }
   }
   projectileMediaIds.add(media.type);
   projectileMediaKeys.add(media.key);
-  modelsByKey.set(media.model.key, media.model);
 }
 if (projectileMediaIds.size !== PROJECTILE_TYPE_COUNT) {
   throw new Error(
@@ -669,7 +965,11 @@ for (const entry of mediaEntries) {
     if (media.presentation.kind !== "model") {
       throw new Error(`${media.key} requires model presentation for its ordinary-unit gate.`);
     }
-    for (const action of ["idle", "walk", "attack", "death"] as const) {
+    const requiredActions =
+      sim.attack === null
+        ? (["idle", "walk", "death"] as const)
+        : (["idle", "walk", "attack", "death"] as const);
+    for (const action of requiredActions) {
       if (media.presentation.actions[action] === undefined) {
         throw new Error(`${media.key} is missing required ${action} action.`);
       }
@@ -678,23 +978,20 @@ for (const entry of mediaEntries) {
       media.icon === null ||
       media.audio.selection === undefined ||
       media.audio.acknowledge === undefined ||
-      media.audio.attackAcknowledge === undefined
+      (sim.attack !== null && media.audio.attackAcknowledge === undefined)
     ) {
       throw new Error(`${media.key} is missing required ordinary-unit icon or voice audio.`);
     }
     if (
       rosterLane?.family === "hero" &&
+      (sim.hero?.relicCapacity ?? 0) > 0 &&
       (media.presentation.actions.carryIdle === undefined ||
         media.presentation.actions.carryWalk === undefined)
     ) {
       throw new Error(`${media.key} is missing required relic-carry presentation.`);
     }
-    if (
-      sim.specialAttack !== undefined &&
-      (media.presentation.actions.specialAttack === undefined ||
-        media.audio.specialAttack === undefined)
-    ) {
-      throw new Error(`${media.key} is missing required charged special-attack media.`);
+    if (sim.specialAttack !== undefined && media.presentation.actions.specialAttack === undefined) {
+      throw new Error(`${media.key} is missing required charged special-attack presentation.`);
     }
   }
 }
@@ -714,6 +1011,7 @@ const unformattedMediaSource = `// Generated by scripts/generate-unit-catalogs.t
 ${mediaImports.join("\n")}
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
+  BeamEffectMediaDefinition,
   IconConfig,
   ModelAssetDefinition,
   ParticleEffectDefinition,
@@ -731,7 +1029,10 @@ export const UNIT_MEDIA_DEFINITIONS = [
 ${mediaEntries.map(({ binding }) => `  ${binding},`).join("\n")}
 ] as const satisfies readonly UnitMediaDefinition[];
 
-type ParticleEffectParameters = Omit<ParticleEffectDefinition, "key" | "trigger" | "textureUrl">;
+type ParticleEffectParameters = Omit<
+  ParticleEffectDefinition,
+  "key" | "trigger" | "textureUrl" | "appearanceWeightStart" | "appearanceWeightEnd"
+> & { readonly appearanceWeights: readonly number[] };
 const PARTICLE_EFFECT_PARAMETERS_BY_TYPE: Readonly<
   Record<number, readonly ParticleEffectParameters[]>
 > = ${particleParameterSource};
@@ -756,11 +1057,14 @@ for (const definition of UNIT_MEDIA_DEFINITIONS) {
 }
 
 for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
-  if (modelIndex[definition.model.key] !== undefined) {
-    throw new Error(\`Duplicate model key \${definition.model.key}.\`);
+  if (definition.kind !== "model") continue;
+  for (const model of definition.models) {
+    if (modelIndex[model.key] !== undefined) {
+      throw new Error(\`Duplicate model key \${model.key}.\`);
+    }
+    modelIndex[model.key] = authoredModelConfigs.length;
+    authoredModelConfigs.push(model);
   }
-  modelIndex[definition.model.key] = authoredModelConfigs.length;
-  authoredModelConfigs.push(definition.model);
 }
 
 const modelConfigs: RuntimeModelAssetDefinition[] = authoredModelConfigs.map((model) => ({
@@ -798,24 +1102,35 @@ function compilePresentation(presentation: UnitPresentation): RuntimeUnitPresent
 
 const presentations: RuntimeUnitPresentation[] = [];
 const icons: (IconConfig | undefined)[] = [];
+const beamPresentations: (BeamEffectMediaDefinition | undefined)[] = [];
 for (const definition of UNIT_MEDIA_DEFINITIONS) {
   presentations[definition.type] = compilePresentation(definition.presentation);
   icons[definition.type] = definition.icon ?? undefined;
+  beamPresentations[definition.type] = (definition as UnitMediaDefinition).beam;
 }
 
 const projectilePresentations: RuntimeProjectilePresentation[] = [];
 for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
-  projectilePresentations[definition.type] = {
-    modelIndex: modelIndex[definition.model.key]!,
-    flightHeight: definition.flightHeight,
-    arcHeight: definition.arcHeight,
-    forwardAxis: definition.forwardAxis,
-  };
+  projectilePresentations[definition.type] =
+    definition.kind === "model"
+      ? {
+          kind: "model",
+          modelIndices: definition.models.map((model) => modelIndex[model.key]!) as [
+            number,
+            ...number[],
+          ],
+          flightHeight: definition.flightHeight,
+          arcHeight: definition.arcHeight,
+          forwardAxis: definition.forwardAxis,
+        }
+      : definition;
 }
 
 const particleEffectDefinitions: ParticleEffectDefinition[] = [];
 const unitParticleEffectIndices: (readonly number[] | undefined)[] = [];
-let maxParticlesPerUnit = 0;
+const poisonStatusParticleEffectIndices: number[] = [];
+let maxSpecialParticlesPerUnit = 0;
+let poisonStatusParticlesPerUnit = 0;
 for (const definition of UNIT_MEDIA_DEFINITIONS) {
   const effects = (definition as UnitMediaDefinition).effects ?? [];
   const parameters = PARTICLE_EFFECT_PARAMETERS_BY_TYPE[definition.type] ?? [];
@@ -825,13 +1140,39 @@ for (const definition of UNIT_MEDIA_DEFINITIONS) {
   const indices: number[] = [];
   let particlesForUnit = 0;
   for (let effectIndex = 0; effectIndex < effects.length; effectIndex += 1) {
-    const effect = { ...effects[effectIndex]!, ...parameters[effectIndex]! };
-    indices.push(particleEffectDefinitions.length);
-    particleEffectDefinitions.push(effect);
-    particlesForUnit += effect.maxParticles;
+    const media = effects[effectIndex]!;
+    const parametersForEffect = parameters[effectIndex]!;
+    const urls = [media.textureUrl, ...(media.additionalTextureUrls ?? [])];
+    const totalWeight = parametersForEffect.appearanceWeights.reduce(
+      (total, weight) => total + weight,
+      0,
+    );
+    let cumulativeWeight = 0;
+    for (let appearanceIndex = 0; appearanceIndex < urls.length; appearanceIndex += 1) {
+      const appearanceWeightStart = cumulativeWeight / totalWeight;
+      cumulativeWeight += parametersForEffect.appearanceWeights[appearanceIndex]!;
+      const { appearanceWeights: _, ...runtimeParameters } = parametersForEffect;
+      indices.push(particleEffectDefinitions.length);
+      if (media.trigger === "poisoned-status") {
+        poisonStatusParticleEffectIndices.push(particleEffectDefinitions.length);
+      }
+      particleEffectDefinitions.push({
+        key: appearanceIndex === 0 ? media.key : \`\${media.key}:\${appearanceIndex}\`,
+        trigger: media.trigger,
+        textureUrl: urls[appearanceIndex]!,
+        appearanceWeightStart,
+        appearanceWeightEnd: cumulativeWeight / totalWeight,
+        ...runtimeParameters,
+      });
+    }
+    if (media.trigger !== "poisoned-status") {
+      particlesForUnit += parametersForEffect.maxParticles;
+    } else {
+      poisonStatusParticlesPerUnit += parametersForEffect.maxParticles;
+    }
   }
   if (indices.length > 0) unitParticleEffectIndices[definition.type] = Object.freeze(indices);
-  maxParticlesPerUnit = Math.max(maxParticlesPerUnit, particlesForUnit);
+  maxSpecialParticlesPerUnit = Math.max(maxSpecialParticlesPerUnit, particlesForUnit);
 }
 
 export const UNIT_MEDIA: readonly UnitMediaDefinition[] = Object.freeze(unitMedia);
@@ -839,9 +1180,11 @@ export const UNIT_PRESENTATIONS: readonly RuntimeUnitPresentation[] = Object.fre
 export const PROJECTILE_PRESENTATIONS: readonly RuntimeProjectilePresentation[] = Object.freeze(projectilePresentations);
 export const MODEL_CONFIGS: readonly RuntimeModelAssetDefinition[] = Object.freeze(modelConfigs);
 export const TYPE_ICONS: readonly (IconConfig | undefined)[] = Object.freeze(icons);
+export const BEAM_PRESENTATIONS: readonly (BeamEffectMediaDefinition | undefined)[] = Object.freeze(beamPresentations);
 export const PARTICLE_EFFECT_DEFINITIONS: readonly ParticleEffectDefinition[] = Object.freeze(particleEffectDefinitions);
 export const UNIT_PARTICLE_EFFECT_INDICES: readonly (readonly number[] | undefined)[] = Object.freeze(unitParticleEffectIndices);
-export const MAX_PARTICLES_PER_UNIT = maxParticlesPerUnit;
+export const POISON_STATUS_PARTICLE_EFFECT_INDICES: readonly number[] = Object.freeze(poisonStatusParticleEffectIndices);
+export const MAX_PARTICLES_PER_UNIT = maxSpecialParticlesPerUnit + poisonStatusParticlesPerUnit;
 `;
 
 async function formattedSource(name: string, unformatted: string): Promise<string> {

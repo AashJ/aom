@@ -10,6 +10,8 @@ export interface ProjectileAimState {
 export interface AttackSequenceState extends ProjectileAimState, MeleeAttackCycleState {
   readonly attackTarget: Uint32Array;
   readonly attackOrdered: Uint8Array;
+  readonly beamActionImpactPending: Uint8Array;
+  readonly beamActionActive: Uint8Array;
   readonly moving: Uint8Array;
   readonly unitField: (FlowField | null)[];
 }
@@ -18,6 +20,8 @@ export function resetAttackSequence(state: AttackSequenceState, index: number): 
   state.attackAimTarget[index] = NO_TARGET;
   state.attackAimShots[index] = 0;
   interruptMeleeAttackCycle(state, index);
+  state.beamActionImpactPending[index] = 0;
+  state.beamActionActive[index] = 0;
 }
 
 /** Records one projectile attack cycle and returns the number of prior same-target shots. */

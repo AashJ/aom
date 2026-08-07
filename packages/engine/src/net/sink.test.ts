@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   COMMAND_CANCEL_TRAIN,
   COMMAND_DROP_OFF_RELIC,
+  COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
+  COMMAND_TRADE,
+  COMMAND_UNGARRISON,
   createWorld,
   hashWorld,
   registerPlayer,
@@ -59,6 +62,43 @@ describe("loopback command sink", () => {
         type: COMMAND_CANCEL_TRAIN,
         buildingId: 17,
         queueIndex: 2,
+      },
+    ]);
+  });
+
+  test("stamps enter and eject orders through the delayed command seam", () => {
+    const world = flatWorld(43);
+    const sink = createLoopbackSink(world);
+    sink.submitGarrison([3, 5], 17);
+    sink.submitUngarrison(17);
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_GARRISON,
+        unitIds: [3, 5],
+        targetId: 17,
+      },
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_UNGARRISON,
+        containerId: 17,
+      },
+    ]);
+  });
+
+  test("stamps caravan routes through the delayed command seam", () => {
+    const world = flatWorld(44);
+    const sink = createLoopbackSink(world);
+    sink.submitTrade([3, 5], 17);
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_TRADE,
+        unitIds: [3, 5],
+        targetId: 17,
       },
     ]);
   });

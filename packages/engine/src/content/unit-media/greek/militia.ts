@@ -1,9 +1,11 @@
 import { TYPE_MILITIA } from "@aom/sim";
-import idleUrl from "../../../assets/models/infantry-g-militia-idle.glb?url";
-import walkUrl from "../../../assets/models/infantry-g-militia-walk.glb?url";
-import iconUrl from "../../../assets/militia-walk.png";
+import attackUrl from "../../../assets/units/greek/militia/attack.glb?url";
+import deathUrl from "../../../assets/units/greek/militia/death.glb?url";
+import iconUrl from "../../../assets/units/greek/militia/icon.png";
+import idleUrl from "../../../assets/units/greek/militia/idle.glb?url";
+import walkUrl from "../../../assets/units/greek/militia/walk.glb?url";
 import { AUDIO_CUES } from "../../../audio/assets";
-import { loop, type UnitMediaDefinition } from "../../unit-media-schema";
+import { actionCycle, loop, once, type UnitMediaDefinition } from "../../unit-media-schema";
 
 export const definition = {
   type: TYPE_MILITIA,
@@ -15,13 +17,17 @@ export const definition = {
     actions: {
       idle: loop(["militiaIdle"]),
       walk: loop(["militiaWalk"]),
+      attack: actionCycle(["militiaAttack"]),
+      death: once(["militiaDeath"]),
     },
   },
   models: [
     { key: "militiaIdle", url: idleUrl, grounded: true },
     { key: "militiaWalk", url: walkUrl, grounded: true },
+    { key: "militiaAttack", url: attackUrl, grounded: true },
+    { key: "militiaDeath", url: deathUrl, grounded: true },
   ],
-  icon: { url: iconUrl, columns: 7 },
+  icon: { url: iconUrl, columns: 1 },
   audio: {
     selection: AUDIO_CUES.villagerSelect,
     acknowledge: AUDIO_CUES.villagerAcknowledge,

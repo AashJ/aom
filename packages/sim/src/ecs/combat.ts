@@ -6,13 +6,16 @@ import {
   type DamageBonusTarget,
   type MeleeAttack,
   type MeleeAttackCycle,
+  type ProjectileAttack,
   type UnitTypeStats,
 } from "../content/unit-type-schema";
+import { TICK_HZ } from "../clock";
 
 export function matchesDamageTarget(target: DamageBonusTarget, stats: UnitTypeStats): boolean {
   if (target.kind === "unit") return stats.key === target.key;
   return (
     (stats.classes & target.classes) === target.classes &&
+    (target.excludedClasses === undefined || (stats.classes & target.excludedClasses) === 0) &&
     (target.requiredCulture === undefined || stats.culture === target.requiredCulture) &&
     (target.excludedCulture === undefined || stats.culture !== target.excludedCulture)
   );
@@ -68,4 +71,22 @@ export function resolveMeleeCycleDamage(
   targetStats: UnitTypeStats,
 ): number {
   return resolveMeleeDamage(attack, targetStats) * (cycle.actionTicks / attack.cooldownTicks);
+}
+
+/** Converts Classic's projectile DPS row into one animation-cycle hit. */
+export function resolveProjectileHitDamage(
+  attack: ProjectileAttack,
+  targetStats: UnitTypeStats,
+): number {
+  return resolveDamage(attack, targetStats) * (attack.cooldownTicks / TICK_HZ);
+}
+
+export function killScaledMeleeDamageMultiplier(
+  attack: MeleeAttack,
+  creditedKills: number,
+): number {
+  const scaling = attack.killScaling;
+  return scaling === undefined
+    ? 1
+    : 1 + Math.min(scaling.maxKills, creditedKills) * scaling.damageMultiplierPerKill;
 }

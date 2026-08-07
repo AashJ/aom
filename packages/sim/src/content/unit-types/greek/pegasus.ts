@@ -1,0 +1,46 @@
+import { TICK_HZ } from "../../../clock";
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_GREEK_TEMPLE, TYPE_PEGASUS } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  MOVEMENT_DOMAIN_AIR,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_AIR,
+  UNIT_CLASS_MYTH,
+  UNIT_CLASS_SCOUT,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_PEGASUS,
+  key: "greek-pegasus",
+  label: "Pegasus",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_MYTH | UNIT_CLASS_AIR | UNIT_CLASS_SCOUT,
+  maxHp: 140,
+  lineOfSight: 18,
+  movementSpeed: 5,
+  movementDomain: MOVEMENT_DOMAIN_AIR,
+  armor: [0.5, 0.5, 0.99],
+  attack: null,
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.99,
+  collidesWithUnits: false,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 50,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 2,
+  buildTicks: 6 * TICK_HZ,
+  populationCost: 2,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: [TYPE_GREEK_TEMPLE],
+  trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 0 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

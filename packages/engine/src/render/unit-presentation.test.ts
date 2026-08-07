@@ -5,22 +5,42 @@ import {
   MODE_BUILDING,
   MODE_GATHERING,
   MODE_PRAYING,
+  MODE_RETURNING,
   TYPE_BERRY,
+  TYPE_ANUBITE,
+  TYPE_AVENGER,
+  TYPE_BELLEROPHON,
+  TYPE_CATAPULT,
+  TYPE_CENTAUR,
+  TYPE_CHIMERA,
   TYPE_EGYPTIAN_BARRACKS,
+  TYPE_EGYPTIAN_CARAVAN,
   TYPE_EGYPTIAN_HOUSE,
   TYPE_EGYPTIAN_LABORER,
+  TYPE_EGYPTIAN_MARKET,
+  TYPE_EGYPTIAN_SIEGE_WORKS,
   TYPE_EGYPTIAN_TOWN_CENTER,
+  TYPE_FISH_PERCH,
   TYPE_GOLD_MINE,
+  TYPE_GREEK_DOCK,
+  TYPE_GREEK_FISHING_SHIP,
   TYPE_GREEK_HOUSE as TYPE_HOUSE,
+  TYPE_GREEK_CARAVAN,
+  TYPE_GREEK_MARKET,
   TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
   TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
   TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
   TYPE_HOPLITE,
+  TYPE_HYDRA,
   TYPE_JASON,
+  TYPE_MANTICORE,
   TYPE_MILITIA,
+  TYPE_MEDUSA,
   TYPE_MINOTAUR,
   TYPE_NEMEAN_LION,
+  TYPE_PETROBOLOS,
+  TYPE_SPHINX,
   TYPE_SPEARMAN,
   TARGET_REACTION_THROWN,
   TYPE_TOXOTES,
@@ -180,6 +200,47 @@ describe("unit presentation", () => {
     expect(modelKey(resolveModelGhostPresentation(snapshot, TYPE_TEMPLE))).toBe("greekTemple");
   });
 
+  test("selects Caravan cargo and Market age models from authoritative snapshot state", () => {
+    const snapshot = createSnapshot(4);
+    snapshot.count = 4;
+    snapshot.owner.fill(0);
+    snapshot.unitType[0] = TYPE_GREEK_CARAVAN;
+    snapshot.unitType[1] = TYPE_GREEK_MARKET;
+    snapshot.unitType[2] = TYPE_EGYPTIAN_CARAVAN;
+    snapshot.unitType[3] = TYPE_EGYPTIAN_MARKET;
+    snapshot.playerAges[0] = 2;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekCaravanIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe("greekCaravanWalk");
+    expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("greekMarketHeroic");
+    expect(modelKey(resolveModelPresentation(snapshot, 2, false))).toBe("egyptianCaravanIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 2, true))).toBe("egyptianCaravanWalk");
+    expect(modelKey(resolveModelPresentation(snapshot, 3, false))).toBe("egyptianMarketHeroic");
+
+    snapshot.carried[0] = 19;
+    snapshot.carried[2] = 17;
+    snapshot.playerAges[0] = 3;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekCaravanLoadedIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe("greekCaravanLoadedWalk");
+    expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("greekMarketMythic");
+    expect(modelKey(resolveModelPresentation(snapshot, 2, false))).toBe(
+      "egyptianCaravanLoadedIdle",
+    );
+    expect(modelKey(resolveModelPresentation(snapshot, 2, true))).toBe("egyptianCaravanLoadedWalk");
+    expect(modelKey(resolveModelPresentation(snapshot, 3, false))).toBe("egyptianMarketMythic");
+    expect(
+      modelKey(resolveModelDeathPresentation(TYPE_GREEK_CARAVAN, packId(0, 0), 0, 2, 19)),
+    ).toBe("greekCaravanLoadedDeath");
+    expect(modelKey(resolveModelDeathPresentation(TYPE_GREEK_MARKET, packId(0, 0), 0, 3))).toBe(
+      "greekMarketMythicDeath",
+    );
+    expect(
+      modelKey(resolveModelDeathPresentation(TYPE_EGYPTIAN_CARAVAN, packId(2, 0), 0, 2, 17)),
+    ).toBe("egyptianCaravanLoadedDeath");
+    expect(modelKey(resolveModelDeathPresentation(TYPE_EGYPTIAN_MARKET, packId(3, 0), 0, 3))).toBe(
+      "egyptianMarketMythicDeath",
+    );
+  });
+
   test("uses original-scale Greek construction models across house build progress", () => {
     const snapshot = createSnapshot(1);
     snapshot.count = 1;
@@ -231,6 +292,33 @@ describe("unit presentation", () => {
     const presentation = resolveModelPresentation(snapshot, 0, false)!;
 
     expect(modelAnimationTime(presentation, snapshot, 0, 0, 2)).toBeCloseTo(1);
+  });
+
+  test("selects the source Fishing Ship work cycle and all four Dock ages", () => {
+    const snapshot = createSnapshot(2);
+    snapshot.count = 2;
+    snapshot.owner.fill(0);
+    snapshot.unitType[0] = TYPE_GREEK_FISHING_SHIP;
+    snapshot.unitType[1] = TYPE_GREEK_DOCK;
+    snapshot.playerAges[0] = 0;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekFishingShipIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("greekDockArchaic");
+
+    snapshot.mode[0] = MODE_GATHERING;
+    snapshot.gatherTargetType[0] = TYPE_FISH_PERCH;
+    snapshot.actionCooldown[0] = 5;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekFishingShipFish");
+
+    snapshot.mode[0] = MODE_RETURNING;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe("greekFishingShipWalk");
+    snapshot.playerAges[0] = 3;
+    expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("greekDockMythic");
+    expect(modelKey(resolveModelDeathPresentation(TYPE_GREEK_FISHING_SHIP, packId(0, 0)))).toBe(
+      "greekFishingShipDeath",
+    );
+    expect(modelKey(resolveModelDeathPresentation(TYPE_GREEK_DOCK, packId(1, 0), 0, 3))).toBe(
+      "greekDockMythicDeath",
+    );
   });
 
   test("resolves proof melee actions entirely from generated media", () => {
@@ -301,6 +389,170 @@ describe("unit presentation", () => {
     );
   });
 
+  test("binds Medusa's arrow and petrify clips to their source tags", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_MEDUSA;
+    const attack = UNIT_TYPES[TYPE_MEDUSA]!.attack;
+    if (attack?.kind !== "projectile") throw new Error("Medusa requires a projectile attack");
+
+    snapshot.actionCooldown[0] = attack.cooldownTicks - attack.launchDelayTicks;
+    const ordinary = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(ordinary)).toBe("greekMedusaAttackA");
+    expect(modelAnimationTime(ordinary, snapshot, 0, 0, 2)).toBeCloseTo(1.3, 8);
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.specialActionRemaining[0] = 16;
+    const petrify = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(petrify)).toBe("greekMedusaPetrify");
+    expect(modelAnimationTime(petrify, snapshot, 0, 0, 2)).toBeCloseTo(1.2, 8);
+    expect(modelKey(resolveModelDeathPresentation(TYPE_MEDUSA, packId(0, 0)))).toBe(
+      "greekMedusaDeath",
+    );
+  });
+
+  test("binds Centaur's ordinary and tracking-shot clips to their source tags", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_CENTAUR;
+    const attack = UNIT_TYPES[TYPE_CENTAUR]!.attack;
+    if (attack?.kind !== "projectile") throw new Error("Centaur requires a projectile attack");
+
+    snapshot.actionCooldown[0] = attack.cooldownTicks - attack.launchDelayTicks;
+    const ordinary = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(ordinary)).toBe("greekCentaurAttackA");
+    expect(modelAnimationTime(ordinary, snapshot, 0, 0, 1.5)).toBeCloseTo(0.9, 8);
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.specialActionRemaining[0] = 10;
+    const special = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(special)).toBe("greekCentaurSpecial");
+    expect(modelAnimationTime(special, snapshot, 0, 0, 2.5)).toBeCloseTo(2, 8);
+    expect(modelKey(resolveModelDeathPresentation(TYPE_CENTAUR, packId(0, 0)))).toBe(
+      "greekCentaurDeath",
+    );
+  });
+
+  test("uses Manticore's shared tail-volley clip for ordinary and charged attacks", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_MANTICORE;
+    const attack = UNIT_TYPES[TYPE_MANTICORE]!.attack;
+    if (attack?.kind !== "projectile") throw new Error("Manticore requires a projectile attack");
+
+    snapshot.actionCooldown[0] = attack.cooldownTicks - attack.launchDelayTicks;
+    const ordinary = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(ordinary)).toBe("greekManticoreAttack");
+    expect(modelAnimationTime(ordinary, snapshot, 0, 0, 0.95)).toBeCloseTo(0.5225, 8);
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.specialActionRemaining[0] = 8;
+    const special = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(special)).toBe("greekManticoreAttack");
+    expect(modelAnimationTime(special, snapshot, 0, 0, 0.95)).toBeCloseTo(0.55, 8);
+  });
+
+  test("binds Chimera's bite and three-flame breath to their source clips", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_CHIMERA;
+    const attack = UNIT_TYPES[TYPE_CHIMERA]!.attack;
+    if (attack?.kind !== "melee") throw new Error("Chimera requires a melee attack");
+
+    const cycle = attack.cycleVariants?.[0];
+    if (cycle === undefined) throw new Error("Chimera requires its source melee cycle");
+    snapshot.meleeActionVariant[0] = 0;
+    snapshot.actionCooldown[0] = cycle.actionTicks - cycle.impactDelayTicks;
+    const ordinary = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(ordinary)).toBe("greekChimeraAttack");
+    expect(modelAnimationTime(ordinary, snapshot, 0, 0, 1)).toBeCloseTo(0.45, 8);
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.specialActionRemaining[0] = 12;
+    const special = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(special)).toBe("greekChimeraSpecial");
+    expect(modelAnimationTime(special, snapshot, 0, 0, 2)).toBeCloseTo(1.4, 8);
+    expect(modelKey(resolveModelDeathPresentation(TYPE_CHIMERA, packId(0, 0)))).toBe(
+      "greekChimeraDeath",
+    );
+  });
+
+  test("selects Anubite's source melee variants and all three jump phases", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_ANUBITE;
+
+    snapshot.meleeActionVariant[0] = 1;
+    snapshot.actionCooldown[0] = 10;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("egyptianAnubiteAttackB");
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.meleeActionVariant[0] = 0xff;
+    snapshot.specialActionRemaining[0] = 73;
+    const takeoff = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(takeoff)).toBe("egyptianAnubiteJumpTakeoff");
+    expect(modelAnimationTime(takeoff, snapshot, 0, 0, 0.65)).toBe(0);
+
+    snapshot.specialActionRemaining[0] = 40;
+    const flight = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(flight)).toBe("egyptianAnubiteJumpFly");
+    expect(modelAnimationTime(flight, snapshot, 0, 0, 2)).toBe(1);
+
+    snapshot.specialActionRemaining[0] = 10;
+    const landing = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(landing)).toBe("egyptianAnubiteJumpLand");
+    expect(modelAnimationTime(landing, snapshot, 0, 0, 1)).toBe(0.5);
+    expect(modelKey(resolveModelDeathPresentation(TYPE_ANUBITE, packId(0, 0)))).toBe(
+      "egyptianAnubiteDeath",
+    );
+  });
+
+  test("drives Bellerophon's original single-cycle leap from authoritative travel", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_BELLEROPHON;
+    snapshot.specialActionRemaining[0] = 13;
+
+    const leap = resolveModelPresentation(snapshot, 0, false)!;
+    expect(modelKey(leap)).toBe("greekBellerophonJump");
+    expect(modelAnimationTime(leap, snapshot, 0, 0, 1.3)).toBeCloseTo(0.65, 8);
+    expect(modelKey(resolveModelDeathPresentation(TYPE_BELLEROPHON, packId(0, 0)))).toBe(
+      "greekBellerophonDeath",
+    );
+  });
+
+  test("binds both ranged siege units and the Siege Works to their original models", () => {
+    const snapshot = createSnapshot(3);
+    snapshot.count = 3;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.ids[1] = packId(1, 0);
+    snapshot.ids[2] = packId(2, 0);
+    snapshot.unitType[0] = TYPE_PETROBOLOS;
+    snapshot.unitType[1] = TYPE_CATAPULT;
+    snapshot.unitType[2] = TYPE_EGYPTIAN_SIEGE_WORKS;
+
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekPetrobolosIdle");
+    expect(modelKey(resolveModelPresentation(snapshot, 1, true))).toBe("egyptianCatapultWalk");
+    expect(modelKey(resolveModelPresentation(snapshot, 2, false))).toBe("egyptianSiegeWorksIdle");
+
+    snapshot.actionCooldown[0] = 80;
+    snapshot.actionCooldown[1] = 80;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekPetrobolosAttack");
+    expect(modelKey(resolveModelPresentation(snapshot, 1, false))).toBe("egyptianCatapultAttack");
+    expect(modelKey(resolveModelDeathPresentation(TYPE_PETROBOLOS, packId(0, 0)))).toBe(
+      "greekPetrobolosDeath",
+    );
+    expect(modelKey(resolveModelDeathPresentation(TYPE_CATAPULT, packId(1, 0)))).toBe(
+      "egyptianCatapultDeath",
+    );
+  });
+
   test("drives the Minotaur gore clip from authoritative charged-action time", () => {
     const snapshot = createSnapshot(1);
     snapshot.count = 1;
@@ -338,5 +590,70 @@ describe("unit presentation", () => {
     snapshot.actionCooldown[0] = 0;
     snapshot.specialActionRemaining[0] = 60;
     expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekNemeanLionRoar");
+  });
+
+  test("selects every Hydra action and death model from credited-kill experience", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_HYDRA;
+
+    for (const [kills, suffix] of [
+      [0, "A"],
+      [3, "B"],
+      [6, "C"],
+      [9, "D"],
+      [12, "E"],
+    ] as const) {
+      snapshot.combatExperienceKills[0] = kills;
+      expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe(
+        `greekHydraIdle${suffix}`,
+      );
+      expect(modelKey(resolveModelPresentation(snapshot, 0, true))).toBe(`greekHydraWalk${suffix}`);
+
+      snapshot.actionCooldown[0] = 30;
+      snapshot.meleeActionVariant[0] = Math.floor(kills / 3);
+      expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe(
+        `greekHydraAttack${suffix}`,
+      );
+      snapshot.actionCooldown[0] = 0;
+
+      expect(modelKey(resolveModelDeathPresentation(TYPE_HYDRA, packId(0, 0), kills))).toBe(
+        `greekHydraDeath${suffix}`,
+      );
+    }
+
+    snapshot.combatExperienceKills[0] = 3;
+    snapshot.actionCooldown[0] = 10;
+    snapshot.meleeActionVariant[0] = 0;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("greekHydraAttackA");
+  });
+
+  test("hides the Sphinx model while its source VisualNone whirlwind owns presentation", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_SPHINX;
+
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("egyptianSphinxIdle");
+    snapshot.specialActionRemaining[0] = 32;
+    expect(resolveModelPresentation(snapshot, 0, false)).toBeNull();
+  });
+
+  test("binds the Avenger's two sword clips and Whirlwind to source models", () => {
+    const snapshot = createSnapshot(1);
+    snapshot.count = 1;
+    snapshot.ids[0] = packId(0, 0);
+    snapshot.unitType[0] = TYPE_AVENGER;
+
+    snapshot.actionCooldown[0] = 20;
+    snapshot.meleeActionVariant[0] = 0;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("egyptianAvengerAttackA");
+    snapshot.meleeActionVariant[0] = 1;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("egyptianAvengerAttackB");
+
+    snapshot.actionCooldown[0] = 0;
+    snapshot.specialActionRemaining[0] = 30;
+    expect(modelKey(resolveModelPresentation(snapshot, 0, false))).toBe("egyptianAvengerWhirlwind");
   });
 });

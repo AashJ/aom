@@ -1,0 +1,62 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import {
+  TYPE_EGYPTIAN_DOCK,
+  TYPE_EGYPTIAN_FISHING_SHIP,
+  TYPE_EGYPTIAN_LABORER,
+} from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  MOVEMENT_DOMAIN_WATER,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_DOCK,
+  key: "egyptian-dock",
+  label: "Dock",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 1600,
+  lineOfSight: 22,
+  movementSpeed: 0,
+  armor: [0.3, 0.96, 0.2],
+  attack: null,
+  garrison: {
+    capacity: 10,
+    enterRange: 1,
+    validOccupants: [
+      { kind: "unit", key: "greek-fishing-ship" },
+      { kind: "unit", key: "egyptian-fishing-ship" },
+      { kind: "unit", key: "norse-fishing-ship" },
+    ],
+    attackMultiplierPerOccupant: 0,
+    ejectOnDeath: true,
+  },
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 4,
+  collidesWithProjectiles: true,
+  footprint: 4,
+  placementTerrain: "shoreline",
+  costFood: 0,
+  costWood: 0,
+  costGold: 50,
+  costFavor: 0,
+  buildTicks: 40 * 20,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 4.5,
+  isDropsite: true,
+  resourceDropsiteDomain: MOVEMENT_DOMAIN_WATER,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [
+    { type: TYPE_EGYPTIAN_LABORER, commandSlot: 7 },
+    { type: TYPE_EGYPTIAN_FISHING_SHIP, commandSlot: 1 },
+  ],
+} as const satisfies UnitTypeStats;

@@ -1,6 +1,6 @@
 import type { MeleeAttack, MeleeAttackCycle } from "../content/unit-type-schema";
 import { isEntityVisibleTo } from "../visibility";
-import { centerDistanceForEdgeRange, resolveMeleeCycleDamage } from "./combat";
+import { centerDistanceForEdgeRange } from "./combat";
 import { resolveStableId } from "./id";
 import { advanceMeleeAttackCycle } from "./melee-attack-cycles";
 import { setFacingToward } from "./navigation";
@@ -18,7 +18,13 @@ export function tickActiveMeleeAttack(
   attack: MeleeAttack,
   cycle: MeleeAttackCycle,
   neutralOwner: number,
-  dealDamage: (world: World, index: number, damage: number) => void,
+  resolveImpact: (
+    world: World,
+    attacker: number,
+    target: number,
+    attack: MeleeAttack,
+    cycle: MeleeAttackCycle,
+  ) => void,
 ): boolean {
   world.moving[attacker] = 0;
   world.unitField[attacker] = null;
@@ -43,7 +49,7 @@ export function tickActiveMeleeAttack(
       isEntityVisibleTo(world, world.owner[attacker]!, target) &&
       dx * dx + dz * dz <= reach * reach
     ) {
-      dealDamage(world, target, resolveMeleeCycleDamage(attack, cycle, targetStats));
+      resolveImpact(world, attacker, target, attack, cycle);
     }
   }
 

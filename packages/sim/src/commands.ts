@@ -16,6 +16,12 @@ export const COMMAND_PRAY = 9;
 export const COMMAND_CANCEL_TRAIN = 10;
 export const COMMAND_PICK_UP_RELIC = 11;
 export const COMMAND_DROP_OFF_RELIC = 12;
+export const COMMAND_GARRISON = 13;
+export const COMMAND_UNGARRISON = 14;
+export const COMMAND_TRADE = 15;
+export const COMMAND_HEAL = 16;
+export const COMMAND_EMPOWER = 17;
+export const COMMAND_CONVERT = 18;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -137,6 +143,53 @@ export interface DropOffRelicCommand {
   targetId: number;
 }
 
+export interface GarrisonCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_GARRISON;
+  unitIds: number[];
+  targetId: number;
+}
+
+export interface UngarrisonCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_UNGARRISON;
+  containerId: number;
+}
+
+export interface TradeCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_TRADE;
+  unitIds: number[];
+  targetId: number;
+}
+
+export interface HealCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_HEAL;
+  unitIds: number[];
+  targetId: number;
+}
+
+export interface EmpowerCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_EMPOWER;
+  unitIds: number[];
+  targetId: number;
+}
+
+export interface ConvertCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_CONVERT;
+  unitIds: number[];
+  targetId: number;
+}
+
 export interface AdvanceAgeCommand {
   tick: number;
   issuer: number;
@@ -166,6 +219,12 @@ export type Command =
   | CancelTrainCommand
   | PickUpRelicCommand
   | DropOffRelicCommand
+  | GarrisonCommand
+  | UngarrisonCommand
+  | TradeCommand
+  | HealCommand
+  | EmpowerCommand
+  | ConvertCommand
   | AdvanceAgeCommand
   | CheatCommand;
 

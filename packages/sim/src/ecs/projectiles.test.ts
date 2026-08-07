@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { ProjectileAttack, UnitTypeStats } from "../content/unit-type-schema";
+import {
+  AREA_DAMAGE_ENEMIES,
+  type ProjectileAttack,
+  type UnitTypeStats,
+} from "../content/unit-type-schema";
 import { TYPE_HOPLITE, TYPE_SPEARMAN } from "../content/unit-type-ids";
 import { UNIT_TYPES } from "./types";
 import { registerPlayer } from "./players";
@@ -120,6 +124,30 @@ describe("deterministic projectile lifecycle", () => {
     expect(state.world.projectiles.nextId).toBe(1);
     expect(state.world.attackAimTarget[0]).toBe(NO_TARGET);
     expect(state.world.attackAimShots[0]).toBe(0);
+    expect(state.world.attackCooldown[0]).toBe(0);
+  });
+
+  test("queues one atomic VolleyMode group and advances aim once", () => {
+    const state = projectileWorld({ ...projectileAttack, projectileCount: 3 });
+    queueTestShot(state, 2);
+
+    expect(state.world.projectiles.count).toBe(3);
+    expect(Array.from(state.world.projectiles.ids.subarray(0, 3))).toEqual([1, 2, 3]);
+    expect(Array.from(state.world.projectiles.priorShots.subarray(0, 3))).toEqual([2, 2, 2]);
+    expect(state.world.projectiles.nextId).toBe(4);
+    expect(state.world.attackAimShots[0]).toBe(3);
+    expect(state.world.attackCooldown[0]).toBe(projectileAttack.cooldownTicks);
+  });
+
+  test("rejects an over-capacity volley without consuming ids or aim state", () => {
+    const state = projectileWorld({ ...projectileAttack, projectileCount: 3 });
+    state.world.projectiles = createProjectileStore(2);
+
+    expect(() => queueTestShot(state, 2)).toThrow("World projectile capacity exceeded.");
+    expect(state.world.projectiles.count).toBe(0);
+    expect(state.world.projectiles.nextId).toBe(1);
+    expect(state.world.attackAimTarget[0]).toBe(state.targetId);
+    expect(state.world.attackAimShots[0]).toBe(2);
     expect(state.world.attackCooldown[0]).toBe(0);
   });
 
@@ -269,6 +297,47 @@ describe("deterministic projectile lifecycle", () => {
 
     expect(state.world.hp[1]).toBe(intendedHp);
     expect(state.world.hp[2]).toBeLessThan(neutralHp);
+  });
+
+  test("resolves every projectile in a volley as an independent hit", () => {
+    const state = projectileWorld({
+      ...projectileAttack,
+      projectileCount: 3,
+      accuracy: 1,
+      accuracyReductionFactor: 0,
+    });
+    const initialHp = state.world.hp[1]!;
+    queueTestShot(state);
+    advanceProjectilesTo(state, 12);
+
+    const oneHit = 10 * (1 - state.unitTypes[TYPE_SPEARMAN]!.armor[1]!);
+    expect(state.world.hp[1]).toBeCloseTo(initialHp - oneHit * 3, 10);
+    expect(state.world.projectiles.count).toBe(0);
+  });
+
+  test("detonates impact-area projectiles at the completed flight point", () => {
+    const state = projectileWorld({
+      ...projectileAttack,
+      accuracy: 1,
+      accuracyReductionFactor: 0,
+      impactArea: { radius: 2, falloff: "linear", damageRelations: AREA_DAMAGE_ENEMIES },
+    });
+    state.unitTypes[TYPE_SPEARMAN] = {
+      ...state.unitTypes[TYPE_SPEARMAN]!,
+      collidesWithProjectiles: false,
+    };
+    spawnUnit(state.world, 106, 100, 0, 0, 1, TYPE_SPEARMAN);
+    spawnUnit(state.world, 105, 101, 0, 0, 0, TYPE_SPEARMAN);
+    spawnUnit(state.world, 105, 99, 0, 0, NEUTRAL_OWNER, TYPE_SPEARMAN);
+    const initialHp = Array.from(state.world.hp.subarray(0, state.world.count));
+    queueTestShot(state);
+    advanceProjectilesTo(state, 12);
+
+    expect(state.world.hp[1]).toBeLessThan(initialHp[1]!);
+    expect(state.world.hp[2]).toBeLessThan(initialHp[2]!);
+    expect(state.world.hp[3]).toBe(initialHp[3]);
+    expect(state.world.hp[4]).toBe(initialHp[4]);
+    expect(state.world.projectiles.count).toBe(0);
   });
 
   test("projects only released projectiles into interpolable render state", () => {

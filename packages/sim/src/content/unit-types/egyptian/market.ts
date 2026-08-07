@@ -1,0 +1,42 @@
+import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_MARKET } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_MARKET,
+  key: "egyptian-market",
+  label: "Market",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 1200,
+  lineOfSight: 9,
+  movementSpeed: 0,
+  armor: [0.3, 0.96, 0.05],
+  attack: null,
+  tradeSite: "market",
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 4,
+  collidesWithProjectiles: true,
+  footprint: 4,
+  costFood: 0,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 1067,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 6.5,
+  isDropsite: false,
+  requiredAge: AGE_CLASSICAL,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_EGYPTIAN_LABORER, commandSlot: 6 }],
+} as const satisfies UnitTypeStats;

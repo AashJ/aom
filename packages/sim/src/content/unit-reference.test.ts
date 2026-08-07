@@ -45,7 +45,8 @@ describe("agentic unit references", () => {
       "serial-myth-unit-lifecycle",
       "serial-charged-ranged-special",
     ]);
-    expect(centaur.blocker).toStartWith("Gates B+C+D:");
+    expect(centaur.status).toBe("ready");
+    expect(centaur.blocker).toBeNull();
 
     expect(() => validateUnitRoster([{ ...centaur, gates: ["C", "B", "D"] }])).toThrow(
       "gates must be unique and ordered",
@@ -88,7 +89,7 @@ describe("agentic unit references", () => {
     ]).toEqual([6, 6, 6]);
   });
 
-  test("closes prior releases while keeping the active serial proof candidate-owned", () => {
+  test("closes prior releases while keeping audited lanes candidate-owned", () => {
     const releasedHeroKeys = [
       "greek-odysseus",
       "greek-heracles",
@@ -100,7 +101,57 @@ describe("agentic unit references", () => {
     ];
     expect(
       UNIT_ROSTER.filter((entry) => entry.status === "ready").map((entry) => entry.key),
-    ).toEqual(["greek-nemean-lion"]);
+    ).toEqual([
+      "militia",
+      "greek-kataskopos",
+      "greek-petrobolos",
+      "greek-helepolis",
+      "greek-caravan",
+      "greek-fishing-ship",
+      "greek-transport-ship",
+      "greek-trireme",
+      "greek-pentekonter",
+      "greek-juggernaut",
+      "greek-bellerophon",
+      "greek-polyphemus",
+      "greek-achilles",
+      "greek-perseus",
+      "greek-pegasus",
+      "greek-centaur",
+      "greek-cyclops",
+      "greek-manticore",
+      "greek-hydra",
+      "greek-scylla",
+      "greek-medusa",
+      "greek-colossus",
+      "greek-chimera",
+      "greek-carcinos",
+      "egyptian-siege-tower",
+      "egyptian-catapult",
+      "egyptian-mercenary",
+      "egyptian-caravan",
+      "egyptian-fishing-ship",
+      "egyptian-transport-ship",
+      "egyptian-kebenit",
+      "egyptian-ramming-galley",
+      "egyptian-war-barge",
+      "egyptian-pharaoh",
+      "egyptian-priest",
+      "egyptian-son-of-osiris",
+      "egyptian-anubite",
+      "egyptian-sphinx",
+      "egyptian-wadjet",
+      "egyptian-petsuchos",
+      "egyptian-roc",
+      "egyptian-scarab",
+      "egyptian-mummy",
+      "egyptian-phoenix",
+      "egyptian-avenger",
+      "egyptian-scorpion-man",
+      "egyptian-leviathan",
+      "egyptian-war-turtle",
+      "egyptian-mercenary-cavalry",
+    ]);
     for (const key of releasedHeroKeys) {
       const lane = UNIT_ROSTER.find((entry) => entry.key === key);
       const reference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === key);
@@ -117,9 +168,29 @@ describe("agentic unit references", () => {
 
     const nemeanLane = UNIT_ROSTER.find((entry) => entry.key === "greek-nemean-lion");
     const nemeanReference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === "greek-nemean-lion");
-    expect(nemeanLane?.status).toBe("ready");
+    expect(nemeanLane?.status).toBe("implemented");
     expect(nemeanReference?.family).toBe("myth");
-    expect(nemeanReference?.source.stage).toBe("candidate");
+    expect(nemeanReference?.source.stage).toBe("final");
+
+    const achillesLane = UNIT_ROSTER.find((entry) => entry.key === "greek-achilles");
+    const achillesReference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === "greek-achilles");
+    expect(achillesLane?.status).toBe("ready");
+    expect(achillesReference?.family).toBe("hero");
+    expect(achillesReference?.source.stage).toBe("candidate");
+
+    const kataskoposLane = UNIT_ROSTER.find((entry) => entry.key === "greek-kataskopos");
+    const kataskoposReference = UNIT_REFERENCE_SPECS.find(
+      (entry) => entry.key === "greek-kataskopos",
+    );
+    expect(kataskoposLane?.status).toBe("ready");
+    expect(kataskoposReference?.family).toBe("exceptional-lifecycle");
+    expect(kataskoposReference?.source.stage).toBe("candidate");
+
+    const militiaLane = UNIT_ROSTER.find((entry) => entry.key === "militia");
+    const militiaReference = UNIT_REFERENCE_SPECS.find((entry) => entry.key === "militia");
+    expect(militiaLane?.status).toBe("ready");
+    expect(militiaReference?.family).toBe("exceptional-lifecycle");
+    expect(militiaReference?.source.stage).toBe("candidate");
   });
 
   test("keeps post-C3 special families grouped without prematurely opening a lane", () => {
@@ -243,7 +314,10 @@ describe("agentic unit references", () => {
     if (reference.family !== "ordinary-melee") throw new Error("Hoplite reference is not melee.");
     const driftedReference = {
       ...reference,
-      expected: { ...reference.expected, requiredGod: reference.expected.requiredGod + 1 },
+      expected: {
+        ...reference.expected,
+        requiredGod: reference.expected.requiredGod + 1,
+      },
     };
     expect(() => validateUnitReferences([lane], [driftedReference])).toThrow(
       "does not match its canonical roster lane",
@@ -264,7 +338,10 @@ describe("agentic unit references", () => {
       finalRulesetReview: _review,
       ...projectileSourceFields
     } = projectile.source;
-    const projectileSource = { ...projectileSourceFields, stage: "candidate" as const };
+    const projectileSource = {
+      ...projectileSourceFields,
+      stage: "candidate" as const,
+    };
 
     const rangedHero = {
       ...hero,
@@ -355,6 +432,9 @@ describe("agentic unit references", () => {
       (candidate) => candidate.key === lane.key,
     )!;
     if (reference.family !== "myth") throw new Error("Nemean Lion myth reference is missing.");
+    if (!("specialParticles" in reference.source.assetInventory)) {
+      throw new Error("Nemean Lion special-particle evidence is missing.");
+    }
     const { specialParticles: _specialParticles, ...assetInventory } =
       reference.source.assetInventory;
     const gameplayOnlyReference = {

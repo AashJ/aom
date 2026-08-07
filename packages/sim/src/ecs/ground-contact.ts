@@ -1,4 +1,5 @@
 import { UNIT_TYPES } from "../content/generated/unit-types";
+import { UNIT_CLASS_AIR } from "../content/unit-type-schema";
 import { MAP_TILES } from "../terrain";
 import { circleSweepEntryFraction } from "./circle-collision";
 import { resolveStableId, stableIdAt, type StableIdLookupState } from "./id";
@@ -135,6 +136,7 @@ function participatesInContact(
     world.containedBy[index] === NO_TARGET &&
     world.dying[index] === 0 &&
     !UNIT_TYPES[world.unitType[index]!]!.isStatic &&
+    UNIT_TYPES[world.unitType[index]!]!.collidesWithUnits !== false &&
     (!hasActiveTargetReactions ||
       targetReactionCapabilitiesAt(world.targetReactions, index).participatesInGroundSeparation)
   );
@@ -185,6 +187,12 @@ function enumerateCombatContacts(
 
     const j = resolveStableId(world, world.attackTarget[i]!);
     if (j < 0 || j === i || !participatesInContact(world, j, hasActiveTargetReactions)) {
+      continue;
+    }
+    if (
+      ((UNIT_TYPES[world.unitType[i]!]!.classes & UNIT_CLASS_AIR) !== 0) !==
+      ((UNIT_TYPES[world.unitType[j]!]!.classes & UNIT_CLASS_AIR) !== 0)
+    ) {
       continue;
     }
 

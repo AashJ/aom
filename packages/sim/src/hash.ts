@@ -85,6 +85,10 @@ export function hashWorld(world: World): number {
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
+    word = world.pharaohRespawnRemaining[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
     const minorGodStart = playerId * AGE_COUNT;
 
     for (let age = 0; age < AGE_COUNT; age += 1) {
@@ -110,9 +114,14 @@ export function hashWorld(world: World): number {
     world.velZ,
     world.moveTargetX,
     world.moveTargetZ,
+    world.specialActionStartX,
+    world.specialActionStartZ,
     world.facingX,
     world.facingZ,
     world.hp,
+    world.buildProgress,
+    world.empowerTrainProgress,
+    world.empowerResearchProgress,
     world.targetReactions.directionX,
     world.targetReactions.directionZ,
     world.targetReactions.distance,
@@ -174,12 +183,16 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
-  // walkability is dynamic state as of M6-2: buildings stamp it. It is technically
+  // Land and water walkability are dynamic state: buildings stamp both domains. They are technically
   // derivable from hashed entity state, but hashing it surfaces a stamping desync
   // at the edit tick instead of ticks later when pathing diverges - the free-handle-stack
   // argument again.
   for (let i = 0; i < world.walkable.length; i += 1) {
     word = world.walkable[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.waterWalkable[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
@@ -194,6 +207,10 @@ export function hashWorld(world: World): number {
   // positions, so the stable container relationship is authoritative state.
   for (let i = 0; i < world.count; i += 1) {
     word = world.containedBy[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.terminalThrowSource[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
@@ -226,6 +243,14 @@ export function hashWorld(world: World): number {
     word = world.meleeActionImpactPending[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.beamActionImpactPending[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.beamActionActive[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
   }
 
   // Charged actions own an independent recharge plus an in-progress, stable-id
@@ -256,6 +281,10 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
 
     word = world.targetReactions.numberBouncesDone[i]! >>> 0;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.targetReactions.landingDomain[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
@@ -298,6 +327,7 @@ export function hashWorld(world: World): number {
     world.projectiles.sourceIds,
     world.projectiles.targetIds,
     world.projectiles.priorShots,
+    world.projectiles.specialAttacks,
     world.projectiles.launchTicks,
     world.projectiles.impactTicks,
     world.projectiles.expiresBeforeImpact,
@@ -315,6 +345,7 @@ export function hashWorld(world: World): number {
     world.projectiles.launchZ,
     world.projectiles.impactX,
     world.projectiles.impactZ,
+    world.projectiles.damageMultipliers,
   ];
   for (const values of projectilePositionArrays) {
     const view = new DataView(
@@ -333,9 +364,48 @@ export function hashWorld(world: World): number {
     }
   }
 
+  // Independent poison instances stack and can outlive their source, so their
+  // stable targets, expiry, origin, and distance-scaled damage all affect the
+  // future world even when no unit component changes this tick.
+  word = world.poisonEffects.count >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+  const poisonIntegerArrays = [
+    world.poisonEffects.targetIds,
+    world.poisonEffects.sourceIds,
+    world.poisonEffects.sourceTypes,
+    world.poisonEffects.remainingTicks,
+    world.poisonEffects.startTicks,
+  ];
+  for (const values of poisonIntegerArrays) {
+    for (let i = 0; i < world.poisonEffects.count; i += 1) {
+      word = values[i]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+  }
+  const poisonMultiplierView = new DataView(
+    world.poisonEffects.damageMultipliers.buffer,
+    world.poisonEffects.damageMultipliers.byteOffset,
+    world.poisonEffects.count * Float64Array.BYTES_PER_ELEMENT,
+  );
+  for (let i = 0; i < world.poisonEffects.count; i += 1) {
+    const byteOffset = i * Float64Array.BYTES_PER_ELEMENT;
+    word = poisonMultiplierView.getUint32(byteOffset, true);
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+    word = poisonMultiplierView.getUint32(byteOffset + Uint32Array.BYTES_PER_ELEMENT, true);
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   // The whole economy state machine is shared state.
   for (let i = 0; i < world.count; i += 1) {
     word = world.mode[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.supportActionRemaining[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
@@ -352,8 +422,47 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
+  const resourceCargoView = new DataView(
+    world.resourceCargo.buffer,
+    world.resourceCargo.byteOffset,
+    world.count * Float64Array.BYTES_PER_ELEMENT,
+  );
+  for (let i = 0; i < world.count; i += 1) {
+    const byteOffset = i * Float64Array.BYTES_PER_ELEMENT;
+    word = resourceCargoView.getUint32(byteOffset, true);
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+    word = resourceCargoView.getUint32(byteOffset + Uint32Array.BYTES_PER_ELEMENT, true);
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
   for (let i = 0; i < world.count; i += 1) {
     word = world.taskTarget[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  const tradeIntegerArrays = [world.tradeMarket, world.tradeTownCenter];
+  for (const values of tradeIntegerArrays) {
+    for (let i = 0; i < world.count; i += 1) {
+      word = values[i]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+  }
+
+  const tradeCargoView = new DataView(
+    world.tradeCargo.buffer,
+    world.tradeCargo.byteOffset,
+    world.count * Float64Array.BYTES_PER_ELEMENT,
+  );
+  for (let i = 0; i < world.count; i += 1) {
+    const byteOffset = i * Float64Array.BYTES_PER_ELEMENT;
+    word = tradeCargoView.getUint32(byteOffset, true);
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+    word = tradeCargoView.getUint32(byteOffset + Uint32Array.BYTES_PER_ELEMENT, true);
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
@@ -381,8 +490,31 @@ export function hashWorld(world: World): number {
     }
   }
 
+  // Fixed lifetimes decide the exact future tick on which temporary units are
+  // removed, so the countdown is authoritative lockstep state.
   for (let i = 0; i < world.count; i += 1) {
-    word = world.buildProgress[i]!;
+    word = world.lifespanRemaining[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // Experience kills change future Hydra damage and source-model tier.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.combatExperienceKills[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // Target conditions alter which charged actions may begin or land.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.unitConditions[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  // Melee snare changes movement on every remaining recovery tick.
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.meleeSnareRemaining[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

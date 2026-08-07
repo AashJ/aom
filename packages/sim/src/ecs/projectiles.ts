@@ -1,9 +1,15 @@
 import { TICK_HZ } from "../clock";
-import type { ProjectileAttack, UnitTypeStats } from "../content/unit-type-schema";
+import type {
+  ChargedProjectileSpecialAttack,
+  ProjectileAttack,
+  UnitTypeStats,
+} from "../content/unit-type-schema";
 import { nextFloat, type Pcg32 } from "../math/prng";
 import { advanceProjectileAim, type AttackSequenceState } from "./attack-state";
 import { idGeneration, idIndex, stableIdAt, type StableIdState } from "./id";
-import { resolveAttackDamage } from "./combat";
+import { resolveDamage, resolveProjectileHitDamage } from "./combat";
+import { effectiveAttackDamageMultiplier } from "./unit-age";
+import { resolveAreaDamageAt } from "./special-attacks";
 import {
   classicProjectileHits,
   classicProjectileHitScore,
@@ -22,7 +28,15 @@ export const NO_PROJECTILE_TICK = 0xffff_ffff;
 export const PROJECTILE_ARROW = 0;
 export const PROJECTILE_SPEAR = 1;
 export const PROJECTILE_SLING_STONE = 2;
-export const PROJECTILE_TYPE_COUNT = 3;
+export const PROJECTILE_WADJET_SPIT = 3;
+export const PROJECTILE_MANTICORE_BARB = 4;
+export const PROJECTILE_CHIMERA_FIRE = 5;
+export const PROJECTILE_PETROBOLOS_STONE = 6;
+export const PROJECTILE_CATAPULT_STONE = 7;
+export const PROJECTILE_BALLISTA_BOLT = 8;
+export const PROJECTILE_MUMMY_FLIES = 9;
+export const PROJECTILE_PRIEST = 10;
+export const PROJECTILE_TYPE_COUNT = 11;
 
 const EMPTY_UNIT_TYPES: readonly (UnitTypeStats | undefined)[] = Object.freeze([]);
 
@@ -49,12 +63,14 @@ export interface ProjectileStore {
   sourceIds: Uint32Array;
   targetIds: Uint32Array;
   priorShots: Uint16Array;
+  specialAttacks: Uint8Array;
   launchTicks: Uint32Array;
   impactTicks: Uint32Array;
   launchX: Float64Array;
   launchZ: Float64Array;
   impactX: Float64Array;
   impactZ: Float64Array;
+  damageMultipliers: Float64Array;
   expiresBeforeImpact: Uint8Array;
   // Reused query context; derived and deliberately excluded from snapshots/hash.
   collisionScratch: ProjectileCollisionScratch;
@@ -76,6 +92,7 @@ export interface ProjectileWorldState extends UnitSpatialGridState, StableIdStat
 interface ProjectileAttackIssuerState extends ProjectileWorldState, AttackSequenceState {
   readonly attackCooldown: Uint16Array;
   readonly projectiles: ProjectileStore;
+  readonly playerAge: Uint8Array;
 }
 
 export type ApplyProjectileDamage<TWorld extends ProjectileWorldState> = (
@@ -99,12 +116,14 @@ export function createProjectileStore(capacity = MAX_PROJECTILES): ProjectileSto
     sourceIds: new Uint32Array(capacity),
     targetIds: new Uint32Array(capacity),
     priorShots: new Uint16Array(capacity),
+    specialAttacks: new Uint8Array(capacity),
     launchTicks: new Uint32Array(capacity),
     impactTicks: new Uint32Array(capacity).fill(NO_PROJECTILE_TICK),
     launchX: new Float64Array(capacity),
     launchZ: new Float64Array(capacity),
     impactX: new Float64Array(capacity),
     impactZ: new Float64Array(capacity),
+    damageMultipliers: new Float64Array(capacity).fill(1),
     expiresBeforeImpact: new Uint8Array(capacity),
     collisionScratch: {
       unitTypes: EMPTY_UNIT_TYPES,
@@ -153,27 +172,65 @@ export function beginProjectileAttack(
   if (!attack || attack.kind !== "projectile") {
     throw new TypeError("Projectile source type has no canonical projectile attack.");
   }
+  const projectileCount = attack.projectileCount ?? 1;
+  if (store.count + projectileCount > store.ids.length) {
+    throw new RangeError("World projectile capacity exceeded.");
+  }
+  if (store.nextId + projectileCount > NO_PROJECTILE_TICK) {
+    throw new RangeError("Projectile identity space exhausted.");
+  }
 
   const sourceId = stableIdAt(world, sourceIndex);
   const targetId = stableIdAt(world, targetIndex);
   const priorShots = advanceProjectileAim(world, sourceIndex, targetId);
-  const index = store.count;
-  const id = store.nextId;
-  store.nextId += 1;
-  store.ids[index] = id;
-  store.owners[index] = world.owner[sourceIndex]!;
-  store.sourceTypes[index] = sourceType;
-  store.sourceIds[index] = sourceId;
-  store.targetIds[index] = targetId;
-  store.priorShots[index] = priorShots;
-  // Projectile processing already ran for attackTick, so even a zero-delay
-  // release becomes observable on the next deterministic simulation tick.
-  store.launchTicks[index] = world.tick + Math.max(1, attack.launchDelayTicks);
-  store.impactTicks[index] = NO_PROJECTILE_TICK;
-  store.expiresBeforeImpact[index] = 0;
-  store.count += 1;
+  const garrison = unitTypes[sourceType]!.garrison;
+  let sourceDamageMultiplier = effectiveAttackDamageMultiplier(
+    unitTypes[sourceType]!,
+    world.playerAge[world.owner[sourceIndex]!]!,
+  );
+  if (garrison !== undefined) {
+    let occupants = 0;
+    for (let index = 0; index < world.count; index += 1) {
+      if (world.containedBy[index] === sourceId) occupants += 1;
+    }
+    sourceDamageMultiplier += occupants * garrison.attackMultiplierPerOccupant;
+  }
+  const firstId = store.nextId;
+  for (let volleyIndex = 0; volleyIndex < projectileCount; volleyIndex += 1) {
+    const index = store.count;
+    store.ids[index] = store.nextId;
+    store.nextId += 1;
+    store.owners[index] = world.owner[sourceIndex]!;
+    store.sourceTypes[index] = sourceType;
+    store.sourceIds[index] = sourceId;
+    store.targetIds[index] = targetId;
+    store.priorShots[index] = priorShots;
+    store.specialAttacks[index] = 0;
+    // Projectile processing already ran for attackTick, so even a zero-delay
+    // release becomes observable on the next deterministic simulation tick.
+    store.launchTicks[index] = world.tick + Math.max(1, attack.launchDelayTicks);
+    store.impactTicks[index] = NO_PROJECTILE_TICK;
+    store.expiresBeforeImpact[index] = 0;
+    store.damageMultipliers[index] = sourceDamageMultiplier;
+    store.count += 1;
+  }
   world.attackCooldown[sourceIndex] = attack.cooldownTicks;
-  return id;
+  return firstId;
+}
+
+type ProjectileDamageAttack = ProjectileAttack | ChargedProjectileSpecialAttack;
+
+function areaDamageAttack(attack: ProjectileDamageAttack): ProjectileDamageAttack {
+  if (attack.kind !== "projectile" || attack.cooldownTicks === TICK_HZ) return attack;
+  const cycleSeconds = attack.cooldownTicks / TICK_HZ;
+  return {
+    ...attack,
+    damage: [
+      attack.damage[0] * cycleSeconds,
+      attack.damage[1] * cycleSeconds,
+      attack.damage[2] * cycleSeconds,
+    ],
+  };
 }
 
 function resolveUnit(world: ProjectileWorldState, id: number): number {
@@ -189,7 +246,7 @@ function launchProjectile(
   world: ProjectileWorldState,
   store: ProjectileStore,
   index: number,
-  attack: ProjectileAttack,
+  attack: ProjectileDamageAttack,
 ): boolean {
   const source = resolveUnit(world, store.sourceIds[index]!);
   const target = resolveUnit(world, store.targetIds[index]!);
@@ -259,6 +316,7 @@ function removeProjectile(store: ProjectileStore, index: number): void {
     store.sourceIds[index] = store.sourceIds[last]!;
     store.targetIds[index] = store.targetIds[last]!;
     store.priorShots[index] = store.priorShots[last]!;
+    store.specialAttacks[index] = store.specialAttacks[last]!;
     store.launchTicks[index] = store.launchTicks[last]!;
     store.impactTicks[index] = store.impactTicks[last]!;
     store.launchX[index] = store.launchX[last]!;
@@ -266,8 +324,64 @@ function removeProjectile(store: ProjectileStore, index: number): void {
     store.impactX[index] = store.impactX[last]!;
     store.impactZ[index] = store.impactZ[last]!;
     store.expiresBeforeImpact[index] = store.expiresBeforeImpact[last]!;
+    store.damageMultipliers[index] = store.damageMultipliers[last]!;
   }
   store.count = last;
+}
+
+export function beginSpecialProjectileAttack(
+  world: ProjectileAttackIssuerState,
+  sourceIndex: number,
+  targetIndex: number,
+  special: ChargedProjectileSpecialAttack,
+): number {
+  if (
+    sourceIndex < 0 ||
+    sourceIndex >= world.count ||
+    targetIndex < 0 ||
+    targetIndex >= world.count ||
+    world.dying[sourceIndex] === 1 ||
+    world.hp[sourceIndex]! <= 0 ||
+    world.dying[targetIndex] === 1 ||
+    world.hp[targetIndex]! <= 0
+  ) {
+    throw new RangeError("Special projectile attack indices must identify live dense units.");
+  }
+
+  const store = world.projectiles;
+  const projectileCount = special.projectileCount ?? 1;
+  if (store.count + projectileCount > store.ids.length) {
+    throw new RangeError("World projectile capacity exceeded.");
+  }
+  if (store.nextId + projectileCount > NO_PROJECTILE_TICK) {
+    throw new RangeError("Projectile identity space exhausted.");
+  }
+
+  const firstId = store.nextId;
+  const firstIndex = store.count;
+  for (let volleyIndex = 0; volleyIndex < projectileCount; volleyIndex += 1) {
+    const index = store.count;
+    store.ids[index] = store.nextId;
+    store.nextId += 1;
+    store.owners[index] = world.owner[sourceIndex]!;
+    store.sourceTypes[index] = world.unitType[sourceIndex]!;
+    store.sourceIds[index] = stableIdAt(world, sourceIndex);
+    store.targetIds[index] = stableIdAt(world, targetIndex);
+    store.priorShots[index] = 0;
+    store.specialAttacks[index] = 1;
+    store.launchTicks[index] = world.tick;
+    store.impactTicks[index] = NO_PROJECTILE_TICK;
+    store.expiresBeforeImpact[index] = 0;
+    store.damageMultipliers[index] = 1;
+    store.count += 1;
+
+    if (!launchProjectile(world, store, index, special)) {
+      store.count = firstIndex;
+      store.nextId = firstId;
+      throw new Error("A validated charged projectile volley could not launch.");
+    }
+  }
+  return firstId;
 }
 
 export function cancelPendingProjectilesBySource(store: ProjectileStore, sourceId: number): void {
@@ -341,7 +455,7 @@ function projectileHitAlongSegment(
   world: ProjectileWorldState,
   store: ProjectileStore,
   index: number,
-  attack: ProjectileAttack,
+  attack: ProjectileDamageAttack,
   unitTypes: readonly (UnitTypeStats | undefined)[],
   maxBodyRadius: number,
   startTick: number,
@@ -387,8 +501,15 @@ export function tickProjectileStore<TWorld extends ProjectileWorldState>(
 ): void {
   for (let index = 0; index < store.count; ) {
     const stats = unitTypes[store.sourceTypes[index]!];
-    const attack = stats?.attack;
-    if (!attack || attack.kind !== "projectile") {
+    const attack =
+      store.specialAttacks[index] === 1
+        ? stats?.specialAttack?.kind === "charged-projectile"
+          ? stats.specialAttack
+          : null
+        : stats?.attack?.kind === "projectile"
+          ? stats.attack
+          : null;
+    if (attack === null || attack === undefined) {
       removeProjectile(store, index);
       continue;
     }
@@ -427,7 +548,29 @@ export function tickProjectileStore<TWorld extends ProjectileWorldState>(
         const hitId = stableIdAt(world, hitIndex);
         const damageMultiplier =
           hitId === store.targetIds[index]! ? 1 : attack.unintentionalDamageMultiplier;
-        applyDamage(world, hitIndex, resolveAttackDamage(attack, targetStats) * damageMultiplier);
+        if (attack.impactArea === undefined) {
+          const damage =
+            attack.kind === "projectile"
+              ? resolveProjectileHitDamage(attack, targetStats)
+              : resolveDamage(attack, targetStats);
+          applyDamage(world, hitIndex, damage * damageMultiplier * store.damageMultipliers[index]!);
+        } else {
+          resolveAreaDamageAt(
+            world,
+            store.owners[index]!,
+            world.posX[hitIndex]!,
+            world.posZ[hitIndex]!,
+            { ...areaDamageAttack(attack), ...attack.impactArea },
+            unitTypes,
+            255,
+            (areaWorld, target, damage) =>
+              applyDamage(
+                areaWorld,
+                target,
+                damage * damageMultiplier * store.damageMultipliers[index]!,
+              ),
+          );
+        }
         removeProjectile(store, index);
         continue;
       }
@@ -438,6 +581,19 @@ export function tickProjectileStore<TWorld extends ProjectileWorldState>(
       continue;
     }
 
+    if (attack.impactArea !== undefined && store.expiresBeforeImpact[index] === 0) {
+      resolveAreaDamageAt(
+        world,
+        store.owners[index]!,
+        store.impactX[index]!,
+        store.impactZ[index]!,
+        { ...areaDamageAttack(attack), ...attack.impactArea },
+        unitTypes,
+        255,
+        (areaWorld, target, damage) =>
+          applyDamage(areaWorld, target, damage * store.damageMultipliers[index]!),
+      );
+    }
     removeProjectile(store, index);
   }
 }
