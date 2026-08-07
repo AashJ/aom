@@ -153,7 +153,7 @@ export const TYPE_EGYPTIAN_WONDER = 229;
 // Settlements are neutral map sites, not culture-owned build-menu entries.
 export const TYPE_SETTLEMENT = 230;
 
-export const MAX_RESERVED_UNIT_TYPE_ID = TYPE_MERCENARY_CAVALRY;
+export const MAX_RESERVED_UNIT_TYPE_ID = TYPE_SETTLEMENT;
 
 // Every independently authored playable Greek/Egyptian unit lane. Workers,
 // buildings, and resource nodes are shared foundation content rather than

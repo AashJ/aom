@@ -67,6 +67,7 @@ export const definition = {
     attackRanges: [3, 12, 19, 22],
     attackDamageMultipliers: [0.5, 1, 1.1, 1.2],
   },
+  construction: { range: 1, ratePerSecond: 1, baselineRatePerSecond: 1 },
   isStatic: false,
   resource: -1,
   bodyRadius: 0.7,

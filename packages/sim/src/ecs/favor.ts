@@ -1,7 +1,7 @@
 import type { World } from "./world";
 import { TICK_HZ } from "../clock";
 import { GOD_HADES, GOD_POSEIDON, GOD_ZEUS } from "./progression";
-import { FAVOR, RESOURCE_COUNT } from "./types";
+import { FAVOR, RESOURCE_COUNT, UNIT_TYPES } from "./types";
 
 const FAVOR_MICROS = 1_000_000;
 export const FAVOR_PROGRESS_PER_RESOURCE = FAVOR_MICROS * TICK_HZ;
@@ -46,7 +46,31 @@ export function greekFavorRateMilliPerMinute(prayingVillagers: number, majorGod:
   return Math.round((greekFavorRateMicrosPerSecond(prayingVillagers, majorGod) * 60) / 1_000);
 }
 
-export function tickGreekFavor(world: World): void {
+export function egyptianMonumentRateMicrosPerSecond(world: World, playerId: number): number {
+  let rate = 0;
+
+  for (let index = 0; index < world.count; index += 1) {
+    const type = world.unitType[index];
+    const definition = type === undefined ? undefined : UNIT_TYPES[type];
+    if (
+      definition?.favorTricklePerSecond !== undefined &&
+      world.owner[index] === playerId &&
+      world.dying[index] === 0 &&
+      world.hp[index]! > 0 &&
+      world.buildProgress[index]! >= definition.buildTicks
+    ) {
+      rate += Math.round(definition.favorTricklePerSecond * FAVOR_MICROS);
+    }
+  }
+
+  return rate;
+}
+
+export function egyptianMonumentRateMilliPerMinute(world: World, playerId: number): number {
+  return Math.round((egyptianMonumentRateMicrosPerSecond(world, playerId) * 60) / 1_000);
+}
+
+export function tickFavor(world: World): void {
   for (let playerSlot = 0; playerSlot < world.playerCount; playerSlot += 1) {
     const playerId = world.playerIds[playerSlot]!;
     const favorIndex = playerId * RESOURCE_COUNT + FAVOR;
@@ -59,10 +83,10 @@ export function tickGreekFavor(world: World): void {
       continue;
     }
 
-    const rate = greekFavorRateMicrosPerSecond(
-      world.prayingVillagers[playerId]!,
-      world.playerMajorGod[playerId]!,
-    );
+    const majorGod = world.playerMajorGod[playerId]!;
+    const rate = isGreekMajorGod(majorGod)
+      ? greekFavorRateMicrosPerSecond(world.prayingVillagers[playerId]!, majorGod)
+      : egyptianMonumentRateMicrosPerSecond(world, playerId);
 
     if (rate === 0) {
       continue;

@@ -1,0 +1,46 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import {
+  TYPE_EGYPTIAN_LABORER,
+  TYPE_EGYPTIAN_MONUMENT_TO_PHARAOHS,
+  TYPE_EGYPTIAN_MONUMENT_TO_PRIESTS,
+} from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_MONUMENT_TO_PHARAOHS,
+  key: "egyptian-monument-to-pharaohs",
+  label: "Monument to Pharaohs",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 1600,
+  lineOfSight: 9,
+  movementSpeed: 0,
+  armor: [0.3, 0.96, 0.05],
+  attack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 2,
+  collidesWithProjectiles: true,
+  footprint: 2,
+  costFood: 300,
+  costWood: 0,
+  costGold: 300,
+  costFavor: 0,
+  buildTicks: 60 * 20,
+  buildLimit: 1,
+  favorTricklePerSecond: 0.077,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: [TYPE_EGYPTIAN_MONUMENT_TO_PRIESTS],
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_EGYPTIAN_LABORER, commandSlot: 17 }],
+} as const satisfies UnitTypeStats;

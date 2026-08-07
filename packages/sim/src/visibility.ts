@@ -67,6 +67,7 @@ export function isFootprintVisibleTo(
   tileX: number,
   tileZ: number,
   size: number,
+  depth = size,
 ): boolean {
   const slot = world.playerSlotById[playerId]!;
 
@@ -74,7 +75,7 @@ export function isFootprintVisibleTo(
 
   const base = slot * VISIBILITY_TILES;
 
-  for (let z = tileZ; z < tileZ + size; z += 1) {
+  for (let z = tileZ; z < tileZ + depth; z += 1) {
     for (let x = tileX; x < tileX + size; x += 1) {
       if (
         x < 0 ||

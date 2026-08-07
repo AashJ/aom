@@ -101,6 +101,37 @@ import { definition as egyptianTitan } from "../unit-media/egyptian/titan";
 import { definition as egyptianMercenaryCavalry } from "../unit-media/egyptian/mercenary-cavalry";
 import { definition as egyptianMinion } from "../unit-media/egyptian/minion";
 import { definition as egyptianPhoenixEgg } from "../unit-media/egyptian/phoenix-egg";
+import { definition as greekGranary } from "../unit-media/greek/granary";
+import { definition as greekStorehouse } from "../unit-media/greek/storehouse";
+import { definition as greekFarm } from "../unit-media/greek/farm";
+import { definition as greekArmory } from "../unit-media/greek/armory";
+import { definition as greekTower } from "../unit-media/greek/tower";
+import { definition as greekWallConnector } from "../unit-media/greek/wall-connector";
+import { definition as greekWallShort } from "../unit-media/greek/wall-short";
+import { definition as greekWallMedium } from "../unit-media/greek/wall-medium";
+import { definition as greekWallLong } from "../unit-media/greek/wall-long";
+import { definition as greekGate } from "../unit-media/greek/gate";
+import { definition as greekWonder } from "../unit-media/greek/wonder";
+import { definition as egyptianGranary } from "../unit-media/egyptian/granary";
+import { definition as egyptianLumberCamp } from "../unit-media/egyptian/lumber-camp";
+import { definition as egyptianMiningCamp } from "../unit-media/egyptian/mining-camp";
+import { definition as egyptianFarm } from "../unit-media/egyptian/farm";
+import { definition as egyptianArmory } from "../unit-media/egyptian/armory";
+import { definition as egyptianTower } from "../unit-media/egyptian/tower";
+import { definition as egyptianOutpost } from "../unit-media/egyptian/outpost";
+import { definition as egyptianMonumentToVillagers } from "../unit-media/egyptian/monument-to-villagers";
+import { definition as egyptianMonumentToSoldiers } from "../unit-media/egyptian/monument-to-soldiers";
+import { definition as egyptianMonumentToPriests } from "../unit-media/egyptian/monument-to-priests";
+import { definition as egyptianMonumentToPharaohs } from "../unit-media/egyptian/monument-to-pharaohs";
+import { definition as egyptianMonumentToGods } from "../unit-media/egyptian/monument-to-gods";
+import { definition as egyptianLighthouse } from "../unit-media/egyptian/lighthouse";
+import { definition as egyptianWallConnector } from "../unit-media/egyptian/wall-connector";
+import { definition as egyptianWallShort } from "../unit-media/egyptian/wall-short";
+import { definition as egyptianWallMedium } from "../unit-media/egyptian/wall-medium";
+import { definition as egyptianWallLong } from "../unit-media/egyptian/wall-long";
+import { definition as egyptianGate } from "../unit-media/egyptian/gate";
+import { definition as egyptianWonder } from "../unit-media/egyptian/wonder";
+import { definition as neutralSettlement } from "../unit-media/neutral/settlement";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
   BeamEffectMediaDefinition,
@@ -220,6 +251,37 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianMercenaryCavalry,
   egyptianMinion,
   egyptianPhoenixEgg,
+  greekGranary,
+  greekStorehouse,
+  greekFarm,
+  greekArmory,
+  greekTower,
+  greekWallConnector,
+  greekWallShort,
+  greekWallMedium,
+  greekWallLong,
+  greekGate,
+  greekWonder,
+  egyptianGranary,
+  egyptianLumberCamp,
+  egyptianMiningCamp,
+  egyptianFarm,
+  egyptianArmory,
+  egyptianTower,
+  egyptianOutpost,
+  egyptianMonumentToVillagers,
+  egyptianMonumentToSoldiers,
+  egyptianMonumentToPriests,
+  egyptianMonumentToPharaohs,
+  egyptianMonumentToGods,
+  egyptianLighthouse,
+  egyptianWallConnector,
+  egyptianWallShort,
+  egyptianWallMedium,
+  egyptianWallLong,
+  egyptianGate,
+  egyptianWonder,
+  neutralSettlement,
 ] as const satisfies readonly UnitMediaDefinition[];
 
 type ParticleEffectParameters = Omit<
@@ -459,6 +521,7 @@ function compilePresentation(presentation: UnitPresentation): RuntimeUnitPresent
       modelIndices: action.models.map((model) => modelIndex[model]!) as [number, ...number[]],
       animationClock: action.animationClock,
       variant: action.variant,
+      ...(action.variantValues === undefined ? {} : { variantValues: action.variantValues }),
     };
   }
 

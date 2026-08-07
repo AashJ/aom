@@ -67,7 +67,7 @@ import {
 } from "./unit-age";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
-import { favorCapForMajorGod, tickGreekFavor } from "./favor";
+import { favorCapForMajorGod, tickFavor } from "./favor";
 import { countLiveOrQueuedUnitType } from "./hero-lifecycle";
 import {
   applyGarrisonCommand,
@@ -181,6 +181,7 @@ import {
   TYPE_PHARAOH,
   TYPE_PRIEST,
   TYPE_SON_OF_OSIRIS,
+  TYPE_SETTLEMENT,
   TYPE_GREEK_VILLAGER,
   TYPE_TREE,
   TRAIN_OPTIONS_BY_PRODUCER,
@@ -353,6 +354,7 @@ export interface World {
   // Fractional Favor is authoritative because it determines the tick on which
   // the next whole resource becomes spendable.
   playerFavorProgress: Uint32Array;
+  wonderVictoryProgress: Uint32Array;
   // Rebuilt from active prayer tasks every tick for Favor generation and HUD rate.
   prayingVillagers: Uint16Array;
   unitType: Uint16Array;
@@ -362,6 +364,7 @@ export interface World {
   // Armor can produce fractional damage, so authoritative hit points remain f64.
   hp: Float64Array;
   buildProgress: Float64Array;
+  gateOpen: Uint8Array;
   lifespanRemaining: Uint16Array;
   // Credited hostile kills used by Classic experience-driven unit mechanics.
   combatExperienceKills: Uint8Array;
@@ -519,11 +522,13 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     playerMajorGod,
     playerMinorGods,
     playerFavorProgress: new Uint32Array(256),
+    wonderVictoryProgress: new Uint32Array(256),
     prayingVillagers: new Uint16Array(256),
     unitType: new Uint16Array(MAX_UNITS),
     containedBy: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     hp: new Float64Array(MAX_UNITS),
     buildProgress: new Float64Array(MAX_UNITS),
+    gateOpen: new Uint8Array(MAX_UNITS),
     lifespanRemaining: new Uint16Array(MAX_UNITS),
     combatExperienceKills: new Uint8Array(MAX_UNITS),
     unitConditions: new Uint8Array(MAX_UNITS),
@@ -742,6 +747,7 @@ export function spawnUnit(
   world.containedBy[index] = NO_TARGET;
   world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
   world.buildProgress[index] = 0;
+  world.gateOpen[index] = 0;
   world.lifespanRemaining[index] = UNIT_TYPES[type]!.lifespanTicks ?? 0;
   world.combatExperienceKills[index] = 0;
   world.unitConditions[index] = 0;
@@ -787,15 +793,22 @@ export function canPlaceBuilding(
   tileX: number,
   tileZ: number,
   type: number,
+  rotation: 0 | 1 = 0,
 ): boolean {
   const stats = UNIT_TYPES[type]!;
-  const footprint = stats.footprint;
+  const footprint = rotation === 0 ? stats.footprint : (stats.footprintDepth ?? stats.footprint);
+  const footprintDepth =
+    rotation === 0 ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
+
+  if (stats.placementReplacementType !== undefined) {
+    return buildingReplacementSiteAt(world, tileX, tileZ, type) >= 0;
+  }
 
   if (stats.placementTerrain === "shoreline") {
     let landTiles = 0;
     let waterTiles = 0;
 
-    for (let z = tileZ; z < tileZ + footprint; z += 1) {
+    for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
       for (let x = tileX; x < tileX + footprint; x += 1) {
         if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) return false;
         const cell = z * MAP_TILES + x;
@@ -815,7 +828,7 @@ export function canPlaceBuilding(
 
   // walkable doubles as the occupancy grid: mountains, other buildings, and map edges all reject
   // placement through one check.
-  for (let z = tileZ; z < tileZ + footprint; z += 1) {
+  for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
     for (let x = tileX; x < tileX + footprint; x += 1) {
       if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) {
         return false;
@@ -830,6 +843,46 @@ export function canPlaceBuilding(
   return true;
 }
 
+function buildingReplacementSiteAt(
+  world: World,
+  tileX: number,
+  tileZ: number,
+  replacementType: number,
+): number {
+  const siteType = UNIT_TYPES[replacementType]!.placementReplacementType;
+  if (siteType === undefined) return -1;
+  const siteFootprint = UNIT_TYPES[siteType]!.footprint;
+  const centerX = tileX + siteFootprint / 2;
+  const centerZ = tileZ + siteFootprint / 2;
+
+  for (let index = 0; index < world.count; index += 1) {
+    if (
+      world.unitType[index] === siteType &&
+      world.owner[index] === NEUTRAL_OWNER &&
+      world.dying[index] === 0 &&
+      world.hp[index]! > 0 &&
+      world.posX[index] === centerX &&
+      world.posZ[index] === centerZ
+    ) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function replaceBuildingSite(world: World, index: number, owner: number, type: number): void {
+  clearAttackOrder(world, index);
+  clearUnitTask(world, index);
+  clearProductionQueue(world, index);
+  world.owner[index] = owner;
+  world.unitType[index] = type;
+  world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
+  world.buildProgress[index] = 0;
+  world.attackCooldown[index] = 0;
+  world.selectable[index] = 1;
+}
+
 export function spawnBuilding(
   world: World,
   tileX: number,
@@ -837,17 +890,32 @@ export function spawnBuilding(
   owner: number,
   type: number,
   complete = true,
+  rotation: 0 | 1 = 0,
 ): number {
-  const footprint = UNIT_TYPES[type]!.footprint;
-  const id = spawnUnit(world, tileX + footprint / 2, tileZ + footprint / 2, 0, 0, owner, type);
+  const stats = UNIT_TYPES[type]!;
+  const footprint = rotation === 0 ? stats.footprint : (stats.footprintDepth ?? stats.footprint);
+  const footprintDepth = rotation === 0 ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
+  const id = spawnUnit(
+    world,
+    tileX + footprint / 2,
+    tileZ + footprintDepth / 2,
+    0,
+    0,
+    owner,
+    type,
+  );
   const index = world.count - 1;
+  if (stats.footprintDepth !== undefined) {
+    world.facingX[index] = rotation;
+    world.facingZ[index] = rotation === 0 ? 1 : 0;
+  }
 
   // An incomplete building is a blueprint — present, footprint stamped, attackable,
   // but functionally inert until construction finishes in M6-5.
   world.buildProgress[index] = complete ? UNIT_TYPES[type]!.buildTicks : 0;
   // Units standing inside a just-stamped footprint are accepted as-is for M6 — the existing
   // same-tile movement allowance means they can always walk out.
-  for (let z = tileZ; z < tileZ + footprint; z += 1) {
+  for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
     for (let x = tileX; x < tileX + footprint; x += 1) {
       const cell = z * MAP_TILES + x;
       world.walkable[cell] = 0;
@@ -1116,6 +1184,22 @@ function canTypeGatherResource(workerType: number, resourceType: number): boolea
     (resourceStats.resourceGathererDomain === undefined ||
       movementDomainForType(workerType) === resourceStats.resourceGathererDomain)
   );
+}
+
+function isSingleGathererSiteOccupied(world: World, target: number, exceptWorker: number): boolean {
+  if (UNIT_TYPES[world.unitType[target]!]!.singleGatherer !== true) return false;
+  const targetId = unitIdAt(world, target);
+  for (let worker = 0; worker < world.count; worker += 1) {
+    if (
+      worker !== exceptWorker &&
+      world.taskTarget[worker] === targetId &&
+      (world.mode[worker] === MODE_GATHERING || world.mode[worker] === MODE_RETURNING) &&
+      world.dying[worker] === 0
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function gatherCargo(world: World, index: number): number {
@@ -1687,6 +1771,79 @@ export function createPlayableWorld(
   );
 }
 
+function updateGates(world: World): void {
+  let navigationChanged = false;
+
+  for (let gate = 0; gate < world.count; gate += 1) {
+    const stats = UNIT_TYPES[world.unitType[gate]!]!;
+    const openRange = stats.gateOpenRange;
+    if (
+      openRange === undefined ||
+      world.dying[gate] === 1 ||
+      world.hp[gate]! <= 0 ||
+      world.buildProgress[gate]! < stats.buildTicks
+    ) {
+      continue;
+    }
+
+    const rotated = stats.footprintDepth !== undefined && world.facingX[gate] === 1;
+    const width = rotated ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
+    const depth = rotated ? stats.footprint : (stats.footprintDepth ?? stats.footprint);
+    const minX = world.posX[gate]! - width / 2;
+    const minZ = world.posZ[gate]! - depth / 2;
+    const maxX = minX + width;
+    const maxZ = minZ + depth;
+    let friendlyNearby = false;
+    let openingOccupied = false;
+
+    for (let unit = 0; unit < world.count; unit += 1) {
+      if (
+        unit === gate ||
+        world.dying[unit] === 1 ||
+        world.hp[unit]! <= 0 ||
+        world.containedBy[unit] !== NO_TARGET
+      ) {
+        continue;
+      }
+      const unitStats = UNIT_TYPES[world.unitType[unit]!]!;
+      if (unitStats.isStatic) continue;
+      const x = world.posX[unit]!;
+      const z = world.posZ[unit]!;
+      const edgeX = Math.max(minX - x, 0, x - maxX);
+      const edgeZ = Math.max(minZ - z, 0, z - maxZ);
+      if (world.owner[unit] === world.owner[gate] && edgeX * edgeX + edgeZ * edgeZ <= openRange * openRange) {
+        friendlyNearby = true;
+      }
+      if (x >= minX && x < maxX && z >= minZ && z < maxZ) {
+        openingOccupied = true;
+      }
+    }
+
+    const shouldOpen = friendlyNearby || (world.gateOpen[gate] === 1 && openingOccupied);
+    if (shouldOpen === (world.gateOpen[gate] === 1)) continue;
+    world.gateOpen[gate] = shouldOpen ? 1 : 0;
+
+    const tileX = Math.round(minX);
+    const tileZ = Math.round(minZ);
+    for (let z = tileZ; z < tileZ + depth; z += 1) {
+      for (let x = tileX; x < tileX + width; x += 1) {
+        const cell = z * MAP_TILES + x;
+        if (shouldOpen) {
+          world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
+          world.waterWalkable[cell] =
+            (world.terrainDomains[cell]! & TERRAIN_DOMAIN_WATER) !== 0 ? 1 : 0;
+        } else {
+          world.walkable[cell] = 0;
+          world.waterWalkable[cell] = 0;
+        }
+      }
+    }
+    navigationChanged = true;
+  }
+
+  if (navigationChanged) flushFlowFields(world);
+}
+
 export function tickWorld(world: World): void {
   world.deathEventCount = 0;
   const terminalReplacementSpawns: Array<{
@@ -1702,6 +1859,8 @@ export function tickWorld(world: World): void {
 
   // 2. Apply commands at the start of the tick.
   applyPendingCommands(world);
+
+  updateGates(world);
 
   // 3. Existing target reactions advance before the spatial grid is rebuilt.
   // A reaction created by this tick's combat impact begins moving next tick,
@@ -1734,19 +1893,33 @@ export function tickWorld(world: World): void {
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
+    if (stats.footprint > 0 && world.buildProgress[i]! < stats.buildTicks) continue;
     const currentTarget = resolveId(world, world.attackTarget[i]!);
     const currentTargetStats =
       currentTarget >= 0 ? UNIT_TYPES[world.unitType[currentTarget]!]! : null;
-    const attack =
+    const defaultAttack =
       stats.buildingAttack !== undefined &&
       currentTargetStats !== null &&
       (currentTargetStats.classes & UNIT_CLASS_BUILDING) !== 0
         ? stats.buildingAttack
         : stats.attack;
+    const currentTargetDx = currentTarget >= 0 ? world.posX[currentTarget]! - world.posX[i]! : 0;
+    const currentTargetDz = currentTarget >= 0 ? world.posZ[currentTarget]! - world.posZ[i]! : 0;
+    const closeRange =
+      defaultAttack?.kind === "projectile" && currentTargetStats !== null
+        ? (defaultAttack.minimumRange ?? 0) + currentTargetStats.bodyRadius
+        : 0;
+    const attack =
+      stats.closeAttack !== undefined &&
+      closeRange > 0 &&
+      currentTargetDx * currentTargetDx + currentTargetDz * currentTargetDz < closeRange * closeRange
+        ? stats.closeAttack
+        : defaultAttack;
     const special = stats.specialAttack;
 
-    if (world.containedBy[i] !== NO_TARGET || stats.isStatic) {
-      // Contained and static rows never auto-acquire or strike.
+    if (world.containedBy[i] !== NO_TARGET) {
+      // Contained rows never auto-acquire or strike. Static combat buildings do
+      // acquire and fire; ground integration independently keeps them immobile.
       continue;
     }
     if (attack === null) {
@@ -2477,6 +2650,7 @@ export function tickWorld(world: World): void {
                 !canTypeGatherResource(world.unitType[i]!, world.unitType[j]!) ||
                 world.dying[j] === 1 ||
                 world.hp[j] === 0 ||
+                isSingleGathererSiteOccupied(world, j, i) ||
                 (requiredResource >= 0 && candidateStats.resource !== requiredResource)
               ) {
                 continue;
@@ -2605,11 +2779,17 @@ export function tickWorld(world: World): void {
             workerStats.gather === undefined
               ? GATHER_PER_STRIKE
               : workerStats.gather.ratePerSecond * GATHER_COOLDOWN_TICKS * TICK_S;
-          const take = Math.min(gatherPerStrike, world.hp[target]!, capacity - cargo);
+          const take = Math.min(
+            gatherPerStrike,
+            nodeStats.unlimitedResourceSupply === true ? Infinity : world.hp[target]!,
+            capacity - cargo,
+          );
 
-          world.hp[target] = world.hp[target]! - take;
-          if (world.hp[target] === 0) {
-            killUnit(world, target);
+          if (nodeStats.unlimitedResourceSupply !== true) {
+            world.hp[target] = world.hp[target]! - take;
+            if (world.hp[target] === 0) {
+              killUnit(world, target);
+            }
           }
 
           if (workerStats.gather === undefined) {
@@ -2795,13 +2975,15 @@ export function tickWorld(world: World): void {
 
         if (world.attackCooldown[i] === 0) {
           const empoweredBuildWork = empowermentAt(world, target)?.buildWorkMultiplier ?? 1;
+          const authoredConstructionRate = workerStats.construction?.targetRates?.find(
+            (rate) => rate.type === world.unitType[target],
+          )?.ratePerSecond;
           const progress =
             world.buildProgress[target]! +
             BUILD_PER_STRIKE *
               (workerStats.construction === undefined
                 ? 1
-                : workerStats.construction.ratePerSecond /
-                  workerStats.construction.baselineRatePerSecond) *
+                : (authoredConstructionRate ?? workerStats.construction.ratePerSecond)) *
               empoweredBuildWork;
 
           world.buildProgress[target] =
@@ -2825,7 +3007,7 @@ export function tickWorld(world: World): void {
     }
   }
 
-  tickGreekFavor(world);
+  tickFavor(world);
 
   // 8. Production countdown - research occupies its building; queued units resume
   // on the completion tick. Completed spawns append after producedThrough.
@@ -3107,6 +3289,39 @@ export function tickWorld(world: World): void {
   applyDeaths(world);
   tickPharaohLifecycle(world);
 
+  if (world.contested && world.winner === -1) {
+    for (let playerSlot = 0; playerSlot < world.playerCount; playerSlot += 1) {
+      const playerId = world.playerIds[playerSlot]!;
+      let victoryTicks = 0;
+
+      for (let index = 0; index < world.count; index += 1) {
+        const stats = UNIT_TYPES[world.unitType[index]!]!;
+        if (
+          stats.wonderVictoryTicks !== undefined &&
+          world.owner[index] === playerId &&
+          world.dying[index] === 0 &&
+          world.hp[index]! > 0 &&
+          world.buildProgress[index]! >= stats.buildTicks
+        ) {
+          victoryTicks = stats.wonderVictoryTicks;
+          break;
+        }
+      }
+
+      if (victoryTicks === 0) {
+        world.wonderVictoryProgress[playerId] = 0;
+        continue;
+      }
+
+      const progress = world.wonderVictoryProgress[playerId]! + 1;
+      world.wonderVictoryProgress[playerId] = progress;
+      if (progress >= victoryTicks) {
+        world.winner = playerId;
+        break;
+      }
+    }
+  }
+
   // Annihilation, in-sim, hashed: the UI reads it, never computes it.
   if (world.contested && world.winner === -1) {
     // Neutral forests must not prevent victory or count as armies in a draw.
@@ -3145,6 +3360,7 @@ export function tickWorld(world: World): void {
 function dealDamage(world: World, index: number, damage: number, sourceIndex = -1): void {
   // THE strike seam: "decided to hit" is upstream, "damage lands" is here.
   // Deterministic projectile flight will insert between the two when ranged units arrive.
+  if (world.owner[index] === NEUTRAL_OWNER && world.unitType[index] === TYPE_SETTLEMENT) return;
   world.hp[index] = Math.max(0, world.hp[index]! - damage);
 
   if (world.hp[index] === 0) {
@@ -3306,7 +3522,14 @@ function applyDeaths(world: World): void {
     const i = world.pendingDeaths[deathOffset]!;
     const last = world.count - 1;
     const handle = world.handleOf[i]!;
-    const footprint = UNIT_TYPES[world.unitType[i]!]!.footprint;
+    const deadStats = UNIT_TYPES[world.unitType[i]!]!;
+    const rotated = deadStats.footprintDepth !== undefined && world.facingX[i] === 1;
+    const footprint = rotated
+      ? (deadStats.footprintDepth ?? deadStats.footprint)
+      : deadStats.footprint;
+    const footprintDepth = rotated
+      ? deadStats.footprint
+      : (deadStats.footprintDepth ?? deadStats.footprint);
     const eventIndex = world.deathEventCount;
 
     // Heroes drop carried relics and destroyed Temples release deposited relics
@@ -3334,10 +3557,10 @@ function applyDeaths(world: World): void {
     if (footprint > 0) {
       // Exact because building centers are constructed from integer origin tiles.
       const tileX = Math.round(world.posX[i]! - footprint / 2);
-      const tileZ = Math.round(world.posZ[i]! - footprint / 2);
+      const tileZ = Math.round(world.posZ[i]! - footprintDepth / 2);
 
       // Rubble does not obstruct: destroyed buildings unblock immediately.
-      for (let z = tileZ; z < tileZ + footprint; z += 1) {
+      for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
         for (let x = tileX; x < tileX + footprint; x += 1) {
           const cell = z * MAP_TILES + x;
           world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
@@ -3371,6 +3594,7 @@ function applyDeaths(world: World): void {
       world.containedBy[i] = world.containedBy[last]!;
       world.hp[i] = world.hp[last]!;
       world.buildProgress[i] = world.buildProgress[last]!;
+      world.gateOpen[i] = world.gateOpen[last]!;
       world.lifespanRemaining[i] = world.lifespanRemaining[last]!;
       world.combatExperienceKills[i] = world.combatExperienceKills[last]!;
       world.unitConditions[i] = world.unitConditions[last]!;
@@ -3645,6 +3869,7 @@ function applyPendingCommands(world: World): void {
             continue;
           }
           if (!canTypeGatherResource(world.unitType[index]!, world.unitType[target]!)) continue;
+          if (isSingleGathererSiteOccupied(world, target, index)) continue;
           assignGatherTask(
             world,
             index,
@@ -3855,16 +4080,20 @@ function applyPendingCommands(world: World): void {
           world,
           command.issuer,
           buildingType,
-          workerTypeForCulture(cultureForMajorGod(world.playerMajorGod[command.issuer]!)),
         ) &&
         isFootprintVisibleTo(
           world,
           command.issuer,
           command.tileX,
           command.tileZ,
-          buildingStats.footprint,
+          command.rotation === 1
+            ? (buildingStats.footprintDepth ?? buildingStats.footprint)
+            : buildingStats.footprint,
+          command.rotation === 1
+            ? buildingStats.footprint
+            : (buildingStats.footprintDepth ?? buildingStats.footprint),
         ) &&
-        canPlaceBuilding(world, command.tileX, command.tileZ, buildingType) &&
+        canPlaceBuilding(world, command.tileX, command.tileZ, buildingType, command.rotation) &&
         world.stockpiles[foodIndex]! >= buildingStats.costFood &&
         world.stockpiles[woodIndex]! >= buildingStats.costWood &&
         world.stockpiles[goldIndex]! >= buildingStats.costGold &&
@@ -3874,7 +4103,25 @@ function applyPendingCommands(world: World): void {
         world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - buildingStats.costWood;
         world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - buildingStats.costGold;
         world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - buildingStats.costFavor;
-        spawnBuilding(world, command.tileX, command.tileZ, command.issuer, buildingType, false);
+        const replacementSite = buildingReplacementSiteAt(
+          world,
+          command.tileX,
+          command.tileZ,
+          buildingType,
+        );
+        if (replacementSite >= 0) {
+          replaceBuildingSite(world, replacementSite, command.issuer, buildingType);
+        } else {
+          spawnBuilding(
+            world,
+            command.tileX,
+            command.tileZ,
+            command.issuer,
+            buildingType,
+            false,
+            command.rotation,
+          );
+        }
       }
     }
 

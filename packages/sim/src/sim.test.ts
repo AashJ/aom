@@ -858,8 +858,8 @@ describe("resources and nodes", () => {
         if (
           a.owner[i] === playerId &&
           a.unitType[i] === TYPE_TOWN_CENTER &&
-          a.posX[i] === startX &&
-          a.posZ[i] === startZ
+          a.posX[i] === startX + 0.5 &&
+          a.posZ[i] === startZ + 0.5
         ) {
           foundTownCenter = true;
           break;
@@ -1126,22 +1126,22 @@ describe("buildings and walkability", () => {
     const world = flatWorld(42);
     const id = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
 
-    // All 16 footprint tiles unwalkable; the tile just outside is untouched.
-    for (let z = 100; z < 104; z += 1) {
-      for (let x = 100; x < 104; x += 1) {
+    // Every authored footprint tile is unwalkable; the tile just outside is untouched.
+    for (let z = 100; z < 100 + tcStats.footprint; z += 1) {
+      for (let x = 100; x < 100 + tcStats.footprint; x += 1) {
         expect(world.walkable[z * MAP_TILES + x]).toBe(0);
       }
     }
 
     expect(world.walkable[100 * MAP_TILES + 99]).toBe(1);
-    expect(world.posX[0]).toBe(102);
+    expect(world.posX[0]).toBe(102.5);
 
     killUnit(world, 0);
     tickWorld(world);
 
     // Rubble does not obstruct: every tile walkable again, id stale.
-    for (let z = 100; z < 104; z += 1) {
-      for (let x = 100; x < 104; x += 1) {
+    for (let z = 100; z < 100 + tcStats.footprint; z += 1) {
+      for (let x = 100; x < 100 + tcStats.footprint; x += 1) {
         expect(world.walkable[z * MAP_TILES + x]).toBe(1);
       }
     }
@@ -1155,7 +1155,7 @@ describe("buildings and walkability", () => {
 
     expect(canPlaceBuilding(world, 100, 100, TYPE_HOUSE)).toBe(false); // overlap
     expect(canPlaceBuilding(world, 103, 103, TYPE_HOUSE)).toBe(false); // corner overlap
-    expect(canPlaceBuilding(world, 104, 104, TYPE_HOUSE)).toBe(true); // adjacent is fine
+    expect(canPlaceBuilding(world, 105, 105, TYPE_HOUSE)).toBe(true); // adjacent is fine
     expect(canPlaceBuilding(world, 255, 255, TYPE_HOUSE)).toBe(false); // off the map edge
 
     world.walkable[50 * MAP_TILES + 50] = 0; // a mountain tile
@@ -1176,13 +1176,17 @@ describe("buildings and walkability", () => {
       targetZ: 128,
     });
 
-    for (let t = 0; t < 300; t += 1) {
+    for (let t = 0; t < 400; t += 1) {
       tickWorld(world);
 
       // At no tick may the walker stand inside the footprint.
       const tx = Math.floor(world.posX[1]!);
       const tz = Math.floor(world.posZ[1]!);
-      const inFootprint = tx >= 126 && tx < 130 && tz >= 126 && tz < 130;
+      const inFootprint =
+        tx >= 126 &&
+        tx < 126 + tcStats.footprint &&
+        tz >= 126 &&
+        tz < 126 + tcStats.footprint;
 
       expect(inFootprint).toBe(false);
     }

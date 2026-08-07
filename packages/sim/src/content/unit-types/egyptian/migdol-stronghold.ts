@@ -1,10 +1,12 @@
 import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { buildingArrowAttack } from "../../building-attacks";
 import { TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_MIGDOL_STRONGHOLD } from "../../unit-type-ids";
 import {
   CULTURE_EGYPTIAN,
   NO_PREREQUISITE_BUILDINGS,
   NO_TYPE_RELATIONSHIPS,
   UNIT_CLASS_BUILDING,
+  UNIT_CLASS_SHIP,
   type UnitTypeStats,
 } from "../../unit-type-schema";
 
@@ -18,17 +20,32 @@ export const definition = {
   lineOfSight: 30,
   movementSpeed: 0,
   armor: [0.3, 0.96, 0.05],
-  attack: null,
+  attack: buildingArrowAttack({
+    damage: 12,
+    range: 20,
+    minimumRange: 4,
+    projectileCount: 3,
+    trackRating: 5,
+    bonusShips: true,
+  }),
+  closeAttack: {
+    kind: "melee",
+    damage: [0, 12, 0],
+    range: 4,
+    aggroRange: 20,
+    cooldownTicks: 20,
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_SHIP }, multiplier: 3 }],
+  },
   isStatic: true,
   resource: -1,
-  bodyRadius: 2.9,
+  bodyRadius: 5,
   collidesWithProjectiles: true,
-  footprint: 4,
+  footprint: 5,
   costFood: 0,
   costWood: 0,
   costGold: 400,
   costFavor: 10,
-  buildTicks: 130 * 20,
+  buildTicks: 80 * 20,
   populationCost: 0,
   popBonus: 0,
   trainExitOffset: 6.5,

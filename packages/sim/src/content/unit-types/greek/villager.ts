@@ -29,6 +29,12 @@ export const definition = {
     cooldownTicks: 20,
     bonuses: NO_DAMAGE_BONUSES,
   },
+  construction: {
+    range: 1.2,
+    ratePerSecond: 1.1,
+    baselineRatePerSecond: 1,
+    targetRates: [{ type: TYPE_GREEK_TOWN_CENTER, ratePerSecond: 1 }],
+  },
   isStatic: false,
   resource: -1,
   bodyRadius: 0.49,

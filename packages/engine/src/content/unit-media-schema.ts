@@ -118,12 +118,15 @@ export type ModelVariantPolicy =
   | "construction-stage"
   | "experience-tier"
   | "inventory"
-  | "owner-age";
+  | "owner-age"
+  | "gate-state"
+  | "major-god";
 
 export interface ModelActionDefinition {
   readonly models: readonly [string, ...string[]];
   readonly animationClock: ModelAnimationClock;
   readonly variant: ModelVariantPolicy;
+  readonly variantValues?: readonly number[];
 }
 
 export interface RuntimeModelAttachmentDefinition {
@@ -200,6 +203,7 @@ export interface RuntimeModelActionDefinition {
   readonly modelIndices: readonly [number, ...number[]];
   readonly animationClock: ModelAnimationClock;
   readonly variant: ModelVariantPolicy;
+  readonly variantValues?: readonly number[];
 }
 
 interface PresentationMetrics {

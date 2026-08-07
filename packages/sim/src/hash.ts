@@ -85,6 +85,10 @@ export function hashWorld(world: World): number {
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
+    word = world.wonderVictoryProgress[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
     word = world.pharaohRespawnRemaining[playerId]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
@@ -165,6 +169,12 @@ export function hashWorld(world: World): number {
 
   for (let i = 0; i < world.count; i += 1) {
     word = world.moving[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.gateOpen[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }

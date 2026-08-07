@@ -7,7 +7,12 @@ import {
 } from "./content/unit-type-schema";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
-import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
+import {
+  egyptianMonumentRateMilliPerMinute,
+  favorCapForMajorGod,
+  greekFavorRateMilliPerMinute,
+  isGreekMajorGod,
+} from "./ecs/favor";
 import { findAgeAdvanceResearch } from "./ecs/research";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { MAX_PROJECTILES, NO_PROJECTILE_TICK, projectileProgressAt } from "./ecs/projectiles";
@@ -31,6 +36,7 @@ export interface RenderSnapshot {
   facingX: Float32Array;
   facingZ: Float32Array;
   moving: Uint8Array;
+  gateOpen: Uint8Array;
   mode: Uint8Array;
   gatherTargetType: Uint16Array;
   actionCooldown: Uint16Array;
@@ -108,6 +114,7 @@ export function createSnapshot(
     facingX: new Float32Array(capacity),
     facingZ: new Float32Array(capacity),
     moving: new Uint8Array(capacity),
+    gateOpen: new Uint8Array(capacity),
     mode: new Uint8Array(capacity),
     gatherTargetType: new Uint16Array(capacity).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(capacity),
@@ -254,7 +261,9 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.favorRateMilliPerMinute =
       favor >= favorCapForMajorGod(out.majorGod)
         ? 0
-        : greekFavorRateMilliPerMinute(prayingVillagers, out.majorGod);
+        : isGreekMajorGod(out.majorGod)
+          ? greekFavorRateMilliPerMinute(prayingVillagers, out.majorGod)
+          : egyptianMonumentRateMilliPerMinute(world, viewerId);
     const minorGodStart = viewerId * AGE_COUNT;
     out.minorGods.set(world.playerMinorGods.subarray(minorGodStart, minorGodStart + AGE_COUNT));
     const researchBuilding = findAgeAdvanceResearch(world, viewerId);
@@ -325,6 +334,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.facingX[i] = world.facingX[i]!;
     out.facingZ[i] = world.facingZ[i]!;
     out.moving[i] = world.moving[i]!;
+    out.gateOpen[i] = world.gateOpen[i]!;
     out.mode[i] = world.mode[i]!;
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;

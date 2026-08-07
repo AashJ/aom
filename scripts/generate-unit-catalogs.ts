@@ -467,7 +467,12 @@ for (const entry of entries) {
   ) {
     throw new Error(`${definition.key} is trainable but declares no trainedAt source.`);
   }
-  if (isBuilding && definition.footprint > 0 && definition.builtBy.length === 0) {
+  if (
+    isBuilding &&
+    definition.footprint > 0 &&
+    definition.isPlacementSocket !== true &&
+    definition.builtBy.length === 0
+  ) {
     throw new Error(`${definition.key} is buildable but declares no builtBy source.`);
   }
 }
@@ -1091,6 +1096,7 @@ function compilePresentation(presentation: UnitPresentation): RuntimeUnitPresent
       modelIndices: action.models.map((model) => modelIndex[model]!) as [number, ...number[]],
       animationClock: action.animationClock,
       variant: action.variant,
+      ...(action.variantValues === undefined ? {} : { variantValues: action.variantValues }),
     };
   }
 

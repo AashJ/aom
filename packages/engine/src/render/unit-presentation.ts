@@ -210,6 +210,15 @@ function resolveModelAction(
     const firstAuthoredAge = AGE_MYTHIC - (definition.modelIndices.length - 1);
     variant = Math.min(definition.modelIndices.length - 1, Math.max(0, age - firstAuthoredAge));
   }
+  if (definition.variant === "gate-state") {
+    variant = snapshot.gateOpen[index] === 1 ? definition.modelIndices.length - 1 : 0;
+  }
+  if (definition.variant === "major-god") {
+    const values = definition.variantValues;
+    const majorGod = snapshot.playerMajorGods[snapshot.owner[index]!]!;
+    const authoredIndex = values?.indexOf(majorGod) ?? -1;
+    variant = authoredIndex >= 0 ? authoredIndex : 0;
+  }
   return {
     modelIndex: definition.modelIndices[variant]!,
     action,

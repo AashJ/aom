@@ -1,4 +1,5 @@
 import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
+import { buildingArrowAttack } from "../../building-attacks";
 import { poseidonMilitiaDeathSpawn } from "../../death-spawns";
 import { TYPE_GREEK_FORTRESS, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
 import {
@@ -6,6 +7,8 @@ import {
   NO_PREREQUISITE_BUILDINGS,
   NO_TYPE_RELATIONSHIPS,
   UNIT_CLASS_BUILDING,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_SHIP,
   type UnitTypeStats,
 } from "../../unit-type-schema";
 
@@ -19,18 +22,40 @@ export const definition = {
   lineOfSight: 30,
   movementSpeed: 0,
   armor: [0.3, 0.96, 0.05],
-  attack: null,
+  attack: buildingArrowAttack({
+    damage: 17,
+    range: 20,
+    minimumRange: 4,
+    projectileCount: 3,
+    trackRating: 5,
+    bonusShips: true,
+  }),
+  closeAttack: {
+    kind: "melee",
+    damage: [0, 14, 0],
+    range: 4,
+    aggroRange: 20,
+    cooldownTicks: 5 * 20,
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_SHIP }, multiplier: 3 }],
+  },
+  garrison: {
+    capacity: 10,
+    enterRange: 10,
+    validOccupants: [{ kind: "classes", classes: UNIT_CLASS_HUMAN }],
+    attackMultiplierPerOccupant: 0,
+    ejectOnDeath: true,
+  },
   deathSpawn: poseidonMilitiaDeathSpawn(6),
   isStatic: true,
   resource: -1,
-  bodyRadius: 2.9,
+  bodyRadius: 5,
   collidesWithProjectiles: true,
-  footprint: 4,
+  footprint: 5,
   costFood: 0,
   costWood: 300,
   costGold: 300,
   costFavor: 10,
-  buildTicks: 100 * 20,
+  buildTicks: 110 * 20,
   populationCost: 0,
   popBonus: 0,
   trainExitOffset: 6.5,

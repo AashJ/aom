@@ -1,4 +1,4 @@
-import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
 import { poseidonMilitiaDeathSpawn } from "../../death-spawns";
 import { TYPE_GREEK_MARKET, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
 import {
@@ -36,7 +36,7 @@ export const definition = {
   popBonus: 0,
   trainExitOffset: 6.5,
   isDropsite: false,
-  requiredAge: AGE_CLASSICAL,
+  requiredAge: AGE_HEROIC,
   requiredGod: NO_GOD,
   prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   trainedAt: NO_TYPE_RELATIONSHIPS,

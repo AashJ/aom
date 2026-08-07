@@ -21,7 +21,7 @@ export const definition = {
   attack: null,
   isStatic: true,
   resource: -1,
-  bodyRadius: 2.9,
+  bodyRadius: 5,
   collidesWithProjectiles: true,
   footprint: 5,
   costFood: 0,

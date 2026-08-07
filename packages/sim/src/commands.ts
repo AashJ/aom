@@ -100,6 +100,8 @@ export interface PlaceCommand {
   buildingType: number;
   tileX: number;
   tileZ: number;
+  // Quarter-turn around the vertical axis. Omitted is the authored orientation.
+  rotation?: 0 | 1;
 }
 
 export interface BuildCommand {
