@@ -11,9 +11,9 @@ is not launchable until its family audit freezes a complete candidate reference 
 ## Summary
 
 - Total reserved unit workcells: **76**
-- Implemented: **24**
-- Ready for fan-out: **1**
-- Blocked on shared foundations: **51**
+- Implemented: **25**
+- Ready for fan-out: **49**
+- Blocked on shared foundations: **2**
 
 ## ordinary-melee (10)
 
@@ -111,13 +111,10 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle
 
-- `greek-bellerophon` — id `99`; Greek; Gates C+D; blocked.
+- `greek-bellerophon` — id `99`; Greek; Gates C+D; ready.
   - Assignment: Greek Town Center slot 4; Fortress slot 3
   - Required god: Zeus.
   - Foundation owners: serial-greek-hero-lifecycle; serial-jump-special
-  - Blocker: Gates C+D: JumpAttack needs deterministic launch/landing, target revalidation,
-    collision, damage timing, recharge, and presentation; C3 provides no attacker-displacement
-    special.
 
 - `greek-theseus` — id `100`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
@@ -134,14 +131,11 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle
 
-- `greek-polyphemus` — id `103`; Greek; Gates C+D; blocked.
+- `greek-polyphemus` — id `103`; Greek; Gates C+D; ready.
   - Assignment: Greek Town Center slot 4; Fortress slot 3
   - Required god: Poseidon.
   - Foundation owners: serial-greek-hero-lifecycle; serial-charged-melee-special;
     serial-thrown-target-reaction; serial-special-target-taxonomy
-  - Blocker: Gates C+D: C3 covers charged Gore and thrown reactions, but Classic Polyphemus also
-    targets Huntable and every MythUnit while respecting frozen/stone immunity; those target-state
-    predicates are not represented.
 
 - `greek-ajax` — id `104`; Greek; Gate C; implemented.
   - Assignment: Greek Town Center slot 1; Fortress slot 0
@@ -153,53 +147,39 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Required god: Hades.
   - Foundation owners: serial-projectile-foundation; serial-greek-hero-lifecycle
 
-- `greek-achilles` — id `106`; Greek; Gates C+D; blocked.
+- `greek-achilles` — id `106`; Greek; Gates C+D; ready.
   - Assignment: Greek Town Center slot 3; Fortress slot 2
   - Required god: Hades.
   - Foundation owners: serial-greek-hero-lifecycle; serial-variable-attack-cycles
-  - Blocker: Gates C+D: Classic Achilles cycles among three unequally timed mounted attacks;
-    deterministic cycle selection, duration-scaled hit damage, hashing, and matching presentation
-    need a shared Gate D contract.
 
-- `greek-perseus` — id `107`; Greek; Gates C+D; blocked.
+- `greek-perseus` — id `107`; Greek; Gates C+D; ready.
   - Assignment: Greek Town Center slot 4; Fortress slot 3
   - Required god: Hades.
   - Foundation owners: serial-greek-hero-lifecycle; serial-petrification-special
-  - Blocker: Gates C+D: FreezeAttack needs petrification target/immunity rules, deterministic
-    terminal state, recharge, and presentation; C3 target reactions do not model permanent
-    transformation or instant death.
 
-- `egyptian-pharaoh` — id `140`; Egyptian; Gates B+C+D; blocked.
+- `egyptian-pharaoh` — id `140`; Egyptian; Gates B+C+D; ready.
   - Assignment: not normally trainable
   - Required god: Any.
   - Foundation owners: serial-projectile-foundation; serial-egyptian-hero-lifecycle;
     serial-egyptian-pharaoh-lifecycle; serial-egyptian-support-actions
-  - Blocker: Gates B+C+D: Singular Pharaoh creation/automatic return plus healing, empowerment,
-    command routing, and lifecycle hashing remain outside the Greek hero and C3 contracts.
 
-- `egyptian-priest` — id `141`; Egyptian; Gates B+C+D; blocked.
+- `egyptian-priest` — id `141`; Egyptian; Gates B+C+D; ready.
   - Assignment: Egyptian Temple slot 0; Egyptian Town Center slot 1
   - Required god: Any.
   - Foundation owners: serial-projectile-foundation; serial-egyptian-hero-lifecycle;
     serial-egyptian-support-actions; serial-conversion-actions
-  - Blocker: Gates B+C+D: Healing, empowerment, conversion, construction, Egyptian hero targeting,
-    and their command/state rules remain outside the Greek hero and ordinary projectile contracts.
 
-- `egyptian-son-of-osiris` — id `142`; Egyptian; Gates C+D; blocked.
+- `egyptian-son-of-osiris` — id `142`; Egyptian; Gates C+D; ready.
   - Assignment: not normally trainable
   - Required god: Osiris.
   - Foundation owners: serial-egyptian-hero-lifecycle; serial-god-power-transformations
-  - Blocker: Gates C+D: God-power Pharaoh transformation, ownership/lifecycle replacement, chain
-    attack, healing, and empowerment rules.
 
 ## myth (26)
 
-- `greek-pegasus` — id `112`; Greek; Gates C+E; blocked.
+- `greek-pegasus` — id `112`; Greek; Gates C+E; ready.
   - Assignment: Greek Temple slot 0
   - Required god: Any.
   - Foundation owners: serial-myth-unit-lifecycle; serial-air-navigation
-  - Blocker: Gates C+E: Air navigation, occupancy, scouting, visibility, and faithful noncombat
-    flight behavior.
 
 - `greek-minotaur` — id `113`; Greek; Gates C+D; implemented.
   - Assignment: Greek Temple slot 1
@@ -207,78 +187,59 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Foundation owners: serial-myth-unit-lifecycle; serial-charged-melee-special;
     serial-thrown-target-reaction
 
-- `greek-centaur` — id `114`; Greek; Gates B+C+D; blocked.
+- `greek-centaur` — id `114`; Greek; Gates B+C+D; ready.
   - Assignment: Greek Temple slot 1
   - Required god: Hermes.
   - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
     serial-charged-ranged-special
-  - Blocker: Gates B+C+D: Charged ranged attack release, projectile ownership, target validation,
-    recharge, and presentation are not represented by C3's charged-melee kind.
 
-- `greek-cyclops` — id `115`; Greek; Gates C+D; blocked.
+- `greek-cyclops` — id `115`; Greek; Gates C+D; ready.
   - Assignment: Greek Temple slot 1
   - Required god: Ares.
-  - Foundation owners: serial-myth-unit-lifecycle; serial-thrown-target-reaction;
-    serial-unit-pickup-throw
-  - Blocker: Gates C+D: The thrown-reaction store can move a released victim, but Cyclops still
-    needs deterministic pickup/containment, release, impact damage, and throw-immunity rules.
+  - Foundation owners: serial-myth-unit-lifecycle; serial-unit-pickup-throw
 
-- `greek-nemean-lion` — id `116`; Greek; Gates C+D; ready.
+- `greek-nemean-lion` — id `116`; Greek; Gates C+D; implemented.
   - Assignment: Greek Temple slot 2
   - Required god: Aphrodite.
   - Foundation owners: serial-myth-unit-lifecycle; serial-area-whirlwind-special
 
-- `greek-manticore` — id `117`; Greek; Gates B+C+D; blocked.
+- `greek-manticore` — id `117`; Greek; Gates B+C+D; ready.
   - Assignment: Greek Temple slot 2
   - Required god: Apollo.
   - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
     serial-charged-ranged-special
-  - Blocker: Gates B+C+D: Charged multi-projectile release, deterministic projectile fan-out,
-    recharge, and presentation are not represented by the ordinary projectile or C3 contracts.
 
-- `greek-hydra` — id `118`; Greek; Gates C+D; blocked.
+- `greek-hydra` — id `118`; Greek; Gates C+D; ready.
   - Assignment: Greek Temple slot 2
   - Required god: Dionysus.
-  - Foundation owners: serial-myth-unit-lifecycle; serial-hydra-head-growth
-  - Blocker: Gates C+D: Kill-driven head growth, head-dependent attack derivation, swap/death
-    copying, hashing, and presentation remain unimplemented.
+  - Foundation owners: serial-myth-unit-lifecycle; serial-hydra-kill-experience
 
-- `greek-scylla` — id `119`; Greek; Gates C+E; blocked.
+- `greek-scylla` — id `119`; Greek; Gates C+E; ready.
   - Assignment: Greek Dock slot 5
   - Required god: Dionysus.
   - Foundation owners: serial-myth-unit-lifecycle; serial-water-navigation; serial-naval-combat
-  - Blocker: Gates C+E: Water navigation, naval targeting, aquatic occupancy, and collision rules
-    remain unimplemented.
 
-- `greek-medusa` — id `120`; Greek; Gates B+C+D; blocked.
+- `greek-medusa` — id `120`; Greek; Gates B+C+D; ready.
   - Assignment: Greek Temple slot 3
   - Required god: Hera.
   - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
     serial-petrification-special
-  - Blocker: Gates B+C+D: FreezeAttack needs petrification target/immunity rules, deterministic
-    terminal state, recharge, and presentation beyond ordinary projectile impact.
 
-- `greek-colossus` — id `121`; Greek; Gates C+D; blocked.
+- `greek-colossus` — id `121`; Greek; Gates C+D; ready.
   - Assignment: Greek Temple slot 3
   - Required god: Hephaestus.
   - Foundation owners: serial-myth-unit-lifecycle; serial-resource-eating-regeneration
-  - Blocker: Gates C+D: Resource-target commands, consumption, regeneration timing, interruption,
-    and hashed action state remain unimplemented.
 
-- `greek-chimera` — id `122`; Greek; Gates B+C+D; blocked.
+- `greek-chimera` — id `122`; Greek; Gates B+C+D; ready.
   - Assignment: Greek Temple slot 4
   - Required god: Artemis.
   - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
     serial-charged-ranged-special; serial-projectile-area-effects
-  - Blocker: Gates B+C+D: Charged fire-breath needs ranged-special release plus deterministic
-    projectile-area targeting, damage, recharge, and presentation.
 
-- `greek-carcinos` — id `123`; Greek; Gates C+E; blocked.
+- `greek-carcinos` — id `123`; Greek; Gates C+E; ready.
   - Assignment: Greek Dock slot 6
   - Required god: Hera.
   - Foundation owners: serial-myth-unit-lifecycle; serial-water-navigation; serial-naval-combat
-  - Blocker: Gates C+E: Water navigation, naval targeting, aquatic occupancy, and collision rules
-    remain unimplemented.
 
 - `greek-titan` — id `124`; Greek; Gates C+D; blocked.
   - Assignment: not normally trainable
@@ -287,95 +248,69 @@ is not launchable until its family audit freezes a complete candidate reference 
   - Blocker: Gates C+D: Titan Gate research/construction, one-Titan limits, awakening, giant
     occupancy, and Titan combat rules.
 
-- `egyptian-anubite` — id `144`; Egyptian; Gates C+D; blocked.
+- `egyptian-anubite` — id `144`; Egyptian; Gates C+D; ready.
   - Assignment: Egyptian Temple slot 1
   - Required god: Anubis.
   - Foundation owners: serial-myth-unit-lifecycle; serial-jump-special
-  - Blocker: Gates C+D: JumpAttack needs deterministic launch/landing, target revalidation,
-    collision, damage timing, recharge, and presentation; C3 provides no attacker-displacement
-    special.
 
-- `egyptian-sphinx` — id `145`; Egyptian; Gates C+D; blocked.
+- `egyptian-sphinx` — id `145`; Egyptian; Gates C+D; ready.
   - Assignment: Egyptian Temple slot 1
   - Required god: Bast.
   - Foundation owners: serial-myth-unit-lifecycle; serial-area-whirlwind-special
-  - Blocker: Gates C+D: WhirlwindAttack needs deterministic area target enumeration, movement,
-    damage timing, recharge, and presentation; C3 opens only single-target charged melee.
 
-- `egyptian-wadjet` — id `146`; Egyptian; Gates B+C+D; blocked.
+- `egyptian-wadjet` — id `146`; Egyptian; Gates B+C+D; ready.
   - Assignment: Egyptian Temple slot 1
   - Required god: Ptah.
   - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
     serial-unit-regeneration
-  - Blocker: Gates B+C+D: Regenerate needs authoritative health-restoration timing, interruption,
-    snapshot/hash state, and presentation beyond ordinary projectile combat.
 
-- `egyptian-petsuchos` — id `147`; Egyptian; Gates B+C+D; blocked.
+- `egyptian-petsuchos` — id `147`; Egyptian; Gates B+C+D; ready.
   - Assignment: Egyptian Temple slot 2
   - Required god: Hathor.
-  - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
-    serial-continuous-lightning-attack
-  - Blocker: Gates B+C+D: LightningAttack needs continuous target tracking, repeated damage timing,
-    interruption, and presentation; it is not an ordinary released projectile.
+  - Foundation owners: serial-myth-unit-lifecycle; serial-continuous-lightning-attack
 
-- `egyptian-roc` — id `148`; Egyptian; Gates C+E; blocked.
+- `egyptian-roc` — id `148`; Egyptian; Gates C+E; ready.
   - Assignment: Egyptian Temple slot 3
   - Required god: Hathor.
   - Foundation owners: serial-myth-unit-lifecycle; serial-air-navigation; serial-transport
-  - Blocker: Gates C+E: Air navigation, embark/disembark, capacity, contained-unit state,
-    destruction handling, and visibility remain unimplemented.
 
-- `egyptian-scarab` — id `149`; Egyptian; Gates C+D; blocked.
+- `egyptian-scarab` — id `149`; Egyptian; Gates C+D; ready.
   - Assignment: Egyptian Temple slot 2
   - Required god: Sekhmet.
-  - Foundation owners: serial-myth-unit-lifecycle; serial-siege-units
-  - Blocker: Gates C+D: Siege-specific building acquisition, counter damage, collision, and
-    presentation remain unimplemented.
+  - Foundation owners: serial-myth-unit-lifecycle; serial-death-area-attacks
 
-- `egyptian-mummy` — id `150`; Egyptian; Gates B+C+D; blocked.
+- `egyptian-mummy` — id `150`; Egyptian; Gates B+C+D; ready.
   - Assignment: Egyptian Temple slot 4
   - Required god: Osiris.
   - Foundation owners: serial-projectile-foundation; serial-myth-unit-lifecycle;
     serial-conversion-and-minion-spawn
-  - Blocker: Gates B+C+D: ConvertAttack needs target/immunity rules, deterministic conversion
-    timing, minion creation, ownership, and lifecycle state beyond ordinary projectiles.
 
-- `egyptian-phoenix` — id `151`; Egyptian; Gates C+D+E; blocked.
-  - Assignment: Egyptian Temple slot 4
+- `egyptian-phoenix` — id `151`; Egyptian; Gates C+D+E; ready.
+  - Assignment: Egyptian Temple slot 4; producer 193 slot 0
   - Required god: Thoth.
   - Foundation owners: serial-myth-unit-lifecycle; serial-phoenix-egg-rebirth; serial-air-navigation
-  - Blocker: Gates C+D+E: Air navigation plus deterministic Phoenix Egg replacement, rebirth,
-    targeting, death state, and presentation remain unimplemented.
 
-- `egyptian-avenger` — id `152`; Egyptian; Gates C+D; blocked.
+- `egyptian-avenger` — id `152`; Egyptian; Gates C+D; ready.
   - Assignment: Egyptian Temple slot 4
   - Required god: Horus.
   - Foundation owners: serial-myth-unit-lifecycle; serial-area-whirlwind-special
-  - Blocker: Gates C+D: WhirlwindAttack needs deterministic area target enumeration, movement,
-    damage timing, recharge, and presentation; C3 opens only single-target charged melee.
 
-- `egyptian-scorpion-man` — id `153`; Egyptian; Gates C+D; blocked.
+- `egyptian-scorpion-man` — id `153`; Egyptian; Gates C+D; ready.
   - Assignment: Egyptian Temple slot 2
   - Required god: Nephthys.
   - Foundation owners: serial-myth-unit-lifecycle; serial-area-whirlwind-special
-  - Blocker: Gates C+D: WhirlwindAttack needs deterministic area target enumeration, damage timing,
-    recharge, and presentation; C3 opens only single-target charged melee.
 
-- `egyptian-leviathan` — id `154`; Egyptian; Gates C+E; blocked.
+- `egyptian-leviathan` — id `154`; Egyptian; Gates C+E; ready.
   - Assignment: Egyptian Dock slot 5
   - Required god: Nephthys.
   - Foundation owners: serial-myth-unit-lifecycle; serial-water-navigation; serial-naval-combat;
     serial-transport
-  - Blocker: Gates C+E: Water navigation/combat, aquatic occupancy, embark/disembark, capacity, and
-    contained-unit state remain unimplemented.
 
-- `egyptian-war-turtle` — id `155`; Egyptian; Gates C+D+E; blocked.
+- `egyptian-war-turtle` — id `155`; Egyptian; Gates C+D+E; ready.
   - Assignment: Egyptian Dock slot 6
   - Required god: Thoth.
   - Foundation owners: serial-myth-unit-lifecycle; serial-buck-special; serial-water-navigation;
     serial-naval-combat
-  - Blocker: Gates C+D+E: Water navigation and naval targeting plus deterministic BuckAttack
-    displacement, collision, damage timing, recharge, and presentation remain unimplemented.
 
 - `egyptian-titan` — id `156`; Egyptian; Gates C+D; blocked.
   - Assignment: not normally trainable
@@ -386,146 +321,110 @@ is not launchable until its family audit freezes a complete candidate reference 
 
 ## siege (4)
 
-- `greek-petrobolos` — id `85`; Greek; Gates B+D; blocked.
+- `greek-petrobolos` — id `85`; Greek; Gates B+D; ready.
   - Assignment: Fortress slot 4
   - Required god: Any.
   - Foundation owners: serial-projectile-area-minimum-range; serial-siege-units
-  - Blocker: Gates B+D: Projectile impact-area and minimum-range behavior plus siege targeting,
-    collision, and presentation.
 
-- `greek-helepolis` — id `86`; Greek; Gates B+D; blocked.
+- `greek-helepolis` — id `86`; Greek; Gates B+D; ready.
   - Assignment: Fortress slot 5
   - Required god: Any.
   - Foundation owners: serial-projectile-foundation; serial-siege-units; serial-transport
-  - Blocker: Gates B+D: Multi-projectile siege attacks, siege targeting/collision, and faithful
-    enter/garrison behavior.
 
-- `egyptian-siege-tower` — id `131`; Egyptian; Gates B+D; blocked.
+- `egyptian-siege-tower` — id `131`; Egyptian; Gates B+D; ready.
   - Assignment: Siege Works slot 0
   - Required god: Any.
   - Foundation owners: serial-projectile-foundation; serial-siege-units; serial-transport
-  - Blocker: Gates B+D: Mixed melee/projectile siege attacks, siege targeting/collision, and
-    faithful enter/garrison behavior.
 
-- `egyptian-catapult` — id `132`; Egyptian; Gates B+D; blocked.
+- `egyptian-catapult` — id `132`; Egyptian; Gates B+D; ready.
   - Assignment: Siege Works slot 1
   - Required god: Any.
   - Foundation owners: serial-projectile-area-minimum-range; serial-siege-units
-  - Blocker: Gates B+D: Projectile impact-area and minimum-range behavior plus siege targeting,
-    collision, and presentation.
 
 ## trade (2)
 
-- `greek-caravan` — id `87`; Greek; Gate D; blocked.
+- `greek-caravan` — id `87`; Greek; Gate D; ready.
   - Assignment: Greek Market slot 0
   - Required god: Any.
   - Foundation owners: serial-trade-routes
-  - Blocker: Gate D: Trade-route targeting, market-distance income, round trips, and hashed cargo
-    state.
 
-- `egyptian-caravan` — id `134`; Egyptian; Gate D; blocked.
+- `egyptian-caravan` — id `134`; Egyptian; Gate D; ready.
   - Assignment: Egyptian Market slot 0
   - Required god: Any.
   - Foundation owners: serial-trade-routes
-  - Blocker: Gate D: Trade-route targeting, market-distance income, round trips, and hashed cargo
-    state.
 
 ## naval (10)
 
-- `greek-fishing-ship` — id `88`; Greek; Gate E; blocked.
+- `greek-fishing-ship` — id `88`; Greek; Gate E; ready.
   - Assignment: Greek Dock slot 0
   - Required god: Any.
   - Foundation owners: serial-water-navigation; serial-naval-gathering
-  - Blocker: Gate E: Water navigation, shoreline fishing, dock returns, occupancy, and naval
-    visibility.
 
-- `greek-transport-ship` — id `89`; Greek; Gate E; blocked.
+- `greek-transport-ship` — id `89`; Greek; Gate E; ready.
   - Assignment: Greek Dock slot 1
   - Required god: Any.
   - Foundation owners: serial-water-navigation; serial-transport
-  - Blocker: Gate E: Water navigation, embark/disembark, capacity, cargo state, and destruction
-    handling.
 
-- `greek-trireme` — id `90`; Greek; Gates B+E; blocked.
+- `greek-trireme` — id `90`; Greek; Gates B+E; ready.
   - Assignment: Greek Dock slot 2
   - Required god: Any.
   - Foundation owners: serial-projectile-foundation; serial-water-navigation; serial-naval-combat
-  - Blocker: Gates B+E: Water navigation, naval acquisition/collision, and projectile combat over
-    water.
 
-- `greek-pentekonter` — id `91`; Greek; Gates D+E; blocked.
+- `greek-pentekonter` — id `91`; Greek; Gates D+E; ready.
   - Assignment: Greek Dock slot 3
   - Required god: Any.
   - Foundation owners: serial-ram-attacks; serial-water-navigation; serial-naval-combat
-  - Blocker: Gates D+E: Water navigation, naval collision, and deterministic ram attack behavior.
 
-- `greek-juggernaut` — id `92`; Greek; Gates B+D+E; blocked.
+- `greek-juggernaut` — id `92`; Greek; Gates B+D+E; ready.
   - Assignment: Greek Dock slot 4
   - Required god: Any.
   - Foundation owners: serial-projectile-area-minimum-range; serial-siege-units;
     serial-water-navigation; serial-naval-combat
-  - Blocker: Gates B+D+E: Water navigation plus naval projectile-siege area, range, collision, and
-    targeting rules.
 
-- `egyptian-fishing-ship` — id `135`; Egyptian; Gate E; blocked.
+- `egyptian-fishing-ship` — id `135`; Egyptian; Gate E; ready.
   - Assignment: Egyptian Dock slot 0
   - Required god: Any.
   - Foundation owners: serial-water-navigation; serial-naval-gathering
-  - Blocker: Gate E: Water navigation, shoreline fishing, dock returns, occupancy, and naval
-    visibility.
 
-- `egyptian-transport-ship` — id `136`; Egyptian; Gate E; blocked.
+- `egyptian-transport-ship` — id `136`; Egyptian; Gate E; ready.
   - Assignment: Egyptian Dock slot 1
   - Required god: Any.
   - Foundation owners: serial-water-navigation; serial-transport
-  - Blocker: Gate E: Water navigation, embark/disembark, capacity, cargo state, and destruction
-    handling.
 
-- `egyptian-kebenit` — id `137`; Egyptian; Gates B+E; blocked.
+- `egyptian-kebenit` — id `137`; Egyptian; Gates B+E; ready.
   - Assignment: Egyptian Dock slot 2
   - Required god: Any.
   - Foundation owners: serial-projectile-foundation; serial-water-navigation; serial-naval-combat
-  - Blocker: Gates B+E: Water navigation, naval acquisition/collision, and projectile combat over
-    water.
 
-- `egyptian-ramming-galley` — id `138`; Egyptian; Gates D+E; blocked.
+- `egyptian-ramming-galley` — id `138`; Egyptian; Gates D+E; ready.
   - Assignment: Egyptian Dock slot 3
   - Required god: Any.
   - Foundation owners: serial-ram-attacks; serial-water-navigation; serial-naval-combat
-  - Blocker: Gates D+E: Water navigation, naval collision, and deterministic ram attack behavior.
 
-- `egyptian-war-barge` — id `139`; Egyptian; Gates B+D+E; blocked.
+- `egyptian-war-barge` — id `139`; Egyptian; Gates B+D+E; ready.
   - Assignment: Egyptian Dock slot 4
   - Required god: Any.
   - Foundation owners: serial-projectile-area-minimum-range; serial-siege-units;
     serial-water-navigation; serial-naval-combat
-  - Blocker: Gates B+D+E: Water navigation plus naval projectile-siege area, range, collision, and
-    targeting rules.
 
 ## exceptional-lifecycle (4)
 
-- `militia` — id `1`; Greek; Gate D; blocked.
+- `militia` — id `1`; Greek; Gate D; ready.
   - Assignment: not normally trainable
   - Required god: Poseidon.
   - Foundation owners: serial-death-spawn-units
-  - Blocker: Gate D: Poseidon building-destruction spawn and exceptional creation rules.
 
-- `greek-kataskopos` — id `80`; Greek; Gate D; blocked.
+- `greek-kataskopos` — id `80`; Greek; Gate D; ready.
   - Assignment: not normally trainable
   - Required god: Any.
   - Foundation owners: serial-starting-units
-  - Blocker: Gate D: Starting-only creation; Classic players cannot train replacements.
 
-- `egyptian-mercenary` — id `133`; Egyptian; Gate D; blocked.
+- `egyptian-mercenary` — id `133`; Egyptian; Gate D; ready.
   - Assignment: Egyptian Town Center slot 2
   - Required god: Any.
   - Foundation owners: serial-temporary-units
-  - Blocker: Gate D: Deterministic 45-second lifetime, zero-time training, and exceptional removal
-    rules.
 
-- `egyptian-mercenary-cavalry` — id `157`; Egyptian; Gate D; blocked.
+- `egyptian-mercenary-cavalry` — id `157`; Egyptian; Gate D; ready.
   - Assignment: Egyptian Town Center slot 3
   - Required god: Any.
   - Foundation owners: serial-temporary-units
-  - Blocker: Gate D: Deterministic 45-second lifetime, zero-time training, and exceptional removal
-    rules.

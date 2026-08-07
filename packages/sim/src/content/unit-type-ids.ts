@@ -110,6 +110,11 @@ export const TYPE_WAR_TURTLE = 155;
 export const TYPE_EGYPTIAN_TITAN = 156;
 export const TYPE_MERCENARY_CAVALRY = 157;
 
+// Generated/replacement units are catalogued but are not independently
+// trainable roster reservations.
+export const TYPE_MINION = 192;
+export const TYPE_PHOENIX_EGG = 193;
+
 export const MAX_RESERVED_UNIT_TYPE_ID = TYPE_MERCENARY_CAVALRY;
 
 // Every independently authored playable Greek/Egyptian unit lane. Workers,

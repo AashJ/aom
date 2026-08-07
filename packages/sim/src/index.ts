@@ -31,10 +31,19 @@ export {
   type TypeAvailabilityContext,
 } from "./ecs/availability";
 export { resolveAttackDamage, resolveMeleeDamage } from "./ecs/combat";
+export { countGarrisonedUnits } from "./ecs/garrison";
 export {
   PROJECTILE_ARROW,
+  PROJECTILE_BALLISTA_BOLT,
+  PROJECTILE_CATAPULT_STONE,
+  PROJECTILE_CHIMERA_FIRE,
+  PROJECTILE_MANTICORE_BARB,
+  PROJECTILE_MUMMY_FLIES,
+  PROJECTILE_PRIEST,
+  PROJECTILE_PETROBOLOS_STONE,
   PROJECTILE_SLING_STONE,
   PROJECTILE_SPEAR,
+  PROJECTILE_WADJET_SPIT,
   PROJECTILE_TYPE_COUNT,
 } from "./ecs/projectiles";
 export {
@@ -45,6 +54,7 @@ export {
 } from "./ecs/favor";
 export { idGeneration, idIndex, packId } from "./ecs/id";
 export { registerPlayer } from "./ecs/players";
+export { transformPharaohToSonOfOsiris } from "./ecs/world";
 export {
   activeTrainType,
   cancelProduction,

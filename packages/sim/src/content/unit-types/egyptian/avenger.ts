@@ -1,0 +1,80 @@
+import { TICK_HZ } from "../../../clock";
+import { AGE_MYTHIC, GOD_HORUS } from "../../../ecs/progression";
+import { TYPE_AVENGER, TYPE_EGYPTIAN_TEMPLE } from "../../unit-type-ids";
+import {
+  AREA_DAMAGE_ENEMIES,
+  AREA_DAMAGE_NEUTRAL_UNITS,
+  CULTURE_EGYPTIAN,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_HERO,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_INFANTRY,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_AVENGER,
+  key: "egyptian-avenger",
+  label: "Avenger",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_MYTH | UNIT_CLASS_INFANTRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+  maxHp: 600,
+  lineOfSight: 18,
+  movementSpeed: 5.3,
+  armor: [0.6, 0.4, 0.8],
+  attack: {
+    kind: "melee",
+    damage: [28, 0, 0],
+    range: 0.1,
+    aggroRange: 18,
+    cooldownTicks: TICK_HZ,
+    bonuses: [
+      { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 3 },
+      { target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.8 },
+    ],
+    cycleVariants: [
+      { actionTicks: 20, impactDelayTicks: 8 },
+      { actionTicks: 20, impactDelayTicks: 12 },
+    ],
+  },
+  specialAttack: {
+    kind: "charged-area-pulse",
+    // Area attacks are one of Classic's exceptions to animation-scaled DPS.
+    // The launch Avenger lands this complete hit at the sole Attack tag.
+    damage: [70, 0, 0],
+    range: 0.1,
+    radius: 7,
+    falloff: "linear",
+    damageRelations: AREA_DAMAGE_ENEMIES | AREA_DAMAGE_NEUTRAL_UNITS,
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_HERO }, multiplier: 0.1 }],
+    rechargeTicks: 10 * TICK_HZ,
+    actionTicks: 30,
+    impactDelayTicks: 18,
+    validTargets: [
+      { kind: "classes", classes: UNIT_CLASS_HUMAN },
+      { kind: "classes", classes: UNIT_CLASS_MYTH },
+    ],
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.49,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 250,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 30,
+  buildTicks: 24 * TICK_HZ,
+  populationCost: 4,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_MYTHIC,
+  requiredGod: GOD_HORUS,
+  prerequisiteBuildings: [TYPE_EGYPTIAN_TEMPLE],
+  trainedAt: [{ type: TYPE_EGYPTIAN_TEMPLE, commandSlot: 4 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

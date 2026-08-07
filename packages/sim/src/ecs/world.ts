@@ -13,6 +13,9 @@ import {
   COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
+  COMMAND_HEAL,
+  COMMAND_EMPOWER,
+  COMMAND_CONVERT,
   COMMAND_MOVE,
   COMMAND_PLACE,
   COMMAND_PRAY,
@@ -20,7 +23,7 @@ import {
   COMMAND_TRAIN,
   type Command,
 } from "../commands";
-import { TICK_S } from "../clock";
+import { TICK_HZ, TICK_S } from "../clock";
 import {
   cultureForMajorGod,
   townCenterTypeForCulture,
@@ -34,6 +37,8 @@ import {
   generateMap,
   MAP_RIVER_NILE,
   startLocationsForMap,
+  TERRAIN_DOMAIN_LAND,
+  TERRAIN_DOMAIN_WATER,
   type MapId,
   type StartLocation,
 } from "../maps";
@@ -45,23 +50,46 @@ import {
   VISIBILITY_TILES,
 } from "../visibility";
 import { resolveStableId, stableIdAt } from "./id";
-import { centerDistanceForEdgeRange, resolveDamage, resolveMeleeDamage } from "./combat";
+import {
+  centerDistanceForEdgeRange,
+  killScaledMeleeDamageMultiplier,
+  resolveDamage,
+  resolveMeleeCycleDamage,
+  resolveMeleeDamage,
+} from "./combat";
 import { integrateGroundMotion } from "./ground-contact";
 import { clearAttackOrder } from "./attack-state";
+import { tickActiveBeamAttack } from "./beam-combat";
+import {
+  effectiveAttackDamageMultiplier,
+  effectiveAttackRange,
+  effectiveMaxHp,
+} from "./unit-age";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickGreekFavor } from "./favor";
 import { countLiveOrQueuedUnitType } from "./hero-lifecycle";
+import {
+  applyGarrisonCommand,
+  countGarrisonedUnits,
+  isGarrisonCommand,
+  releaseGarrisonedUnits,
+  syncContainedUnits,
+  tickGarrisonTask,
+} from "./garrison";
+import { applyTradeCommand, isTradeCommand, tickTradeTask } from "./trade";
+import { applySupportCommand, empowermentAt, tickSupportTask } from "./support-actions";
 import { registerPlayer } from "./players";
 import {
   assignFieldGoal,
   isWalkableStep,
   movementDomainForType,
+  navigableCellNear,
   navigationGridForDomain,
   setFacingToward,
 } from "./navigation";
 import { MAX_PROJECTILE_BODY_RADIUS, MAX_TARGET_BODY_RADIUS } from "./unit-catalog-bounds";
-import { AGE_COUNT, NO_GOD } from "./progression";
+import { AGE_COUNT, GOD_OSIRIS, NO_GOD } from "./progression";
 import {
   activeTrainType,
   cancelProduction,
@@ -73,17 +101,19 @@ import {
 } from "./production";
 import {
   beginProjectileAttack,
+  beginSpecialProjectileAttack,
+  cancelPendingProjectilesBySource,
   createProjectileStore,
   tickProjectileStore,
   type ProjectileStore,
 } from "./projectiles";
 import {
-  applyRelicCommand,
-  isRelicCommand,
-  releaseContainedRelics,
-  syncContainedRelics,
-  tickRelicTask,
-} from "./relics";
+  createPoisonEffectStore,
+  installAreaPoison,
+  tickPoisonEffects,
+  type PoisonEffectStore,
+} from "./poison-effects";
+import { applyRelicCommand, isRelicCommand, releaseContainedRelics, tickRelicTask } from "./relics";
 import {
   GRID_CELL,
   GRID_CELLS,
@@ -93,17 +123,26 @@ import {
 } from "./spatial-grid";
 import {
   activeMeleeAttackCycle,
+  beginAuthoredMeleeAttackCycle,
   beginMeleeAttackCycle,
   NO_MELEE_ATTACK_VARIANT,
 } from "./melee-attack-cycles";
 import { tickActiveMeleeAttack } from "./melee-combat";
 import {
   advanceSpecialAttack,
+  advancePickupThrowSpecialAttack,
+  beginJumpSpecialAttack,
+  beginPickupThrowSpecialAttack,
   beginSpecialAttack,
   clearSpecialAttack,
   isValidSpecialTarget,
+  resolveChargedJump,
   resolveChargedAreaPulse,
+  resolveChargedConeThrow,
+  resolveAreaDamageAt,
+  resolveMeleeImpactAreaAt,
   tickSpecialRecharge,
+  updateJumpSpecialPosition,
 } from "./special-attacks";
 import {
   clearTargetReaction,
@@ -123,6 +162,7 @@ import {
 import {
   BUILD_PER_STRIKE,
   CARRY_CAPACITY,
+  CULTURE_EGYPTIAN,
   CULTURE_GREEK,
   FAVOR,
   FOOD,
@@ -130,18 +170,28 @@ import {
   GATHER_PER_STRIKE,
   GOLD,
   LEASH_FACTOR,
+  MOVEMENT_DOMAIN_LAND,
   NODE_RETARGET_RADIUS,
   NO_UNIT_TYPE,
   RESOURCE_COUNT,
   TYPE_BERRY,
   TYPE_FISH_PERCH,
   TYPE_GOLD_MINE,
+  TYPE_KATASKOPOS,
+  TYPE_PHARAOH,
+  TYPE_PRIEST,
+  TYPE_SON_OF_OSIRIS,
   TYPE_GREEK_VILLAGER,
   TYPE_TREE,
   TRAIN_OPTIONS_BY_PRODUCER,
+  UNIT_CLASS_AIR,
+  UNIT_CLASS_BUILDING,
   UNIT_CLASS_WORKER,
+  UNIT_CONDITION_STONE,
   UNIT_TYPES,
   WOOD,
+  type MeleeAttack,
+  type MeleeAttackCycle,
 } from "./types";
 import {
   assignGatherTask,
@@ -152,6 +202,7 @@ import {
 import {
   clearUnitTask,
   MODE_BUILDING,
+  MODE_EATING_RESOURCE,
   MODE_GATHERING,
   MODE_IDLE,
   MODE_PRAYING,
@@ -163,10 +214,17 @@ export { TICK_HZ, TICK_S } from "../clock";
 export { setFacingToward } from "./navigation";
 export {
   MODE_BUILDING,
+  MODE_EATING_RESOURCE,
+  MODE_HEALING,
+  MODE_EMPOWERING,
+  MODE_CONVERTING,
   MODE_GATHERING,
   MODE_IDLE,
+  MODE_ENTERING_GARRISON,
   MODE_PRAYING,
   MODE_RETURNING,
+  MODE_TRADING_TO_MARKET,
+  MODE_TRADING_TO_TOWN_CENTER,
   NO_TARGET,
 } from "./unit-tasks";
 export const SIM_MAP_SIZE = MAP_TILES;
@@ -192,6 +250,8 @@ const RIVER_NILE_FISH_SCHOOL_RADIUS = 9;
 const RIVER_NILE_FISH_SCHOOL_SPACING = 22;
 const RIVER_NILE_FISH_LAND_CLEARANCE = 6;
 const INV_SQRT2 = 1 / Math.sqrt(2);
+const MELEE_SNARE_TICKS = 3 * TICK_HZ;
+const MELEE_SNARE_STRENGTH = 0.35;
 const sampledFlowDirection = new Float64Array(2);
 const GOLD_OTHER_NODE_CLEARANCE = 2;
 // This is content for the current map, not a universal economy rule. Future
@@ -228,6 +288,7 @@ const RIVER_NILE_GOLD_PLACEMENTS = [
   { perPlayer: 3, minDistance: 60, maxDistance: 300, goldMineSpacing: 30 },
 ] as const;
 const MAX_PLAYABLE_MAP_SEED_ATTEMPTS = 256;
+const PHARAOH_RESPAWN_TICKS = 90 * TICK_HZ;
 
 class RequiredMapObjectPlacementError extends RangeError {}
 
@@ -259,6 +320,9 @@ export interface World {
   terrainMaterials: Uint8Array;
   terrainDomains: Uint8Array;
   waterNavigable: Uint8Array;
+  // Runtime water occupancy. The source water mask remains immutable for
+  // rendering and terrain restoration, just as terrainDomains does.
+  waterWalkable: Uint8Array;
   waterLevel: number;
   walkable: Uint8Array;
   posX: Float64Array;
@@ -296,7 +360,17 @@ export interface World {
   containedBy: Uint32Array;
   // Armor can produce fractional damage, so authoritative hit points remain f64.
   hp: Float64Array;
-  buildProgress: Uint16Array;
+  buildProgress: Float64Array;
+  lifespanRemaining: Uint16Array;
+  // Credited hostile kills used by Classic experience-driven unit mechanics.
+  combatExperienceKills: Uint8Array;
+  // Persistent target states used by source-authored immunity predicates.
+  // Producers (freeze/petrification) own installation and expiry semantics;
+  // consumers never infer state from unit type or presentation.
+  unitConditions: Uint8Array;
+  // Classic hand attacks reduce movement by 35%, recovering linearly over
+  // three seconds. A fresh hit resets this authoritative countdown.
+  meleeSnareRemaining: Uint8Array;
   // Queue slot 0 is the authoritative active item. trainRemaining belongs only to that slot.
   trainRemaining: Uint16Array;
   trainQueueLength: Uint8Array;
@@ -312,17 +386,37 @@ export interface World {
   attackAimShots: Uint16Array;
   meleeActionVariant: Uint8Array;
   meleeActionImpactPending: Uint8Array;
+  beamActionImpactPending: Uint8Array;
+  beamActionActive: Uint8Array;
   specialRecharge: Uint16Array;
   specialActionRemaining: Uint16Array;
   specialActionTarget: Uint32Array;
   specialActionImpactPending: Uint8Array;
+  specialActionStartX: Float64Array;
+  specialActionStartZ: Float64Array;
+  supportActionRemaining: Uint16Array;
+  // A zero-HP Cyclops pickup remains authoritative while the dedicated
+  // BUnitThrowAction presents it through the Cyclops's combined animation.
+  terminalThrowSource: Uint32Array;
   targetReactions: TargetReactionStore;
   projectiles: ProjectileStore;
+  poisonEffects: PoisonEffectStore;
   mode: Uint8Array;
   carried: Uint16Array;
   carriedResource: Uint8Array;
+  // Source gather rates are fractional. This authoritative accumulator keeps
+  // sub-unit progress while `carried` remains the whole-resource UI value.
+  resourceCargo: Float64Array;
   // Stable-id target shared by gathering, construction, and prayer tasks.
   taskTarget: Uint32Array;
+  // Stable route endpoints and fractional cargo are authoritative. Fractions
+  // survive deposits so Classic's alternating whole-gold payouts are retained.
+  tradeMarket: Uint32Array;
+  tradeTownCenter: Uint32Array;
+  tradeCargo: Float64Array;
+  empowerTrainProgress: Float64Array;
+  empowerResearchProgress: Float64Array;
+  pharaohRespawnRemaining: Uint16Array;
   // Last known position of the assigned node; returning villagers go back here to prospect
   // when the node died behind their back.
   gatherPosX: Float64Array;
@@ -338,6 +432,7 @@ export interface World {
   freeHandles: Uint32Array;
   freeHandleCount: number;
   dying: Uint8Array;
+  dyingFromDamage: Uint8Array;
   pendingDeaths: Uint32Array;
   pendingDeathCount: number;
   // Transient output for the last completed tick. Snapshots copy these before the
@@ -350,6 +445,9 @@ export interface World {
   deathEventFacingX: Float64Array;
   deathEventFacingZ: Float64Array;
   deathEventOwners: Uint8Array;
+  deathEventCombatExperienceKills: Uint8Array;
+  deathEventConditions: Uint8Array;
+  deathEventCarried: Uint16Array;
   selectable: Uint8Array;
   selected: Uint8Array;
   commands: Command[];
@@ -396,6 +494,7 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     terrainMaterials: generatedMap.terrainMaterials,
     terrainDomains: generatedMap.terrainDomains,
     waterNavigable: generatedMap.waterNavigable,
+    waterWalkable: generatedMap.waterNavigable.slice(),
     waterLevel: generatedMap.waterLevel,
     walkable: generatedMap.landWalkable,
     // SoA typed arrays: cache-friendly linear iteration, zero per-tick allocation, and
@@ -423,7 +522,11 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     unitType: new Uint16Array(MAX_UNITS),
     containedBy: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     hp: new Float64Array(MAX_UNITS),
-    buildProgress: new Uint16Array(MAX_UNITS),
+    buildProgress: new Float64Array(MAX_UNITS),
+    lifespanRemaining: new Uint16Array(MAX_UNITS),
+    combatExperienceKills: new Uint8Array(MAX_UNITS),
+    unitConditions: new Uint8Array(MAX_UNITS),
+    meleeSnareRemaining: new Uint8Array(MAX_UNITS),
     trainRemaining: new Uint16Array(MAX_UNITS),
     trainQueueLength: new Uint8Array(MAX_UNITS),
     trainQueueTypes: new Uint16Array(MAX_UNITS * MAX_TRAIN_QUEUE).fill(NO_UNIT_TYPE),
@@ -437,16 +540,30 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     attackAimShots: new Uint16Array(MAX_UNITS),
     meleeActionVariant: new Uint8Array(MAX_UNITS).fill(NO_MELEE_ATTACK_VARIANT),
     meleeActionImpactPending: new Uint8Array(MAX_UNITS),
+    beamActionImpactPending: new Uint8Array(MAX_UNITS),
+    beamActionActive: new Uint8Array(MAX_UNITS),
     specialRecharge: new Uint16Array(MAX_UNITS),
     specialActionRemaining: new Uint16Array(MAX_UNITS),
     specialActionTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     specialActionImpactPending: new Uint8Array(MAX_UNITS),
+    specialActionStartX: new Float64Array(MAX_UNITS),
+    specialActionStartZ: new Float64Array(MAX_UNITS),
+    supportActionRemaining: new Uint16Array(MAX_UNITS),
+    terminalThrowSource: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     targetReactions: createTargetReactionStore(MAX_UNITS),
     projectiles: createProjectileStore(),
+    poisonEffects: createPoisonEffectStore(),
     mode: new Uint8Array(MAX_UNITS),
     carried: new Uint16Array(MAX_UNITS),
     carriedResource: new Uint8Array(MAX_UNITS),
+    resourceCargo: new Float64Array(MAX_UNITS),
     taskTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    tradeMarket: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    tradeTownCenter: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    tradeCargo: new Float64Array(MAX_UNITS),
+    empowerTrainProgress: new Float64Array(MAX_UNITS),
+    empowerResearchProgress: new Float64Array(MAX_UNITS),
+    pharaohRespawnRemaining: new Uint16Array(256),
     gatherPosX: new Float64Array(MAX_UNITS),
     gatherPosZ: new Float64Array(MAX_UNITS),
     generation: new Uint16Array(MAX_UNITS),
@@ -456,6 +573,7 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     freeHandles: new Uint32Array(MAX_UNITS),
     freeHandleCount: 0,
     dying: new Uint8Array(MAX_UNITS),
+    dyingFromDamage: new Uint8Array(MAX_UNITS),
     pendingDeaths: new Uint32Array(MAX_UNITS),
     pendingDeathCount: 0,
     deathEventCount: 0,
@@ -466,6 +584,9 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     deathEventFacingX: new Float64Array(MAX_UNITS),
     deathEventFacingZ: new Float64Array(MAX_UNITS),
     deathEventOwners: new Uint8Array(MAX_UNITS),
+    deathEventCombatExperienceKills: new Uint8Array(MAX_UNITS),
+    deathEventConditions: new Uint8Array(MAX_UNITS),
+    deathEventCarried: new Uint16Array(MAX_UNITS),
     selectable: new Uint8Array(MAX_UNITS),
     // Per-client UI state in multiplayer eventually, but a plain component in M1.
     selected: new Uint8Array(MAX_UNITS),
@@ -618,18 +739,32 @@ export function spawnUnit(
   world.owner[index] = owner;
   world.unitType[index] = type;
   world.containedBy[index] = NO_TARGET;
-  world.hp[index] = UNIT_TYPES[type]!.maxHp;
+  world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
   world.buildProgress[index] = 0;
+  world.lifespanRemaining[index] = UNIT_TYPES[type]!.lifespanTicks ?? 0;
+  world.combatExperienceKills[index] = 0;
+  world.unitConditions[index] = 0;
+  world.meleeSnareRemaining[index] = 0;
   clearProductionQueue(world, index);
   world.researchId[index] = NO_RESEARCH;
   world.researchChoice[index] = NO_GOD;
   world.researchRemaining[index] = 0;
   world.attackCooldown[index] = 0;
+  world.beamActionImpactPending[index] = 0;
+  world.beamActionActive[index] = 0;
   world.specialRecharge[index] = 0;
   clearSpecialAttack(world, index);
+  world.supportActionRemaining[index] = 0;
+  world.terminalThrowSource[index] = NO_TARGET;
   clearTargetReaction(world.targetReactions, index);
   world.carried[index] = 0;
   world.carriedResource[index] = 0;
+  world.resourceCargo[index] = 0;
+  world.tradeMarket[index] = NO_TARGET;
+  world.tradeTownCenter[index] = NO_TARGET;
+  world.tradeCargo[index] = 0;
+  world.empowerTrainProgress[index] = 0;
+  world.empowerResearchProgress[index] = 0;
   clearUnitTask(world, index);
   world.selectable[index] = 1;
   world.selected[index] = 0;
@@ -652,7 +787,30 @@ export function canPlaceBuilding(
   tileZ: number,
   type: number,
 ): boolean {
-  const footprint = UNIT_TYPES[type]!.footprint;
+  const stats = UNIT_TYPES[type]!;
+  const footprint = stats.footprint;
+
+  if (stats.placementTerrain === "shoreline") {
+    let landTiles = 0;
+    let waterTiles = 0;
+
+    for (let z = tileZ; z < tileZ + footprint; z += 1) {
+      for (let x = tileX; x < tileX + footprint; x += 1) {
+        if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) return false;
+        const cell = z * MAP_TILES + x;
+
+        if (world.walkable[cell] === 1) {
+          landTiles += 1;
+        } else if (world.waterWalkable[cell] === 1) {
+          waterTiles += 1;
+        } else {
+          return false;
+        }
+      }
+    }
+
+    return landTiles > 0 && waterTiles > 0;
+  }
 
   // walkable doubles as the occupancy grid: mountains, other buildings, and map edges all reject
   // placement through one check.
@@ -690,7 +848,9 @@ export function spawnBuilding(
   // same-tile movement allowance means they can always walk out.
   for (let z = tileZ; z < tileZ + footprint; z += 1) {
     for (let x = tileX; x < tileX + footprint; x += 1) {
-      world.walkable[z * MAP_TILES + x] = 0;
+      const cell = z * MAP_TILES + x;
+      world.walkable[cell] = 0;
+      world.waterWalkable[cell] = 0;
     }
   }
 
@@ -711,7 +871,12 @@ export function unitIdAt(world: World, index: number): number {
   return stableIdAt(world, index);
 }
 
-export function killUnit(world: World, index: number): void {
+function markUnitForDeath(
+  world: World,
+  index: number,
+  fromDamage: boolean,
+  destroyContainedSubtree: boolean,
+): void {
   if (index < 0 || index >= world.count || world.dying[index] === 1) {
     return;
   }
@@ -719,8 +884,60 @@ export function killUnit(world: World, index: number): void {
   // Marks only; removal happens at tick end so mid-tick iteration order is never
   // disturbed. Callers today: tests; tomorrow: combat.
   world.dying[index] = 1;
+  world.dyingFromDamage[index] = fromDamage ? 1 : 0;
   world.pendingDeaths[world.pendingDeathCount] = index;
   world.pendingDeathCount += 1;
+
+  // A victim already committed by Cyclops Pickup is terminal even if its
+  // carrier dies before the dedicated BUnitThrowAction completes.
+  const dyingId = unitIdAt(world, index);
+  for (let victim = 0; victim < world.count; victim += 1) {
+    if (
+      world.terminalThrowSource[victim] === dyingId &&
+      world.containedBy[victim] === dyingId
+    ) {
+      markUnitForDeath(world, victim, true, true);
+    }
+  }
+
+  // Mobile transports take their cargo down with them. Containers that author
+  // ejection on death release later, before their stable handle is invalidated.
+  if (
+    destroyContainedSubtree ||
+    UNIT_TYPES[world.unitType[index]!]!.garrison?.ejectOnDeath === false
+  ) {
+    const containerId = dyingId;
+    for (let occupant = 0; occupant < world.count; occupant += 1) {
+      if (world.containedBy[occupant] === containerId) {
+        markUnitForDeath(world, occupant, fromDamage, true);
+      }
+    }
+  }
+}
+
+export function killUnit(world: World, index: number, fromDamage = false): void {
+  markUnitForDeath(world, index, fromDamage, false);
+}
+
+export function transformPharaohToSonOfOsiris(world: World, id: number): boolean {
+  const index = resolveId(world, id);
+  if (index < 0 || world.unitType[index] !== TYPE_PHARAOH || world.dying[index] === 1) return false;
+  const owner = world.owner[index]!;
+  let hasOsiris = world.playerMajorGod[owner] === GOD_OSIRIS;
+  const minorGodStart = owner * AGE_COUNT;
+  for (let age = 0; age < AGE_COUNT && !hasOsiris; age += 1) {
+    hasOsiris = world.playerMinorGods[minorGodStart + age] === GOD_OSIRIS;
+  }
+  if (!hasOsiris) return false;
+
+  const hpFraction = world.hp[index]! / effectiveMaxHp(UNIT_TYPES[TYPE_PHARAOH]!, world.playerAge[owner]!);
+  clearAttackOrder(world, index);
+  clearUnitTask(world, index);
+  clearSpecialAttack(world, index);
+  world.unitType[index] = TYPE_SON_OF_OSIRIS;
+  world.hp[index] = effectiveMaxHp(UNIT_TYPES[TYPE_SON_OF_OSIRIS]!, world.playerAge[owner]!) * hpFraction;
+  world.pharaohRespawnRemaining[owner] = 0;
+  return true;
 }
 
 export function clearSelection(world: World): void {
@@ -738,6 +955,13 @@ export function setSelected(world: World, id: number, on: boolean): void {
 export interface StartingUnitTypesByCulture {
   readonly [culture: number]: readonly number[] | undefined;
 }
+
+// Standard Classic random-map starts give every Greek player exactly one
+// Kataskopos. Scenario-owned additions are appended by createPlayableWorld.
+export const CLASSIC_STARTING_UNIT_TYPES_BY_CULTURE: StartingUnitTypesByCulture = {
+  [CULTURE_GREEK]: [TYPE_KATASKOPOS],
+  [CULTURE_EGYPTIAN]: [TYPE_PHARAOH, TYPE_PRIEST],
+};
 
 export interface MatchPlayerSetup {
   readonly id: number;
@@ -893,31 +1117,28 @@ function canTypeGatherResource(workerType: number, resourceType: number): boolea
   );
 }
 
+function gatherCargo(world: World, index: number): number {
+  return UNIT_TYPES[world.unitType[index]!]!.gather === undefined
+    ? world.carried[index]!
+    : world.resourceCargo[index]!;
+}
+
+function gatherCapacity(world: World, index: number): number {
+  return UNIT_TYPES[world.unitType[index]!]!.gather?.capacity ?? CARRY_CAPACITY;
+}
+
+function canUseResourceDropsite(workerType: number, dropsiteType: number): boolean {
+  const dropsite = UNIT_TYPES[dropsiteType]!;
+  return (
+    dropsite.isDropsite &&
+    movementDomainForType(workerType) === (dropsite.resourceDropsiteDomain ?? MOVEMENT_DOMAIN_LAND)
+  );
+}
+
 // Deterministic spiral for a walkable cell near a corner (the corner itself sits
 // under the pre-placed Town Center footprint).
 function walkableCellNear(world: World, x: number, z: number): number {
-  for (let r = 0; r < 12; r += 1) {
-    for (let dz = -r; dz <= r; dz += 1) {
-      for (let dx = -r; dx <= r; dx += 1) {
-        if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
-
-        const tx = Math.floor(x) + dx;
-        const tz = Math.floor(z) + dz;
-
-        if (
-          tx >= 0 &&
-          tx < MAP_TILES &&
-          tz >= 0 &&
-          tz < MAP_TILES &&
-          world.walkable[tz * MAP_TILES + tx] === 1
-        ) {
-          return tz * MAP_TILES + tx;
-        }
-      }
-    }
-  }
-
-  return cellOf(x, z);
+  return navigableCellNear(world, x, z, MOVEMENT_DOMAIN_LAND);
 }
 
 function hasNodeClearance(world: World, x: number, z: number, goldMineSpacing: number): boolean {
@@ -1430,7 +1651,19 @@ export function createPlayableWorld(
       registerPlayer(world, player.id, player.majorGod);
     }
 
-    spawnUnits(world, unitCount, ownerIds, startingUnitTypesByCulture);
+    const combinedStartingTypes = {
+      ...startingUnitTypesByCulture,
+      [CULTURE_GREEK]: [
+        ...(CLASSIC_STARTING_UNIT_TYPES_BY_CULTURE[CULTURE_GREEK] ?? []),
+        ...(startingUnitTypesByCulture?.[CULTURE_GREEK] ?? []),
+      ],
+      [CULTURE_EGYPTIAN]: [
+        ...(CLASSIC_STARTING_UNIT_TYPES_BY_CULTURE[CULTURE_EGYPTIAN] ?? []),
+        ...(startingUnitTypesByCulture?.[CULTURE_EGYPTIAN] ?? []),
+      ],
+    } satisfies StartingUnitTypesByCulture;
+
+    spawnUnits(world, unitCount, ownerIds, combinedStartingTypes);
 
     try {
       spawnResourceNodes(world);
@@ -1449,6 +1682,12 @@ export function createPlayableWorld(
 
 export function tickWorld(world: World): void {
   world.deathEventCount = 0;
+  const terminalReplacementSpawns: Array<{
+    readonly x: number;
+    readonly z: number;
+    readonly owner: number;
+    readonly type: number;
+  }> = [];
 
   // 1. Visibility reads positions from the last completed movement step. Command
   // validation and combat below therefore consult the same authoritative mask.
@@ -1469,22 +1708,57 @@ export function tickWorld(world: World): void {
   // whether to begin a new attack cycle. A newly queued projectile cannot advance
   // until the next tick, preserving its animation-timed release boundary.
   tickProjectileStore(world, world.projectiles, UNIT_TYPES, MAX_PROJECTILE_BODY_RADIUS, dealDamage);
+  tickPoisonEffects(world, world.poisonEffects, UNIT_TYPES, dealDamage);
+
+  // Persistent Regenerate actions are source-authored rates, not an interruptible
+  // order. Apply them after existing projectile impacts so lethal damage cannot
+  // be reversed, and before this tick's units choose their next action.
+  for (let i = 0; i < world.count; i += 1) {
+    if (world.dying[i] === 1 || world.hp[i]! <= 0) continue;
+    const stats = UNIT_TYPES[world.unitType[i]!]!;
+    const rate = stats.regenerationPerSecond;
+    const maxHp = effectiveMaxHp(stats, world.playerAge[world.owner[i]!]!);
+    if (rate !== undefined && world.hp[i]! < maxHp) {
+      world.hp[i] = Math.min(maxHp, world.hp[i]! + rate * TICK_S);
+    }
+  }
 
   // 6. Combat needs the fresh spatial grid for acquisition and writes moveTarget/moving
   // that the movement compute then consumes.
   for (let i = 0; i < world.count; i += 1) {
     const stats = UNIT_TYPES[world.unitType[i]!]!;
-    const attack = stats.attack;
+    const currentTarget = resolveId(world, world.attackTarget[i]!);
+    const currentTargetStats =
+      currentTarget >= 0 ? UNIT_TYPES[world.unitType[currentTarget]!]! : null;
+    const attack =
+      stats.buildingAttack !== undefined &&
+      currentTargetStats !== null &&
+      (currentTargetStats.classes & UNIT_CLASS_BUILDING) !== 0
+        ? stats.buildingAttack
+        : stats.attack;
     const special = stats.specialAttack;
 
-    if (stats.isStatic || attack === null) {
-      // Static and unarmed rows never auto-acquire or strike.
+    if (world.containedBy[i] !== NO_TARGET || stats.isStatic) {
+      // Contained and static rows never auto-acquire or strike.
+      continue;
+    }
+    if (attack === null) {
+      // Economic gatherers reuse the action cooldown for source-rate cadence
+      // without gaining a combat attack.
+      if (stats.gather !== undefined && world.attackCooldown[i]! > 0) {
+        world.attackCooldown[i] = world.attackCooldown[i]! - 1;
+      }
       continue;
     }
 
     const activeMeleeCycle =
       attack.kind === "melee" ? activeMeleeAttackCycle(world, i, attack) : null;
-    if (activeMeleeCycle === null && world.attackCooldown[i]! > 0) {
+    const activeBeamCycle =
+      attack.kind === "beam" &&
+      world.specialActionRemaining[i] === 0 &&
+      world.beamActionActive[i] === 1 &&
+      world.attackCooldown[i]! > 0;
+    if (activeMeleeCycle === null && !activeBeamCycle && world.attackCooldown[i]! > 0) {
       world.attackCooldown[i] = world.attackCooldown[i]! - 1;
     }
     if (special !== undefined) tickSpecialRecharge(world, i);
@@ -1499,9 +1773,26 @@ export function tickWorld(world: World): void {
     }
 
     if (activeMeleeCycle !== null && attack.kind === "melee") {
-      if (tickActiveMeleeAttack(world, i, attack, activeMeleeCycle, NEUTRAL_OWNER, dealDamage)) {
+      if (
+        tickActiveMeleeAttack(
+          world,
+          i,
+          attack,
+          activeMeleeCycle,
+          NEUTRAL_OWNER,
+          resolvePrimaryMeleeImpact,
+        )
+      ) {
         continue;
       }
+    }
+
+    if (
+      activeBeamCycle &&
+      attack.kind === "beam" &&
+      tickActiveBeamAttack(world, i, attack, NEUTRAL_OWNER, dealDamage)
+    ) {
+      continue;
     }
 
     if (world.specialActionRemaining[i]! > 0) {
@@ -1513,6 +1804,74 @@ export function tickWorld(world: World): void {
 
       if (special === undefined) {
         clearSpecialAttack(world, i);
+      } else if (special.kind === "charged-pickup-throw") {
+        const target = resolveId(world, world.specialActionTarget[i]!);
+        const targetStats = target >= 0 ? UNIT_TYPES[world.unitType[target]!]! : null;
+        const elapsed = special.actionTicks - world.specialActionRemaining[i]!;
+        const committed = world.specialActionImpactPending[i]! >= 2;
+
+        if (!committed) {
+          const targetVisible =
+            target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
+          const dx = target >= 0 ? world.posX[target]! - world.posX[i]! : 0;
+          const dz = target >= 0 ? world.posZ[target]! - world.posZ[i]! : 0;
+          const reach =
+            targetStats === null ? 0 : centerDistanceForEdgeRange(special.range, stats, targetStats);
+          if (
+            targetStats === null ||
+            world.dying[target] === 1 ||
+            world.hp[target] === 0 ||
+            !targetVisible ||
+            !isValidSpecialTarget(special, targetStats, world.unitConditions[target]!) ||
+            dx * dx + dz * dz > reach * reach
+          ) {
+            clearSpecialAttack(world, i);
+            world.attackCooldown[i] = 0;
+            continue;
+          }
+          setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
+        }
+
+        const phase = advancePickupThrowSpecialAttack(world, i, special);
+        if (phase === "pickup") {
+          // KillsTargetAfterPickupAction commits terminal ownership here. The
+          // combined Cyclops mesh presents both units for the rest of the action.
+          clearUnitTask(world, target);
+          cancelPendingProjectilesBySource(world.projectiles, unitIdAt(world, target));
+          world.hp[target] = 0;
+          world.containedBy[target] = unitIdAt(world, i);
+          world.terminalThrowSource[target] = unitIdAt(world, i);
+          world.moving[target] = 0;
+          world.selected[target] = 0;
+        } else if (phase === "throw") {
+          if (target < 0 || world.terminalThrowSource[target] !== unitIdAt(world, i)) {
+            throw new RangeError("Committed pickup target disappeared before the Throw tag.");
+          }
+
+          resolveAreaDamageAt(
+            world,
+            world.owner[i]!,
+            world.posX[i]!,
+            world.posZ[i]!,
+            special,
+            UNIT_TYPES,
+            NEUTRAL_OWNER,
+            (state, hitTarget, damage) => dealDamage(state, hitTarget, damage, i),
+            i,
+          );
+        } else if (elapsed > special.throwDelayTicks && phase === "held") {
+          throw new RangeError("Pickup/throw action remained held past its authored Throw tag.");
+        } else if (phase === "complete") {
+          if (target < 0 || world.terminalThrowSource[target] !== unitIdAt(world, i)) {
+            throw new RangeError("Committed pickup target disappeared before action completion.");
+          }
+          world.terminalThrowSource[target] = NO_TARGET;
+          world.containedBy[target] = NO_TARGET;
+          world.posX[target] = world.posX[i]!;
+          world.posZ[target] = world.posZ[i]!;
+          killUnit(world, target, true);
+        }
+        continue;
       } else if (world.specialActionImpactPending[i] === 1) {
         const target = resolveId(world, world.specialActionTarget[i]!);
         const targetStats = target >= 0 ? UNIT_TYPES[world.unitType[target]!]! : null;
@@ -1521,14 +1880,18 @@ export function tickWorld(world: World): void {
         const dz = target >= 0 ? world.posZ[target]! - world.posZ[i]! : 0;
         const reach =
           targetStats === null ? 0 : centerDistanceForEdgeRange(special.range, stats, targetStats);
+        const jumpCommitted =
+          special.kind === "charged-jump" &&
+          special.actionTicks - world.specialActionRemaining[i]! >= special.takeoffTicks;
 
         if (
-          targetStats === null ||
-          world.dying[target] === 1 ||
-          world.hp[target] === 0 ||
-          !targetVisible ||
-          !isValidSpecialTarget(special, targetStats) ||
-          dx * dx + dz * dz > reach * reach
+          !jumpCommitted &&
+          (targetStats === null ||
+            world.dying[target] === 1 ||
+            world.hp[target] === 0 ||
+            !targetVisible ||
+            !isValidSpecialTarget(special, targetStats, world.unitConditions[target]!) ||
+            dx * dx + dz * dz > reach * reach)
         ) {
           // Classic cancels a charged melee wind-up when its target escapes.
           // The charge is consumed only on the authored impact tag, so the unit
@@ -1536,12 +1899,17 @@ export function tickWorld(world: World): void {
           clearSpecialAttack(world, i);
           world.attackCooldown[i] = 0;
         } else {
-          setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
+          if (!jumpCommitted && target >= 0) {
+            setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
+          }
           const phase = advanceSpecialAttack(world, i, special);
+          if (special.kind === "charged-jump") {
+            updateJumpSpecialPosition(world, i, special);
+          }
           if (phase === "impact") {
             switch (special.kind) {
               case "charged-melee": {
-                dealDamage(world, target, resolveDamage(special, targetStats));
+                dealDamage(world, target, resolveDamage(special, targetStats!), i);
                 if (
                   special.targetReaction !== undefined &&
                   world.dying[target] === 0 &&
@@ -1562,6 +1930,79 @@ export function tickWorld(world: World): void {
                 resolveChargedAreaPulse(world, i, special, UNIT_TYPES, NEUTRAL_OWNER, dealDamage);
                 break;
               }
+              case "charged-area-poison": {
+                installAreaPoison(
+                  world,
+                  world.poisonEffects,
+                  i,
+                  special,
+                  UNIT_TYPES,
+                  NEUTRAL_OWNER,
+                );
+                break;
+              }
+              case "charged-cone-throw": {
+                resolveChargedConeThrow(
+                  world,
+                  i,
+                  special,
+                  UNIT_TYPES,
+                  NEUTRAL_OWNER,
+                  (state, hitTarget, damage) => dealDamage(state, hitTarget, damage, i),
+                  (hitTarget) => {
+                    hasActiveTargetReactions =
+                      installTargetReaction(
+                        world,
+                        hitTarget,
+                        world.posX[i]!,
+                        world.posZ[i]!,
+                        special.targetReaction,
+                        movementDomainForType(world.unitType[hitTarget]!),
+                      ) || hasActiveTargetReactions;
+                  },
+                );
+                break;
+              }
+              case "charged-terminal": {
+                switch (special.effect) {
+                  case "petrify-kill": {
+                    world.unitConditions[target] =
+                      world.unitConditions[target]! | UNIT_CONDITION_STONE;
+                    dealDamage(world, target, world.hp[target]!, i);
+                    break;
+                  }
+                }
+                break;
+              }
+              case "charged-convert": {
+                const replacementX = world.posX[target]!;
+                const replacementZ = world.posZ[target]!;
+                dealDamage(world, target, world.hp[target]!, i);
+                terminalReplacementSpawns.push({
+                  x: replacementX,
+                  z: replacementZ,
+                  owner: world.owner[i]!,
+                  type: special.spawnUnitType,
+                });
+                break;
+              }
+              case "charged-projectile": {
+                beginSpecialProjectileAttack(world, i, target, special);
+                break;
+              }
+              case "charged-jump": {
+                if (special.delivery === "area") {
+                  resolveChargedJump(world, i, special, UNIT_TYPES, NEUTRAL_OWNER, dealDamage);
+                } else if (
+                  target >= 0 &&
+                  targetStats !== null &&
+                  world.dying[target] === 0 &&
+                  world.hp[target]! > 0
+                ) {
+                  dealDamage(world, target, resolveDamage(special, targetStats), i);
+                }
+                break;
+              }
             }
           }
           continue;
@@ -1569,13 +2010,24 @@ export function tickWorld(world: World): void {
       } else {
         // Recovery no longer depends on the target remaining alive or visible.
         advanceSpecialAttack(world, i, special);
+        if (special.kind === "charged-jump") {
+          updateJumpSpecialPosition(world, i, special);
+        }
         continue;
       }
     }
 
     if (world.attackTarget[i] !== NO_TARGET) {
       const target = resolveId(world, world.attackTarget[i]!);
-      const targetVisible = target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
+      const targetVisible =
+        target >= 0 &&
+        world.dying[target] === 0 &&
+        world.hp[target]! > 0 &&
+        world.containedBy[target] === NO_TARGET &&
+        (attack.kind !== "melee" ||
+          attack.canTargetAir === true ||
+          (UNIT_TYPES[world.unitType[target]!]!.classes & UNIT_CLASS_AIR) === 0) &&
+        isEntityVisibleTo(world, world.owner[i]!, target);
 
       if (!targetVisible) {
         const lastDx = world.moveTargetX[i]! - world.posX[i]!;
@@ -1598,11 +2050,35 @@ export function tickWorld(world: World): void {
         const dz = targetZ - world.posZ[i]!;
         const distSq = dx * dx + dz * dz;
         const targetStats = UNIT_TYPES[world.unitType[target]!]!;
+        const authoredAttackRange = effectiveAttackRange(
+          stats,
+          attack,
+          world.playerAge[world.owner[i]!]!,
+        );
         const surfaceAttackRange =
           attack.kind === "melee"
-            ? centerDistanceForEdgeRange(attack.range, stats, targetStats)
-            : attack.range + targetStats.bodyRadius;
+            ? centerDistanceForEdgeRange(authoredAttackRange, stats, targetStats)
+            : authoredAttackRange + targetStats.bodyRadius;
         const attackRangeSq = surfaceAttackRange * surfaceAttackRange;
+        const projectileMinimumRange =
+          attack.kind === "projectile" ? (attack.minimumRange ?? 0) + targetStats.bodyRadius : 0;
+        const insideProjectileMinimumRange =
+          projectileMinimumRange > 0 && distSq < projectileMinimumRange * projectileMinimumRange;
+        const canBeginSpecial =
+          special !== undefined &&
+          world.attackCooldown[i] === 0 &&
+          world.specialRecharge[i] === 0 &&
+          isValidSpecialTarget(special, targetStats, world.unitConditions[target]!);
+        const specialAttackRange =
+          special === undefined ? 0 : centerDistanceForEdgeRange(special.range, stats, targetStats);
+        const specialMinimumRange =
+          special?.kind === "charged-jump"
+            ? centerDistanceForEdgeRange(special.minimumRange, stats, targetStats)
+            : 0;
+        const inSpecialRange =
+          canBeginSpecial &&
+          distSq <= specialAttackRange * specialAttackRange &&
+          distSq >= specialMinimumRange * specialMinimumRange;
 
         // Always refresh the memory while visible, including while already in strike range.
         world.moveTargetX[i] = targetX;
@@ -1610,27 +2086,73 @@ export function tickWorld(world: World): void {
 
         // Melee range is edge-to-edge across both obstruction bodies. Large footprints are
         // unwalkable, so center-range melee would stop outside valid strike distance and orbit.
-        if (distSq <= attackRangeSq) {
+        if (distSq <= attackRangeSq || inSpecialRange) {
+          if (insideProjectileMinimumRange && !inSpecialRange) {
+            // Ranged siege backs out of its source-authored dead zone. The
+            // retreat point is target-relative, so a moving pursuer refreshes
+            // the goal every visible tick without introducing path state.
+            let retreatX = world.posX[i]! - targetX;
+            let retreatZ = world.posZ[i]! - targetZ;
+            let retreatLength = Math.sqrt(retreatX * retreatX + retreatZ * retreatZ);
+            if (retreatLength < 1e-9) {
+              retreatX = -world.facingX[i]!;
+              retreatZ = -world.facingZ[i]!;
+              retreatLength = Math.sqrt(retreatX * retreatX + retreatZ * retreatZ);
+            }
+            const retreatDistance = projectileMinimumRange + 1e-6;
+            world.moveTargetX[i] = targetX + (retreatX / retreatLength) * retreatDistance;
+            world.moveTargetZ[i] = targetZ + (retreatZ / retreatLength) * retreatDistance;
+            world.moving[i] = 1;
+            world.unitField[i] = null;
+            continue;
+          }
+
           world.moving[i] = 0;
           world.unitField[i] = null;
           setFacingToward(world, i, targetX, targetZ);
 
           if (world.attackCooldown[i] === 0) {
-            if (
-              special !== undefined &&
-              world.specialRecharge[i] === 0 &&
-              isValidSpecialTarget(special, targetStats)
-            ) {
-              beginSpecialAttack(world, i, unitIdAt(world, target), special);
+            if (special !== undefined && inSpecialRange) {
+              if (special.kind === "charged-jump") {
+                beginJumpSpecialAttack(
+                  world,
+                  i,
+                  unitIdAt(world, target),
+                  special,
+                  world.posX[i]!,
+                  world.posZ[i]!,
+                );
+              } else if (special.kind === "charged-pickup-throw") {
+                beginPickupThrowSpecialAttack(
+                  world,
+                  i,
+                  unitIdAt(world, target),
+                  special,
+                  targetX,
+                  targetZ,
+                );
+              } else {
+                beginSpecialAttack(world, i, unitIdAt(world, target), special);
+              }
               world.attackCooldown[i] = special.actionTicks;
-            } else if (attack.kind === "melee") {
+            } else if (distSq <= attackRangeSq && attack.kind === "melee") {
               if (attack.cycleVariants === undefined) {
-                dealDamage(world, target, resolveMeleeDamage(attack, targetStats));
+                resolvePrimaryMeleeImpact(world, i, target, attack);
                 world.attackCooldown[i] = attack.cooldownTicks;
+              } else if (attack.killScaling !== undefined) {
+                const variant = Math.min(
+                  attack.cycleVariants.length - 1,
+                  Math.floor(world.combatExperienceKills[i]! / attack.killScaling.killsPerVariant),
+                );
+                beginAuthoredMeleeAttackCycle(world, i, attack, variant);
               } else {
                 beginMeleeAttackCycle(world, i, attack, nextFloat(world.rng));
               }
-            } else {
+            } else if (distSq <= attackRangeSq && attack.kind === "beam") {
+              world.attackCooldown[i] = attack.cooldownTicks;
+              world.beamActionActive[i] = 1;
+              world.beamActionImpactPending[i] = 1;
+            } else if (distSq <= attackRangeSq) {
               beginProjectileAttack(world, i, target, UNIT_TYPES);
             }
           }
@@ -1666,7 +2188,8 @@ export function tickWorld(world: World): void {
     if (
       world.attackTarget[i] === NO_TARGET &&
       world.moving[i] === 0 &&
-      world.mode[i] === MODE_IDLE
+      world.mode[i] === MODE_IDLE &&
+      attack.autoAcquire !== false
     ) {
       // Villagers in economy modes keep working under fire; defense is the player's job in M6.
       // Classic RTS trick: 4x cheaper scans for a worst-case 200 ms reaction,
@@ -1687,6 +2210,8 @@ export function tickWorld(world: World): void {
       const maxCellZ = cellZ < GRID_DIM - 1 - searchRadius ? cellZ + searchRadius : GRID_DIM - 1;
       let bestIndex = -1;
       let bestDistSq = aggroSearchRange * aggroSearchRange;
+      let bestBuildingIndex = -1;
+      let bestBuildingDistSq = bestDistSq;
 
       for (let neighborCellZ = minCellZ; neighborCellZ <= maxCellZ; neighborCellZ += 1) {
         for (let neighborCellX = minCellX; neighborCellX <= maxCellX; neighborCellX += 1) {
@@ -1717,6 +2242,25 @@ export function tickWorld(world: World): void {
               continue;
             }
 
+            const candidateStats = UNIT_TYPES[world.unitType[j]!]!;
+            if (
+              attack.kind === "melee" &&
+              attack.canTargetAir !== true &&
+              (candidateStats.classes & UNIT_CLASS_AIR) !== 0
+            ) {
+              continue;
+            }
+            if (
+              attack.autoAcquireBuildings === true &&
+              (candidateStats.classes & UNIT_CLASS_BUILDING) !== 0 &&
+              (bestBuildingIndex === -1 ||
+                distSq < bestBuildingDistSq ||
+                (distSq === bestBuildingDistSq && j < bestBuildingIndex))
+            ) {
+              bestBuildingIndex = j;
+              bestBuildingDistSq = distSq;
+            }
+
             // Grid buckets are in ascending unit order, so first-found-at-min-distance
             // is deterministic; equality keeps the lower dense index tiebreak across cells.
             if (
@@ -1731,8 +2275,9 @@ export function tickWorld(world: World): void {
         }
       }
 
-      if (bestIndex >= 0) {
-        world.attackTarget[i] = unitIdAt(world, bestIndex);
+      const acquiredIndex = bestBuildingIndex >= 0 ? bestBuildingIndex : bestIndex;
+      if (acquiredIndex >= 0) {
+        world.attackTarget[i] = unitIdAt(world, acquiredIndex);
       }
     }
   }
@@ -1744,6 +2289,7 @@ export function tickWorld(world: World): void {
   world.prayingVillagers.fill(0);
 
   for (let i = 0; i < world.count; i += 1) {
+    if (world.containedBy[i] !== NO_TARGET) continue;
     if (
       hasActiveTargetReactions &&
       targetReactionCapabilitiesAt(world.targetReactions, i).blocksOrderExecution
@@ -1759,27 +2305,85 @@ export function tickWorld(world: World): void {
       continue;
     }
 
+    if (tickGarrisonTask(world, i)) {
+      continue;
+    }
+
+    if (tickTradeTask(world, i)) {
+      continue;
+    }
+
+    if (tickSupportTask(world, i)) {
+      continue;
+    }
+
     const workerStats = UNIT_TYPES[world.unitType[i]!]!;
+
+    if (world.mode[i] === MODE_EATING_RESOURCE) {
+      const eat = workerStats.resourceEat;
+      const target = resolveId(world, world.taskTarget[i]!);
+      const targetStats = target >= 0 ? UNIT_TYPES[world.unitType[target]!]! : null;
+      if (
+        eat === undefined ||
+        targetStats === null ||
+        world.dying[target] === 1 ||
+        world.hp[target] === 0 ||
+        !eat.resourceTypes.includes(targetStats.resource) ||
+        world.hp[i]! >= effectiveMaxHp(workerStats, world.playerAge[world.owner[i]!]!)
+      ) {
+        clearUnitTask(world, i);
+        continue;
+      }
+
+      const dx = world.posX[target]! - world.posX[i]!;
+      const dz = world.posZ[target]! - world.posZ[i]!;
+      const reach = eat.range + targetStats.bodyRadius;
+      if (dx * dx + dz * dz <= reach * reach) {
+        world.moving[i] = 0;
+        world.unitField[i] = null;
+        setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
+        const workerMaxHp = effectiveMaxHp(workerStats, world.playerAge[world.owner[i]!]!);
+        const maxForMissingHealth =
+          ((workerMaxHp - world.hp[i]!) * eat.consumePerSecond) / eat.healPerSecond;
+        const consumed = Math.min(
+          eat.consumePerSecond * TICK_S,
+          world.hp[target]!,
+          maxForMissingHealth,
+        );
+        world.hp[target] = world.hp[target]! - consumed;
+        world.hp[i] = Math.min(
+          workerMaxHp,
+          world.hp[i]! + consumed * (eat.healPerSecond / eat.consumePerSecond),
+        );
+        if (world.hp[target] === 0) killUnit(world, target);
+      } else {
+        const targetX = world.posX[target]!;
+        const targetZ = world.posZ[target]!;
+        const targetGoalCell = cellOf(targetX, targetZ);
+        if (world.unitField[i]?.goalCell !== targetGoalCell) {
+          assignFieldGoal(world, i, targetX, targetZ);
+        }
+      }
+      continue;
+    }
 
     if (
       world.dying[i] === 1 ||
       world.hp[i] === 0 ||
-      (workerStats.classes & UNIT_CLASS_WORKER) === 0
+      ((workerStats.classes & UNIT_CLASS_WORKER) === 0 && workerStats.gather === undefined)
     ) {
       continue;
     }
     const workerReach = workerStats.workRange ?? 0;
 
     if (world.mode[i] === MODE_GATHERING) {
-      if (world.carried[i]! >= CARRY_CAPACITY) {
+      if (gatherCargo(world, i) >= gatherCapacity(world, i)) {
         let bestDropsite = -1;
         let bestDropsiteDistSq = Number.POSITIVE_INFINITY;
 
         for (let j = 0; j < world.count; j += 1) {
-          const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
-
           if (
-            !dropsiteStats.isDropsite ||
+            !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
             world.owner[j] !== world.owner[i] ||
             world.dying[j] === 1 ||
             world.hp[j] === 0 ||
@@ -1835,7 +2439,7 @@ export function tickWorld(world: World): void {
       ) {
         const searchX = world.posX[i]!;
         const searchZ = world.posZ[i]!;
-        const requiredResource = world.carried[i]! > 0 ? world.carriedResource[i]! : -1;
+        const requiredResource = gatherCargo(world, i) > 0 ? world.carriedResource[i]! : -1;
         const searchRadius = Math.ceil(NODE_RETARGET_RADIUS / GRID_CELL);
         const cellX = gridCoordinateForPosition(searchX);
         const cellZ = gridCoordinateForPosition(searchZ);
@@ -1894,15 +2498,13 @@ export function tickWorld(world: World): void {
           world.gatherPosZ[i] = world.posZ[bestNode]!;
           target = bestNode;
         } else {
-          if (world.carried[i]! > 0) {
+          if (gatherCargo(world, i) > 0) {
             let bestDropsite = -1;
             let bestDropsiteDistSq = Number.POSITIVE_INFINITY;
 
             for (let j = 0; j < world.count; j += 1) {
-              const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
-
               if (
-                !dropsiteStats.isDropsite ||
+                !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
                 world.owner[j] !== world.owner[i] ||
                 world.dying[j] === 1 ||
                 world.hp[j] === 0 ||
@@ -1982,18 +2584,25 @@ export function tickWorld(world: World): void {
         setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
 
         if (world.attackCooldown[i] === 0) {
-          const take = Math.min(
-            GATHER_PER_STRIKE,
-            world.hp[target]!,
-            CARRY_CAPACITY - world.carried[i]!,
-          );
+          const cargo = gatherCargo(world, i);
+          const capacity = gatherCapacity(world, i);
+          const gatherPerStrike =
+            workerStats.gather === undefined
+              ? GATHER_PER_STRIKE
+              : workerStats.gather.ratePerSecond * GATHER_COOLDOWN_TICKS * TICK_S;
+          const take = Math.min(gatherPerStrike, world.hp[target]!, capacity - cargo);
 
           world.hp[target] = world.hp[target]! - take;
           if (world.hp[target] === 0) {
             killUnit(world, target);
           }
 
-          world.carried[i] = world.carried[i]! + take;
+          if (workerStats.gather === undefined) {
+            world.carried[i] = world.carried[i]! + take;
+          } else {
+            world.resourceCargo[i] = cargo + take;
+            world.carried[i] = Math.floor(world.resourceCargo[i]!);
+          }
           world.carriedResource[i] = nodeStats.resource;
           world.gatherPosX[i] = world.posX[target]!;
           world.gatherPosZ[i] = world.posZ[target]!;
@@ -2020,7 +2629,7 @@ export function tickWorld(world: World): void {
         const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
 
         if (
-          !dropsiteStats.isDropsite ||
+          !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
           world.owner[j] !== world.owner[i] ||
           world.dying[j] === 1 ||
           world.hp[j] === 0 ||
@@ -2043,10 +2652,19 @@ export function tickWorld(world: World): void {
       if (depositDropsite >= 0) {
         const owner = world.owner[i]!;
         const resource = world.carriedResource[i]!;
+        const deposited = world.carried[i]!;
+        const empoweredYield =
+          empowermentAt(world, depositDropsite)?.gatherYieldMultiplier ?? 1;
+        const credited = Math.floor(deposited * empoweredYield);
 
         world.stockpiles[owner * RESOURCE_COUNT + resource] =
-          world.stockpiles[owner * RESOURCE_COUNT + resource]! + world.carried[i]!;
-        world.carried[i] = 0;
+          world.stockpiles[owner * RESOURCE_COUNT + resource]! + credited;
+        if (workerStats.gather === undefined) {
+          world.carried[i] = 0;
+        } else {
+          world.resourceCargo[i] = world.resourceCargo[i]! - deposited;
+          world.carried[i] = Math.floor(world.resourceCargo[i]!);
+        }
 
         const target = resolveId(world, world.taskTarget[i]!);
 
@@ -2084,10 +2702,8 @@ export function tickWorld(world: World): void {
         let bestDropsiteDistSq = Number.POSITIVE_INFINITY;
 
         for (let j = 0; j < world.count; j += 1) {
-          const dropsiteStats = UNIT_TYPES[world.unitType[j]!]!;
-
           if (
-            !dropsiteStats.isDropsite ||
+            !canUseResourceDropsite(world.unitType[i]!, world.unitType[j]!) ||
             world.owner[j] !== world.owner[i] ||
             world.dying[j] === 1 ||
             world.hp[j] === 0 ||
@@ -2147,7 +2763,7 @@ export function tickWorld(world: World): void {
       const dx = world.posX[target]! - world.posX[i]!;
       const dz = world.posZ[target]! - world.posZ[i]!;
       const distSq = dx * dx + dz * dz;
-      const reach = workerReach + siteStats.bodyRadius;
+      const reach = (workerStats.construction?.range ?? workerReach) + siteStats.bodyRadius;
 
       if (distSq <= reach * reach) {
         world.moving[i] = 0;
@@ -2155,7 +2771,15 @@ export function tickWorld(world: World): void {
         setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
 
         if (world.attackCooldown[i] === 0) {
-          const progress = world.buildProgress[target]! + BUILD_PER_STRIKE;
+          const empoweredBuildWork = empowermentAt(world, target)?.buildWorkMultiplier ?? 1;
+          const progress =
+            world.buildProgress[target]! +
+            BUILD_PER_STRIKE *
+              (workerStats.construction === undefined
+                ? 1
+                : workerStats.construction.ratePerSecond /
+                  workerStats.construction.baselineRatePerSecond) *
+              empoweredBuildWork;
 
           world.buildProgress[target] =
             progress > siteStats.buildTicks ? siteStats.buildTicks : progress;
@@ -2191,24 +2815,30 @@ export function tickWorld(world: World): void {
 
     // A building destroyed mid-train loses its entire queue with no refund.
     if (world.trainRemaining[i] === 0 || world.dying[i] === 1 || world.hp[i] === 0) {
+      world.empowerTrainProgress[i] = 0;
       continue;
     }
-    world.trainRemaining[i] = world.trainRemaining[i]! - 1;
+    const trainWork = empowermentAt(world, i)?.trainWorkMultiplier ?? 1;
+    world.empowerTrainProgress[i] = world.empowerTrainProgress[i]! + trainWork;
+    const completedTrainWork = Math.floor(world.empowerTrainProgress[i]!);
+    world.empowerTrainProgress[i] = world.empowerTrainProgress[i]! - completedTrainWork;
+    world.trainRemaining[i] = Math.max(0, world.trainRemaining[i]! - completedTrainWork);
     if (world.trainRemaining[i] !== 0) continue;
     // Classic buildings have a front-door exit on their -Z side. Their visible meshes overhang
     // the smaller logical footprints, so each producer owns an explicit model-clear offset.
     const producerStats = UNIT_TYPES[world.unitType[i]!]!;
-    const cell = walkableCellNear(
-      world,
-      world.posX[i]!,
-      world.posZ[i]! - producerStats.trainExitOffset,
-    );
-
     const completedType = activeTrainType(world, i);
     if (completedType === NO_UNIT_TYPE) {
       world.trainRemaining[i] = 0;
       continue;
     }
+
+    const cell = navigableCellNear(
+      world,
+      world.posX[i]!,
+      world.posZ[i]! - producerStats.trainExitOffset,
+      movementDomainForType(completedType),
+    );
 
     spawnUnit(
       world,
@@ -2220,6 +2850,9 @@ export function tickWorld(world: World): void {
       completedType,
     );
     finishActiveProduction(world, i, (unitType) => UNIT_TYPES[unitType]!.buildTicks);
+    if (producerStats.trainingSite?.consumeOnCompletion === true) {
+      killUnit(world, i, false);
+    }
   }
 
   // 9. Compute pushes from start-of-tick positions only; forces never read partially-updated state.
@@ -2227,14 +2860,23 @@ export function tickWorld(world: World): void {
     const x = world.posX[i]!;
     const z = world.posZ[i]!;
     const stats = UNIT_TYPES[world.unitType[i]!]!;
-    const step = stats.movementSpeed * TICK_S;
+    const snareRemaining = world.meleeSnareRemaining[i]!;
+    const snareMultiplier =
+      snareRemaining === 0 ? 1 : 1 - MELEE_SNARE_STRENGTH * (snareRemaining / MELEE_SNARE_TICKS);
+    const garrisonSpeedMultiplier =
+      stats.garrison === undefined
+        ? 1
+        : 1 +
+          countGarrisonedUnits(world, i) * (stats.garrison.speedMultiplierPerOccupant ?? 0);
+    const step = stats.movementSpeed * garrisonSpeedMultiplier * snareMultiplier * TICK_S;
     const wasMoving = world.moving[i] === 1;
     let pushX = 0;
     let pushZ = 0;
 
     if (
-      hasActiveTargetReactions &&
-      targetReactionCapabilitiesAt(world.targetReactions, i).drivesPosition
+      world.containedBy[i] !== NO_TARGET ||
+      (hasActiveTargetReactions &&
+        targetReactionCapabilitiesAt(world.targetReactions, i).drivesPosition)
     ) {
       // The target-reaction system already authored this unit's position for
       // the tick. Ground movement and separation cannot add a second motion.
@@ -2337,6 +2979,15 @@ export function tickWorld(world: World): void {
             continue;
           }
 
+          const statsJ = UNIT_TYPES[world.unitType[j]!]!;
+          if (
+            stats.collidesWithUnits === false ||
+            statsJ.collidesWithUnits === false ||
+            ((stats.classes & UNIT_CLASS_AIR) !== 0) !== ((statsJ.classes & UNIT_CLASS_AIR) !== 0)
+          ) {
+            continue;
+          }
+
           // Reaction policy owns whether this neighbor participates on the ground.
           if (
             hasActiveTargetReactions &&
@@ -2400,11 +3051,38 @@ export function tickWorld(world: World): void {
   // one candidate snapshot, then commit every mobile position together.
   integrateGroundMotion(world, hasActiveTargetReactions);
 
-  // Contained relic positions follow their carrier/Temple only after movement
-  // has committed, keeping their authoritative coordinates deterministic.
-  syncContainedRelics(world);
+  // Recovery is measured in completed simulation ticks. A hit in the combat
+  // pass affects this tick's movement at the full 35% penalty, then eases by
+  // one fixed step after positions commit.
+  for (let i = 0; i < world.count; i += 1) {
+    if (world.meleeSnareRemaining[i]! > 0) {
+      world.meleeSnareRemaining[i] = world.meleeSnareRemaining[i]! - 1;
+    }
+  }
+
+  // Every contained unit follows its outermost carrier only after movement has
+  // committed, keeping nested transport coordinates deterministic.
+  syncContainedUnits(world);
+
+  // Temporary units receive their full authored number of active ticks. Units
+  // produced during this tick are appended after producedThrough and begin
+  // aging on the next tick.
+  for (let i = 0; i < producedThrough; i += 1) {
+    const remaining = world.lifespanRemaining[i]!;
+    if (remaining === 0 || world.dying[i] === 1) continue;
+    world.lifespanRemaining[i] = remaining - 1;
+    if (remaining === 1) killUnit(world, i);
+  }
+
+  // Terminal replacements exist before the victim's deferred death effects,
+  // matching Classic cases where the newborn can be struck by that death.
+  for (const replacement of terminalReplacementSpawns) {
+    if (world.count >= MAX_UNITS) break;
+    spawnUnit(world, replacement.x, replacement.z, 0, 0, replacement.owner, replacement.type);
+  }
 
   applyDeaths(world);
+  tickPharaohLifecycle(world);
 
   // Annihilation, in-sim, hashed: the UI reads it, never computes it.
   if (world.contested && world.winner === -1) {
@@ -2441,24 +3119,161 @@ export function tickWorld(world: World): void {
   world.tick += 1;
 }
 
-function dealDamage(world: World, index: number, damage: number): void {
+function dealDamage(world: World, index: number, damage: number, sourceIndex = -1): void {
   // THE strike seam: "decided to hit" is upstream, "damage lands" is here.
   // Deterministic projectile flight will insert between the two when ranged units arrive.
   world.hp[index] = Math.max(0, world.hp[index]! - damage);
 
   if (world.hp[index] === 0) {
-    killUnit(world, index);
+    if (sourceIndex >= 0 && sourceIndex < world.count) {
+      const attack = UNIT_TYPES[world.unitType[sourceIndex]!]!.attack;
+      const scaling = attack?.kind === "melee" ? attack.killScaling : undefined;
+      if (scaling !== undefined) {
+        world.combatExperienceKills[sourceIndex] = Math.min(
+          scaling.maxKills,
+          world.combatExperienceKills[sourceIndex]! + 1,
+        );
+      }
+    }
+    killUnit(world, index, true);
   }
 }
 
-function applyDeaths(world: World): void {
-  const deathCount = world.pendingDeathCount;
+function applyMeleeSnare(world: World, index: number): void {
+  if (world.dying[index] === 0 && world.hp[index]! > 0) {
+    world.meleeSnareRemaining[index] = MELEE_SNARE_TICKS;
+  }
+}
 
-  if (deathCount === 0) {
+function resolvePrimaryMeleeImpact(
+  world: World,
+  attacker: number,
+  target: number,
+  attack: MeleeAttack,
+  cycle?: MeleeAttackCycle,
+): void {
+  const experienceMultiplier = killScaledMeleeDamageMultiplier(
+    attack,
+    world.combatExperienceKills[attacker]!,
+  );
+  const ageMultiplier = effectiveAttackDamageMultiplier(
+    UNIT_TYPES[world.unitType[attacker]!]!,
+    world.playerAge[world.owner[attacker]!]!,
+  );
+
+  if (attack.impactArea !== undefined) {
+    const cycleMultiplier = cycle === undefined ? 1 : cycle.actionTicks / attack.cooldownTicks;
+    resolveMeleeImpactAreaAt(
+      world,
+      world.owner[attacker]!,
+      world.posX[target]!,
+      world.posZ[target]!,
+      attack,
+      experienceMultiplier * ageMultiplier * cycleMultiplier,
+      UNIT_TYPES,
+      NEUTRAL_OWNER,
+      (state, hitTarget, damage) => {
+        applyMeleeSnare(state, hitTarget);
+        dealDamage(state, hitTarget, damage, attacker);
+      },
+      attacker,
+    );
     return;
   }
 
+  applyMeleeSnare(world, target);
+  const damage =
+    cycle === undefined
+      ? resolveMeleeDamage(attack, UNIT_TYPES[world.unitType[target]!]!)
+      : resolveMeleeCycleDamage(attack, cycle, UNIT_TYPES[world.unitType[target]!]!);
+  dealDamage(world, target, damage * experienceMultiplier * ageMultiplier, attacker);
+}
+
+function applyDeaths(world: World): void {
+  if (world.pendingDeathCount === 0) {
+    return;
+  }
+
+  // Death-area attacks may kill more death-area units. Walk the lethal-event
+  // queue until it is exhausted so every unit bursts exactly once and chained
+  // deaths retain deterministic lethal-event order.
+  for (let deathOffset = 0; deathOffset < world.pendingDeathCount; deathOffset += 1) {
+    const index = world.pendingDeaths[deathOffset]!;
+    const attack = UNIT_TYPES[world.unitType[index]!]!.deathAreaAttack;
+    if (attack !== undefined) {
+      resolveAreaDamageAt(
+        world,
+        world.owner[index]!,
+        world.posX[index]!,
+        world.posZ[index]!,
+        attack,
+        UNIT_TYPES,
+        NEUTRAL_OWNER,
+        dealDamage,
+        index,
+      );
+    }
+  }
+
+  const deathCount = world.pendingDeathCount;
+
   let restoredFootprint = false;
+  const deathSpawns: Array<{
+    readonly owner: number;
+    readonly x: number;
+    readonly z: number;
+    readonly unitType: number;
+    readonly count: number;
+    readonly liveLimit: number;
+  }> = [];
+  const deathReplacements: Array<{
+    readonly owner: number;
+    readonly x: number;
+    readonly z: number;
+    readonly unitType: number;
+  }> = [];
+
+  // Preserve lethal-event order independently from the descending dense-index
+  // removal order used below.
+  for (let deathOffset = 0; deathOffset < deathCount; deathOffset += 1) {
+    const index = world.pendingDeaths[deathOffset]!;
+    const owner = world.owner[index]!;
+    const stats = UNIT_TYPES[world.unitType[index]!]!;
+    if (
+      owner !== NEUTRAL_OWNER &&
+      (world.unitType[index] === TYPE_PHARAOH || world.unitType[index] === TYPE_SON_OF_OSIRIS)
+    ) {
+      world.pharaohRespawnRemaining[owner] = PHARAOH_RESPAWN_TICKS;
+    }
+    const rule = stats.deathSpawn;
+    if (
+      world.dyingFromDamage[index] === 1 &&
+      rule !== undefined &&
+      owner !== NEUTRAL_OWNER &&
+      world.playerMajorGod[owner] === rule.requiredGod
+    ) {
+      deathSpawns.push({
+        owner,
+        x: world.posX[index]!,
+        z: world.posZ[index]!,
+        unitType: rule.unitType,
+        count: rule.count,
+        liveLimit: rule.liveLimit,
+      });
+    }
+
+    const replacement = stats.deathReplacement;
+    if (replacement !== undefined && replacement.trigger === "death") {
+      const x = world.posX[index]!;
+      const z = world.posZ[index]!;
+      const placementAllowed =
+        !replacement.requireNavigableOrigin ||
+        navigationGridForDomain(world, replacement.placementDomain)[cellOf(x, z)] === 1;
+      if (placementAllowed) {
+        deathReplacements.push({ owner, x, z, unitType: replacement.unitType });
+      }
+    }
+  }
 
   // Fixed order for determinism. Removing high indices first means a swap can
   // never move a unit that is itself pending removal.
@@ -2474,6 +3289,9 @@ function applyDeaths(world: World): void {
     // Heroes drop carried relics and destroyed Temples release deposited relics
     // before the container handle is invalidated or a dense slot is swapped.
     releaseContainedRelics(world, i);
+    if (UNIT_TYPES[world.unitType[i]!]!.garrison?.ejectOnDeath === true) {
+      releaseGarrisonedUnits(world, i);
+    }
 
     world.deathEventIds[eventIndex] = unitIdAt(world, i);
     world.deathEventTypes[eventIndex] = world.unitType[i]!;
@@ -2482,6 +3300,9 @@ function applyDeaths(world: World): void {
     world.deathEventFacingX[eventIndex] = world.facingX[i]!;
     world.deathEventFacingZ[eventIndex] = world.facingZ[i]!;
     world.deathEventOwners[eventIndex] = world.owner[i]!;
+    world.deathEventCombatExperienceKills[eventIndex] = world.combatExperienceKills[i]!;
+    world.deathEventConditions[eventIndex] = world.unitConditions[i]!;
+    world.deathEventCarried[eventIndex] = world.carried[i]!;
     world.deathEventCount = eventIndex + 1;
 
     // Building-owned research is canceled before the producer's components disappear.
@@ -2495,7 +3316,10 @@ function applyDeaths(world: World): void {
       // Rubble does not obstruct: destroyed buildings unblock immediately.
       for (let z = tileZ; z < tileZ + footprint; z += 1) {
         for (let x = tileX; x < tileX + footprint; x += 1) {
-          world.walkable[z * MAP_TILES + x] = 1;
+          const cell = z * MAP_TILES + x;
+          world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
+          world.waterWalkable[cell] =
+            (world.terrainDomains[cell]! & TERRAIN_DOMAIN_WATER) !== 0 ? 1 : 0;
         }
       }
 
@@ -2524,6 +3348,10 @@ function applyDeaths(world: World): void {
       world.containedBy[i] = world.containedBy[last]!;
       world.hp[i] = world.hp[last]!;
       world.buildProgress[i] = world.buildProgress[last]!;
+      world.lifespanRemaining[i] = world.lifespanRemaining[last]!;
+      world.combatExperienceKills[i] = world.combatExperienceKills[last]!;
+      world.unitConditions[i] = world.unitConditions[last]!;
+      world.meleeSnareRemaining[i] = world.meleeSnareRemaining[last]!;
       copyProductionQueue(world, i, last);
       world.researchId[i] = world.researchId[last]!;
       world.researchChoice[i] = world.researchChoice[last]!;
@@ -2535,19 +3363,32 @@ function applyDeaths(world: World): void {
       world.attackAimShots[i] = world.attackAimShots[last]!;
       world.meleeActionVariant[i] = world.meleeActionVariant[last]!;
       world.meleeActionImpactPending[i] = world.meleeActionImpactPending[last]!;
+      world.beamActionImpactPending[i] = world.beamActionImpactPending[last]!;
+      world.beamActionActive[i] = world.beamActionActive[last]!;
       world.specialRecharge[i] = world.specialRecharge[last]!;
       world.specialActionRemaining[i] = world.specialActionRemaining[last]!;
       world.specialActionTarget[i] = world.specialActionTarget[last]!;
       world.specialActionImpactPending[i] = world.specialActionImpactPending[last]!;
+      world.specialActionStartX[i] = world.specialActionStartX[last]!;
+      world.specialActionStartZ[i] = world.specialActionStartZ[last]!;
+      world.supportActionRemaining[i] = world.supportActionRemaining[last]!;
+      world.terminalThrowSource[i] = world.terminalThrowSource[last]!;
       copyTargetReaction(world.targetReactions, i, last);
       world.mode[i] = world.mode[last]!;
       world.carried[i] = world.carried[last]!;
       world.carriedResource[i] = world.carriedResource[last]!;
+      world.resourceCargo[i] = world.resourceCargo[last]!;
       world.taskTarget[i] = world.taskTarget[last]!;
+      world.tradeMarket[i] = world.tradeMarket[last]!;
+      world.tradeTownCenter[i] = world.tradeTownCenter[last]!;
+      world.tradeCargo[i] = world.tradeCargo[last]!;
+      world.empowerTrainProgress[i] = world.empowerTrainProgress[last]!;
+      world.empowerResearchProgress[i] = world.empowerResearchProgress[last]!;
       world.gatherPosX[i] = world.gatherPosX[last]!;
       world.gatherPosZ[i] = world.gatherPosZ[last]!;
       world.selectable[i] = world.selectable[last]!;
       world.selected[i] = world.selected[last]!;
+      world.dyingFromDamage[i] = world.dyingFromDamage[last]!;
       world.unitField[i] = world.unitField[last] ?? null;
 
       const movedHandle = world.handleOf[last]!;
@@ -2557,11 +3398,25 @@ function applyDeaths(world: World): void {
     }
 
     world.unitField[last] = null;
+    world.lifespanRemaining[last] = 0;
+    world.combatExperienceKills[last] = 0;
+    world.unitConditions[last] = 0;
+    world.meleeSnareRemaining[last] = 0;
+    world.terminalThrowSource[last] = NO_TARGET;
+    world.tradeMarket[last] = NO_TARGET;
+    world.tradeTownCenter[last] = NO_TARGET;
+    world.tradeCargo[last] = 0;
+    world.supportActionRemaining[last] = 0;
+    world.empowerTrainProgress[last] = 0;
+    world.empowerResearchProgress[last] = 0;
+    world.resourceCargo[last] = 0;
     clearTargetReaction(world.targetReactions, last);
     clearProductionQueue(world, last);
     world.count -= 1;
     world.dying[i] = 0;
     world.dying[last] = 0;
+    world.dyingFromDamage[i] = 0;
+    world.dyingFromDamage[last] = 0;
   }
 
   world.pendingDeathCount = 0;
@@ -2569,6 +3424,77 @@ function applyDeaths(world: World): void {
   if (restoredFootprint) {
     // One invalidation per death batch, not per building.
     flushFlowFields(world);
+  }
+
+  for (const replacement of deathReplacements) {
+    if (world.count >= MAX_UNITS) break;
+    spawnUnit(world, replacement.x, replacement.z, 0, 0, replacement.owner, replacement.unitType);
+  }
+
+  for (const event of deathSpawns) {
+    let live = 0;
+    for (let index = 0; index < world.count; index += 1) {
+      if (world.owner[index] === event.owner && world.unitType[index] === event.unitType) live += 1;
+    }
+    const spawnCount = Math.max(
+      0,
+      Math.min(event.count, event.liveLimit - live, MAX_UNITS - world.count),
+    );
+    for (let spawned = 0; spawned < spawnCount; spawned += 1) {
+      spawnUnit(world, event.x, event.z, 0, 0, event.owner, event.unitType);
+    }
+  }
+}
+
+function tickPharaohLifecycle(world: World): void {
+  for (let playerSlot = 0; playerSlot < world.playerCount; playerSlot += 1) {
+    const playerId = world.playerIds[playerSlot]!;
+    if (cultureForMajorGod(world.playerMajorGod[playerId]!) !== CULTURE_EGYPTIAN) continue;
+    let hasPharaoh = false;
+    let hasSon = false;
+    for (let unit = 0; unit < world.count; unit += 1) {
+      if (world.owner[unit] !== playerId || world.dying[unit] === 1 || world.hp[unit]! <= 0) continue;
+      hasPharaoh ||= world.unitType[unit] === TYPE_PHARAOH;
+      hasSon ||= world.unitType[unit] === TYPE_SON_OF_OSIRIS;
+    }
+    if (hasSon || hasPharaoh) {
+      world.pharaohRespawnRemaining[playerId] = 0;
+      continue;
+    }
+    if (world.pharaohRespawnRemaining[playerId]! > 0) {
+      world.pharaohRespawnRemaining[playerId] = world.pharaohRespawnRemaining[playerId]! - 1;
+      continue;
+    }
+    const townCenterType = townCenterTypeForCulture(CULTURE_EGYPTIAN);
+    let townCenter = -1;
+    for (let unit = 0; unit < world.count; unit += 1) {
+      if (
+        world.owner[unit] === playerId &&
+        world.unitType[unit] === townCenterType &&
+        world.dying[unit] === 0 &&
+        world.hp[unit]! > 0 &&
+        world.buildProgress[unit]! >= UNIT_TYPES[townCenterType]!.buildTicks
+      ) {
+        townCenter = unit;
+        break;
+      }
+    }
+    if (townCenter < 0 || world.count >= MAX_UNITS) continue;
+    const cell = navigableCellNear(
+      world,
+      world.posX[townCenter]!,
+      world.posZ[townCenter]! - UNIT_TYPES[townCenterType]!.trainExitOffset,
+      MOVEMENT_DOMAIN_LAND,
+    );
+    spawnUnit(
+      world,
+      (cell % MAP_TILES) + 0.5,
+      Math.floor(cell / MAP_TILES) + 0.5,
+      0,
+      0,
+      playerId,
+      TYPE_PHARAOH,
+    );
   }
 }
 
@@ -2629,6 +3555,15 @@ function applyPendingCommands(world: World): void {
           // THE ownership validation - one place, every client, deterministic. The relay stays
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
+          const sourceStats = UNIT_TYPES[world.unitType[index]!]!;
+          if (
+            sourceStats.attack === null ||
+            (sourceStats.attack.kind === "melee" &&
+              sourceStats.attack.canTargetAir !== true &&
+              (UNIT_TYPES[world.unitType[target]!]!.classes & UNIT_CLASS_AIR) !== 0)
+          ) {
+            continue;
+          }
           // Carried resources persist across interrupts: a hauler keeps the load.
           clearUnitTask(world, index);
           world.attackTarget[index] = command.targetId;
@@ -2637,6 +3572,12 @@ function applyPendingCommands(world: World): void {
           world.moveTargetZ[index] = world.posZ[target]!;
         }
       }
+    } else if (
+      command.type === COMMAND_HEAL ||
+      command.type === COMMAND_EMPOWER ||
+      command.type === COMMAND_CONVERT
+    ) {
+      applySupportCommand(world, command);
     } else if (command.type === COMMAND_GATHER) {
       const target = resolveId(world, command.targetId);
 
@@ -2654,8 +3595,32 @@ function applyPendingCommands(world: World): void {
           // THE ownership validation - one place, every client, deterministic. The relay stays
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
-          // Militia in a mixed selection are silently skipped, not treated as an error.
-          if ((UNIT_TYPES[world.unitType[index]!]!.classes & UNIT_CLASS_WORKER) === 0) continue;
+          // Resource-eating repair shares the world-resource gesture while
+          // remaining distinct from worker cargo and dropsite behavior.
+          const gathererStats = UNIT_TYPES[world.unitType[index]!]!;
+          const targetStats = UNIT_TYPES[world.unitType[target]!]!;
+          const eat = gathererStats.resourceEat;
+          if (
+            eat !== undefined &&
+            eat.resourceTypes.includes(targetStats.resource) &&
+            world.hp[index]! <
+              effectiveMaxHp(gathererStats, world.playerAge[world.owner[index]!]!)
+          ) {
+            clearUnitTask(world, index);
+            world.mode[index] = MODE_EATING_RESOURCE;
+            world.taskTarget[index] = command.targetId;
+            world.gatherPosX[index] = world.posX[target]!;
+            world.gatherPosZ[index] = world.posZ[target]!;
+            assignFieldGoal(world, index, world.posX[target]!, world.posZ[target]!);
+            continue;
+          }
+          // Non-gatherers in a mixed selection are silently skipped, not treated as an error.
+          if (
+            (gathererStats.classes & UNIT_CLASS_WORKER) === 0 &&
+            gathererStats.gather === undefined
+          ) {
+            continue;
+          }
           if (!canTypeGatherResource(world.unitType[index]!, world.unitType[target]!)) continue;
           assignGatherTask(
             world,
@@ -2685,8 +3650,14 @@ function applyPendingCommands(world: World): void {
           // THE ownership validation - one place, every client, deterministic. The relay stays
           // dumb; forged or mis-addressed commands die here identically everywhere.
           if (world.owner[index] !== command.issuer) continue;
-          // Militia in a mixed selection are silently skipped, not treated as an error.
-          if ((UNIT_TYPES[world.unitType[index]!]!.classes & UNIT_CLASS_WORKER) === 0) continue;
+          // Mixed selections silently skip entities the target does not list as builders.
+          if (
+            !UNIT_TYPES[world.unitType[target]!]!.builtBy.some(
+              (relationship) => relationship.type === world.unitType[index],
+            )
+          ) {
+            continue;
+          }
           assignWorkerTask(world, index, MODE_BUILDING, command.targetId);
         }
       }
@@ -2712,6 +3683,10 @@ function applyPendingCommands(world: World): void {
       }
     } else if (isRelicCommand(command)) {
       applyRelicCommand(world, command);
+    } else if (isGarrisonCommand(command)) {
+      applyGarrisonCommand(world, command);
+    } else if (isTradeCommand(command)) {
+      applyTradeCommand(world, command);
     } else if (command.type === COMMAND_TRAIN) {
       const building = resolveId(world, command.buildingId);
 
@@ -2729,6 +3704,8 @@ function applyPendingCommands(world: World): void {
           trainOptions.some((option) => option.type === command.unitType) &&
           world.buildProgress[building]! >= producerStats.buildTicks &&
           world.trainQueueLength[building]! < MAX_TRAIN_QUEUE &&
+          (producerStats.trainingSite?.consumeOnCompletion !== true ||
+            world.trainQueueLength[building] === 0) &&
           !isBuildingResearching(world, building) &&
           isTypeAvailableToPlayer(
             world,

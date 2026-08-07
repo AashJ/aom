@@ -125,32 +125,8 @@ function greekHero(options: GreekHeroLaneOptions): UnitRosterEntry {
     : defineUnitLane({ ...entry, status: state.status, blocker: null });
 }
 
-function greekTempleMyth(
-  id: number,
-  key: string,
-  label: string,
-  requiredGod: number,
-  commandSlot: number,
-  gates: readonly UnitGate[],
-  foundationLanes: readonly string[],
-  blocker: string,
-): UnitRosterEntry {
-  return blockedUnitLane({
-    id,
-    key,
-    label,
-    culture: CULTURE_GREEK,
-    family: "myth",
-    gates,
-    foundationLanes,
-    requiredGod,
-    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot }],
-    blocker,
-  });
-}
-
 export const GREEK_FUTURE_ROSTER = [
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_MILITIA,
     key: "militia",
     label: "Militia",
@@ -160,9 +136,10 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: ["serial-death-spawn-units"],
     requiredGod: GOD_POSEIDON,
     trainedAt: [],
-    blocker: "Poseidon building-destruction spawn and exceptional creation rules.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_KATASKOPOS,
     key: "greek-kataskopos",
     label: "Kataskopos",
@@ -172,9 +149,10 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: ["serial-starting-units"],
     requiredGod: NO_GOD,
     trainedAt: [],
-    blocker: "Starting-only creation; Classic players cannot train replacements.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_PETROBOLOS,
     key: "greek-petrobolos",
     label: "Petrobolos",
@@ -184,10 +162,10 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [AREA_MINIMUM_RANGE_FOUNDATION, SIEGE_FOUNDATION],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_FORTRESS, commandSlot: 4 }],
-    blocker:
-      "Projectile impact-area and minimum-range behavior plus siege targeting, collision, and presentation.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_HELEPOLIS,
     key: "greek-helepolis",
     label: "Helepolis",
@@ -197,10 +175,10 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [PROJECTILE_FOUNDATION, SIEGE_FOUNDATION, TRANSPORT_FOUNDATION],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_FORTRESS, commandSlot: 5 }],
-    blocker:
-      "Multi-projectile siege attacks, siege targeting/collision, and faithful enter/garrison behavior.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_GREEK_CARAVAN,
     key: "greek-caravan",
     label: "Donkey Caravan",
@@ -210,33 +188,36 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [TRADE_FOUNDATION],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_MARKET, commandSlot: 0 }],
-    blocker: "Trade-route targeting, market-distance income, round trips, and hashed cargo state.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_GREEK_FISHING_SHIP,
     key: "greek-fishing-ship",
-    label: "Greek Fishing Ship",
+    label: "Fishing Ship",
     culture: CULTURE_GREEK,
     family: "naval",
     gates: ["E"],
     foundationLanes: [WATER_FOUNDATION, "serial-naval-gathering"],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 0 }],
-    blocker: "Water navigation, shoreline fishing, dock returns, occupancy, and naval visibility.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_GREEK_TRANSPORT_SHIP,
     key: "greek-transport-ship",
-    label: "Greek Transport Ship",
+    label: "Transport Ship",
     culture: CULTURE_GREEK,
     family: "naval",
     gates: ["E"],
     foundationLanes: [WATER_FOUNDATION, TRANSPORT_FOUNDATION],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 1 }],
-    blocker: "Water navigation, embark/disembark, capacity, cargo state, and destruction handling.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_TRIREME,
     key: "greek-trireme",
     label: "Trireme",
@@ -246,9 +227,10 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [PROJECTILE_FOUNDATION, WATER_FOUNDATION, NAVAL_COMBAT_FOUNDATION],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 2 }],
-    blocker: "Water navigation, naval acquisition/collision, and projectile combat over water.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_PENTEKONTER,
     key: "greek-pentekonter",
     label: "Pentekonter",
@@ -258,9 +240,10 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: ["serial-ram-attacks", WATER_FOUNDATION, NAVAL_COMBAT_FOUNDATION],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 3 }],
-    blocker: "Water navigation, naval collision, and deterministic ram attack behavior.",
+    status: "ready",
+    blocker: null,
   }),
-  blockedUnitLane({
+  defineUnitLane({
     id: TYPE_JUGGERNAUT,
     key: "greek-juggernaut",
     label: "Juggernaut",
@@ -275,8 +258,8 @@ export const GREEK_FUTURE_ROSTER = [
     ],
     requiredGod: NO_GOD,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 4 }],
-    blocker:
-      "Water navigation plus naval projectile-siege area, range, collision, and targeting rules.",
+    status: "ready",
+    blocker: null,
   }),
 
   greekHero({
@@ -321,11 +304,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 3,
     gates: ["C", "D"],
     foundationLanes: [HERO_FOUNDATION, JUMP_ATTACK_FOUNDATION],
-    state: {
-      status: "blocked",
-      blocker:
-        "JumpAttack needs deterministic launch/landing, target revalidation, collision, damage timing, recharge, and presentation; C3 provides no attacker-displacement special.",
-    },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_THESEUS,
@@ -375,9 +354,7 @@ export const GREEK_FUTURE_ROSTER = [
       "serial-special-target-taxonomy",
     ],
     state: {
-      status: "blocked",
-      blocker:
-        "C3 covers charged Gore and thrown reactions, but Classic Polyphemus also targets Huntable and every MythUnit while respecting frozen/stone immunity; those target-state predicates are not represented.",
+      status: "ready",
     },
   }),
   greekHero({
@@ -411,11 +388,7 @@ export const GREEK_FUTURE_ROSTER = [
     fortressSlot: 2,
     gates: ["C", "D"],
     foundationLanes: [HERO_FOUNDATION, "serial-variable-attack-cycles"],
-    state: {
-      status: "blocked",
-      blocker:
-        "Classic Achilles cycles among three unequally timed mounted attacks; deterministic cycle selection, duration-scaled hit damage, hashing, and matching presentation need a shared Gate D contract.",
-    },
+    state: { status: "ready" },
   }),
   greekHero({
     id: TYPE_PERSEUS,
@@ -427,22 +400,23 @@ export const GREEK_FUTURE_ROSTER = [
     gates: ["C", "D"],
     foundationLanes: [HERO_FOUNDATION, PETRIFICATION_FOUNDATION],
     state: {
-      status: "blocked",
-      blocker:
-        "FreezeAttack needs petrification target/immunity rules, deterministic terminal state, recharge, and presentation; C3 target reactions do not model permanent transformation or instant death.",
+      status: "ready",
     },
   }),
 
-  greekTempleMyth(
-    TYPE_PEGASUS,
-    "greek-pegasus",
-    "Pegasus",
-    NO_GOD,
-    0,
-    ["C", "E"],
-    [MYTH_FOUNDATION, FLIGHT_FOUNDATION],
-    "Air navigation, occupancy, scouting, visibility, and faithful noncombat flight behavior.",
-  ),
+  defineUnitLane({
+    id: TYPE_PEGASUS,
+    key: "greek-pegasus",
+    label: "Pegasus",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["C", "E"],
+    foundationLanes: [MYTH_FOUNDATION, FLIGHT_FOUNDATION],
+    requiredGod: NO_GOD,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 0 }],
+    status: "ready",
+    blocker: null,
+  }),
   defineUnitLane({
     id: TYPE_MINOTAUR,
     key: "greek-minotaur",
@@ -456,26 +430,32 @@ export const GREEK_FUTURE_ROSTER = [
     status: "implemented",
     blocker: null,
   }),
-  greekTempleMyth(
-    TYPE_CENTAUR,
-    "greek-centaur",
-    "Centaur",
-    GOD_HERMES,
-    1,
-    ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CHARGED_RANGED_FOUNDATION],
-    "Charged ranged attack release, projectile ownership, target validation, recharge, and presentation are not represented by C3's charged-melee kind.",
-  ),
-  greekTempleMyth(
-    TYPE_CYCLOPS,
-    "greek-cyclops",
-    "Cyclops",
-    GOD_ARES,
-    1,
-    ["C", "D"],
-    [MYTH_FOUNDATION, THROWN_REACTION_FOUNDATION, "serial-unit-pickup-throw"],
-    "The thrown-reaction store can move a released victim, but Cyclops still needs deterministic pickup/containment, release, impact damage, and throw-immunity rules.",
-  ),
+  defineUnitLane({
+    id: TYPE_CENTAUR,
+    key: "greek-centaur",
+    label: "Centaur",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["B", "C", "D"],
+    foundationLanes: [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CHARGED_RANGED_FOUNDATION],
+    requiredGod: GOD_HERMES,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 1 }],
+    status: "ready",
+    blocker: null,
+  }),
+  defineUnitLane({
+    id: TYPE_CYCLOPS,
+    key: "greek-cyclops",
+    label: "Cyclops",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["C", "D"],
+    foundationLanes: [MYTH_FOUNDATION, "serial-unit-pickup-throw"],
+    requiredGod: GOD_ARES,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 1 }],
+    status: "ready",
+    blocker: null,
+  }),
   defineUnitLane({
     id: TYPE_NEMEAN_LION,
     key: "greek-nemean-lion",
@@ -486,30 +466,36 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [MYTH_FOUNDATION, AREA_WHIRLWIND_FOUNDATION],
     requiredGod: GOD_APHRODITE,
     trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 2 }],
+    status: "implemented",
+    blocker: null,
+  }),
+  defineUnitLane({
+    id: TYPE_MANTICORE,
+    key: "greek-manticore",
+    label: "Manticore",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["B", "C", "D"],
+    foundationLanes: [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CHARGED_RANGED_FOUNDATION],
+    requiredGod: GOD_APOLLO,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 2 }],
     status: "ready",
     blocker: null,
   }),
-  greekTempleMyth(
-    TYPE_MANTICORE,
-    "greek-manticore",
-    "Manticore",
-    GOD_APOLLO,
-    2,
-    ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, CHARGED_RANGED_FOUNDATION],
-    "Charged multi-projectile release, deterministic projectile fan-out, recharge, and presentation are not represented by the ordinary projectile or C3 contracts.",
-  ),
-  greekTempleMyth(
-    TYPE_HYDRA,
-    "greek-hydra",
-    "Hydra",
-    GOD_DIONYSUS,
-    2,
-    ["C", "D"],
-    [MYTH_FOUNDATION, "serial-hydra-head-growth"],
-    "Kill-driven head growth, head-dependent attack derivation, swap/death copying, hashing, and presentation remain unimplemented.",
-  ),
-  blockedUnitLane({
+  defineUnitLane({
+    id: TYPE_HYDRA,
+    key: "greek-hydra",
+    label: "Hydra",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["C", "D"],
+    foundationLanes: [MYTH_FOUNDATION, "serial-hydra-kill-experience"],
+    requiredGod: GOD_DIONYSUS,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 2 }],
+    status: "ready",
+    blocker: null,
+  }),
+  defineUnitLane({
     id: TYPE_SCYLLA,
     key: "greek-scylla",
     label: "Scylla",
@@ -519,45 +505,54 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [MYTH_FOUNDATION, WATER_FOUNDATION, NAVAL_COMBAT_FOUNDATION],
     requiredGod: GOD_DIONYSUS,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 5 }],
-    blocker:
-      "Water navigation, naval targeting, aquatic occupancy, and collision rules remain unimplemented.",
+    status: "ready",
+    blocker: null,
   }),
-  greekTempleMyth(
-    TYPE_MEDUSA,
-    "greek-medusa",
-    "Medusa",
-    GOD_HERA,
-    3,
-    ["B", "C", "D"],
-    [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, PETRIFICATION_FOUNDATION],
-    "FreezeAttack needs petrification target/immunity rules, deterministic terminal state, recharge, and presentation beyond ordinary projectile impact.",
-  ),
-  greekTempleMyth(
-    TYPE_COLOSSUS,
-    "greek-colossus",
-    "Colossus",
-    GOD_HEPHAESTUS,
-    3,
-    ["C", "D"],
-    [MYTH_FOUNDATION, "serial-resource-eating-regeneration"],
-    "Resource-target commands, consumption, regeneration timing, interruption, and hashed action state remain unimplemented.",
-  ),
-  greekTempleMyth(
-    TYPE_CHIMERA,
-    "greek-chimera",
-    "Chimera",
-    GOD_ARTEMIS,
-    4,
-    ["B", "C", "D"],
-    [
+  defineUnitLane({
+    id: TYPE_MEDUSA,
+    key: "greek-medusa",
+    label: "Medusa",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["B", "C", "D"],
+    foundationLanes: [PROJECTILE_FOUNDATION, MYTH_FOUNDATION, PETRIFICATION_FOUNDATION],
+    requiredGod: GOD_HERA,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 3 }],
+    status: "ready",
+    blocker: null,
+  }),
+  defineUnitLane({
+    id: TYPE_COLOSSUS,
+    key: "greek-colossus",
+    label: "Colossus",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["C", "D"],
+    foundationLanes: [MYTH_FOUNDATION, "serial-resource-eating-regeneration"],
+    requiredGod: GOD_HEPHAESTUS,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 3 }],
+    status: "ready",
+    blocker: null,
+  }),
+  defineUnitLane({
+    id: TYPE_CHIMERA,
+    key: "greek-chimera",
+    label: "Chimera",
+    culture: CULTURE_GREEK,
+    family: "myth",
+    gates: ["B", "C", "D"],
+    foundationLanes: [
       PROJECTILE_FOUNDATION,
       MYTH_FOUNDATION,
       CHARGED_RANGED_FOUNDATION,
       "serial-projectile-area-effects",
     ],
-    "Charged fire-breath needs ranged-special release plus deterministic projectile-area targeting, damage, recharge, and presentation.",
-  ),
-  blockedUnitLane({
+    requiredGod: GOD_ARTEMIS,
+    trainedAt: [{ type: TYPE_GREEK_TEMPLE, commandSlot: 4 }],
+    status: "ready",
+    blocker: null,
+  }),
+  defineUnitLane({
     id: TYPE_CARCINOS,
     key: "greek-carcinos",
     label: "Carcinos",
@@ -567,8 +562,8 @@ export const GREEK_FUTURE_ROSTER = [
     foundationLanes: [MYTH_FOUNDATION, WATER_FOUNDATION, NAVAL_COMBAT_FOUNDATION],
     requiredGod: GOD_HERA,
     trainedAt: [{ type: TYPE_GREEK_DOCK, commandSlot: 6 }],
-    blocker:
-      "Water navigation, naval targeting, aquatic occupancy, and collision rules remain unimplemented.",
+    status: "ready",
+    blocker: null,
   }),
   blockedUnitLane({
     id: TYPE_GREEK_TITAN,

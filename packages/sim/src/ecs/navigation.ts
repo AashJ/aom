@@ -2,6 +2,7 @@ import { buildFlowField, cellOf, type FlowField } from "../flow";
 import { MAP_TILES } from "../terrain";
 import type { World } from "./world";
 import {
+  MOVEMENT_DOMAIN_AIR,
   MOVEMENT_DOMAIN_LAND,
   MOVEMENT_DOMAIN_WATER,
   type MovementDomain,
@@ -9,9 +10,11 @@ import {
 import { UNIT_TYPES } from "./types";
 
 const FIELD_CACHE_SIZE = 8;
+const AIR_NAVIGATION_GRID = new Uint8Array(MAP_TILES * MAP_TILES).fill(1);
 
 export interface WalkableGroundState {
   readonly walkable: Uint8Array;
+  readonly waterWalkable?: Uint8Array;
   readonly waterNavigable?: Uint8Array;
 }
 
@@ -23,11 +26,45 @@ export function navigationGridForDomain(
   world: WalkableGroundState,
   movementDomain: MovementDomain,
 ): Uint8Array {
-  if (movementDomain === MOVEMENT_DOMAIN_WATER && world.waterNavigable !== undefined) {
-    return world.waterNavigable;
+  if (movementDomain === MOVEMENT_DOMAIN_WATER) {
+    return world.waterWalkable ?? world.waterNavigable ?? world.walkable;
   }
+  if (movementDomain === MOVEMENT_DOMAIN_AIR) return AIR_NAVIGATION_GRID;
 
   return world.walkable;
+}
+
+// Deterministic square-ring search used when an entity must emerge in its own
+// movement domain (not necessarily the producer/container's land domain).
+export function navigableCellNear(
+  world: WalkableGroundState,
+  x: number,
+  z: number,
+  movementDomain: MovementDomain = MOVEMENT_DOMAIN_LAND,
+): number {
+  const navigationGrid = navigationGridForDomain(world, movementDomain);
+
+  for (let radius = 0; radius < 12; radius += 1) {
+    for (let dz = -radius; dz <= radius; dz += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dz) !== radius) continue;
+        const tileX = Math.floor(x) + dx;
+        const tileZ = Math.floor(z) + dz;
+
+        if (
+          tileX >= 0 &&
+          tileX < MAP_TILES &&
+          tileZ >= 0 &&
+          tileZ < MAP_TILES &&
+          navigationGrid[tileZ * MAP_TILES + tileX] === 1
+        ) {
+          return tileZ * MAP_TILES + tileX;
+        }
+      }
+    }
+  }
+
+  return cellOf(x, z);
 }
 
 export function isWalkableStep(

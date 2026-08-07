@@ -7,7 +7,18 @@ import type {
   ArmorProfile,
   Attack,
   ProjectileAttack,
+  SpecialAttack,
   TypeCommandRelationship,
+} from "../unit-type-schema";
+import {
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_HERO,
+  UNIT_CLASS_HUNTABLE,
+  UNIT_CLASS_MYTH,
+  UNIT_CLASS_SET_ANIMAL,
+  UNIT_CLASS_AIR,
+  UNIT_CONDITION_FROZEN,
+  UNIT_CONDITION_STONE,
 } from "../unit-type-schema";
 
 const TRIAL_PROTO_SHA256 = "464520f1ea00b36e1872bf5a59831408c819c205e56f055c7b2e8bdf53719da2";
@@ -79,6 +90,29 @@ function candidateProjectileHeroSource(
   } as const;
 }
 
+function candidateVariableMeleeHeroSource(
+  unitId: number,
+  trialName: string,
+  label: string,
+  rootAnimation: string,
+  meleeAttackCycles: readonly {
+    readonly sha256: string;
+    readonly action: "attack";
+    readonly tag: "Attack";
+    readonly fraction: number;
+    readonly durationTicks: number;
+    readonly model: string;
+    readonly modelSha256: string;
+  }[],
+  trialDeltas: readonly TrialFidelityDelta[] = [],
+) {
+  const common = candidateHeroSource(unitId, trialName, label, rootAnimation, trialDeltas);
+  return {
+    ...common,
+    assetInventory: { ...common.assetInventory, meleeAttackCycles },
+  } as const;
+}
+
 interface FinalHeroReview {
   readonly commit: string;
   readonly scope: string;
@@ -133,6 +167,8 @@ interface GreekHeroExpectedOptions<A extends Attack> {
   readonly movementSpeed: number;
   readonly armor: ArmorProfile;
   readonly attack: A;
+  readonly specialAttack?: SpecialAttack;
+  readonly bodyRadius?: number;
   readonly cost: readonly [food: number, wood: number, gold: number, favor: number];
   readonly buildTicks: number;
   readonly populationCost: number;
@@ -147,7 +183,8 @@ function greekHeroExpected<A extends Attack>(options: GreekHeroExpectedOptions<A
     culture: 1,
     classes: options.attack.kind === "melee" ? 2096 : 2064,
     hero: HERO_TRAITS,
-    bodyRadius: 0.7,
+    specialAttack: options.specialAttack,
+    bodyRadius: options.bodyRadius ?? 0.7,
     prerequisiteBuildings: [34],
   });
 }
@@ -304,6 +341,126 @@ export const GATE_C_UNIT_REFERENCES = [
   {
     family: "hero",
     attackKind: "melee",
+    id: 99,
+    key: "greek-bellerophon",
+    source: {
+      stage: "candidate",
+      culture: "greek",
+      ruleset: "Age of Mythology Classic",
+      trialProto: {
+        sha256: TRIAL_PROTO_SHA256,
+        unitId: 488,
+        unitName: "Hero Greek Bellerophon",
+      },
+      assetInventory: {
+        sha256: GREEK_ASSET_INVENTORY_SHA256,
+        rosterName: "Bellerophon",
+        rootAnimation: "hero greek bellerophon_anim.txt",
+        meleeAttackCycles: [
+          {
+            sha256: "3e27a2af8428fe8626d9f92e724df2534283d0478f578b4f94100dc6bf576d95",
+            action: "attack",
+            tag: "Attack",
+            fraction: 0.5,
+            durationTicks: 25,
+            model: "hero g belerophon_attacka.glb",
+            modelSha256: "dca9602161b717b8a736469275dac47ee039fd8ba1efe9cad5a3d03877f2eb1b",
+          },
+        ],
+        jumpSpecial: {
+          kind: "single-cycle",
+          sha256: "3e27a2af8428fe8626d9f92e724df2534283d0478f578b4f94100dc6bf576d95",
+          model: "hero g belerophon_jumpattacka.glb",
+          modelSha256: "a1f88e28404ec3cac0446b7d2d896988f8607faa373fca1dc262902240b7b820",
+          durationTicks: 26,
+          impact: "cycle-end",
+        },
+      },
+      trialDeltas: [
+        displayNameDelta("Hero Greek Bellerophon", "Bellerophon"),
+        {
+          field: "attack.bonuses",
+          trial: [{ target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 5 }],
+          final: [
+            { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 5 },
+            { target: { kind: "classes", classes: UNIT_CLASS_SET_ANIMAL }, multiplier: 3 },
+          ],
+          reason:
+            "The shipped Classic Bellerophon deals 3x ordinary damage to Animals of Set in addition to his 5x myth-unit multiplier.",
+        },
+        {
+          field: "specialAttack.validTargets",
+          trial: [
+            { kind: "classes", classes: UNIT_CLASS_HUMAN },
+            { kind: "classes", classes: UNIT_CLASS_MYTH },
+            { kind: "classes", classes: UNIT_CLASS_HERO },
+          ],
+          final: [
+            { kind: "classes", classes: UNIT_CLASS_HUMAN, excludedClasses: UNIT_CLASS_AIR },
+            { kind: "classes", classes: UNIT_CLASS_MYTH, excludedClasses: UNIT_CLASS_AIR },
+            {
+              kind: "classes",
+              classes: UNIT_CLASS_HERO,
+              excludedClasses: UNIT_CLASS_AIR,
+            },
+          ],
+          reason:
+            "Launch Classic Bellerophon cannot select airborne units with Leap; the Trial Unit rate does not serialize that handler-owned exclusion.",
+        },
+      ],
+    },
+    expected: greekHeroExpected({
+      label: "Bellerophon",
+      maxHp: 400,
+      lineOfSight: 16,
+      movementSpeed: 6,
+      armor: [0.2, 0.4, 0.99],
+      attack: {
+        kind: "melee",
+        damage: [20, 0, 0],
+        range: 0.1,
+        aggroRange: 16,
+        cooldownTicks: 20,
+        bonuses: [
+          { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 5 },
+          { target: { kind: "classes", classes: UNIT_CLASS_SET_ANIMAL }, multiplier: 3 },
+        ],
+        cycleVariants: [{ actionTicks: 25, impactDelayTicks: 13 }],
+      },
+      specialAttack: {
+        kind: "charged-jump",
+        delivery: "target",
+        damage: [100, 0, 0],
+        minimumRange: 4,
+        range: 14,
+        bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 7 }],
+        rechargeTicks: 100,
+        takeoffTicks: 0,
+        flightTicks: 26,
+        landingTicks: 0,
+        actionTicks: 26,
+        impactDelayTicks: 26,
+        jumpHeight: 0,
+        validTargets: [
+          { kind: "classes", classes: UNIT_CLASS_HUMAN, excludedClasses: UNIT_CLASS_AIR },
+          { kind: "classes", classes: UNIT_CLASS_MYTH, excludedClasses: UNIT_CLASS_AIR },
+          { kind: "classes", classes: UNIT_CLASS_HERO, excludedClasses: UNIT_CLASS_AIR },
+        ],
+      },
+      cost: [0, 0, 400, 6],
+      buildTicks: 540,
+      populationCost: 4,
+      requiredAge: 3,
+      requiredGod: 0,
+      trainedAt: [
+        { type: 18, commandSlot: 4 },
+        { type: 26, commandSlot: 3 },
+      ],
+    }),
+  },
+  {
+    family: "hero",
+    attackKind: "melee",
     id: 100,
     key: "greek-theseus",
     source: finalHeroSource(487, "Hero Greek Theseus", "Theseus", "hero greek theseus_anim.txt", {
@@ -418,6 +575,153 @@ export const GATE_C_UNIT_REFERENCES = [
   {
     family: "hero",
     attackKind: "melee",
+    id: 103,
+    key: "greek-polyphemus",
+    source: {
+      stage: "candidate",
+      culture: "greek",
+      ruleset: "Age of Mythology Classic",
+      trialProto: {
+        sha256: TRIAL_PROTO_SHA256,
+        unitId: 438,
+        unitName: "Hero Greek Polyphemus",
+      },
+      assetInventory: {
+        sha256: GREEK_ASSET_INVENTORY_SHA256,
+        rosterName: "Polyphemus",
+        rootAnimation: "hero greek polyphemus_anim.txt",
+        meleeAttackCycles: [
+          {
+            sha256: "c5bb8fae55f9c8c5dd93ad452e5bdf23b74f43d8ead624b3f6e8c6e04eeea9ef",
+            action: "attack",
+            tag: "Attack",
+            fraction: 0.5,
+            durationTicks: 30,
+            model: "special g polyphemus_attacka.glb",
+            modelSha256: "56ca5d0569852e64f983f43d37e3669f474211527fce9b6a7baa6a48021e424f",
+          },
+          {
+            sha256: "c5bb8fae55f9c8c5dd93ad452e5bdf23b74f43d8ead624b3f6e8c6e04eeea9ef",
+            action: "attack",
+            tag: "Attack",
+            fraction: 0.62,
+            durationTicks: 40,
+            model: "special g polyphemus_attackb.glb",
+            modelSha256: "6a4a1e625f640a36604a04d6d1ed098b25e6058971fc184597f36a35eebb83be",
+          },
+        ],
+        specialImpact: {
+          sha256: "c5bb8fae55f9c8c5dd93ad452e5bdf23b74f43d8ead624b3f6e8c6e04eeea9ef",
+          action: "gore",
+          tag: "Attack",
+          fraction: 0.52,
+          durationTicks: 30,
+        },
+      },
+      targetReaction: {
+        executableSha256: "5975176380f29104c66e49fa7dc73d2a24221612190de630258f8523f7825366",
+        actionHandlerAddress: "0x79ba67",
+        thrownActionAddress: "0x787b00",
+        randomDrawOrder: ["distance", "maxVelocity", "maxHeight", "bounces"],
+        distance: [8, 2],
+        maxVelocity: [12, 4],
+        maxHeight: [6, 2],
+        bounces: [1, 2],
+      },
+      trialDeltas: [
+        displayNameDelta("Hero Greek Polyphemus", "Polyphemus"),
+        {
+          field: "movementSpeed",
+          trial: 3.2,
+          final: 3.5,
+          reason:
+            "The shipped Classic Polyphemus moves at 3.5; the pre-release Trial row moves at 3.2.",
+        },
+        {
+          field: "attack.bonuses",
+          trial: [{ target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 5 }],
+          final: [
+            { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 5 },
+            {
+              target: { kind: "classes", classes: UNIT_CLASS_SET_ANIMAL },
+              multiplier: 3,
+            },
+          ],
+          reason:
+            "The shipped Classic ruleset gives Polyphemus 3x damage against Set animals in addition to his 5x myth-unit multiplier; the Trial row exposes only the myth bonus.",
+        },
+        {
+          field: "specialAttack.damage",
+          trial: [60, 0, 0],
+          final: [90, 0, 0],
+          reason:
+            "The shipped Classic Polyphemus Gore deals 90 hack damage; the pre-release Trial row carries 60.",
+        },
+      ],
+    },
+    expected: greekHeroExpected({
+      label: "Polyphemus",
+      maxHp: 540,
+      lineOfSight: 20,
+      movementSpeed: 3.5,
+      armor: [0.4, 0.4, 0.99],
+      attack: {
+        kind: "melee",
+        damage: [15, 0, 5],
+        range: 0.1,
+        aggroRange: 20,
+        cooldownTicks: 20,
+        bonuses: [
+          { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 5 },
+          { target: { kind: "classes", classes: UNIT_CLASS_SET_ANIMAL }, multiplier: 3 },
+        ],
+        cycleVariants: [
+          { actionTicks: 30, impactDelayTicks: 15 },
+          { actionTicks: 40, impactDelayTicks: 25 },
+        ],
+      },
+      specialAttack: {
+        kind: "charged-melee",
+        damage: [90, 0, 0],
+        range: 0.1,
+        bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 7 }],
+        rechargeTicks: 18 * 20,
+        actionTicks: 30,
+        impactDelayTicks: 16,
+        validTargets: [
+          { kind: "classes", classes: UNIT_CLASS_HUMAN },
+          { kind: "classes", classes: UNIT_CLASS_MYTH },
+          { kind: "classes", classes: UNIT_CLASS_HUNTABLE },
+        ],
+        invalidTargetConditions: UNIT_CONDITION_FROZEN | UNIT_CONDITION_STONE,
+        targetReaction: {
+          kind: "thrown",
+          randomDrawOrder: ["distance", "maxVelocity", "maxHeight", "bounces"],
+          distanceBase: 8,
+          distanceRandomRange: 2,
+          maxVelocityBase: 12,
+          maxVelocityRandomRange: 4,
+          maxHeightBase: 6,
+          maxHeightRandomRange: 2,
+          bounceBase: 1,
+          bounceRandomRange: 2,
+        },
+      },
+      bodyRadius: 0.99,
+      cost: [0, 0, 400, 6],
+      buildTicks: 27 * 20,
+      populationCost: 4,
+      requiredAge: 3,
+      requiredGod: 1,
+      trainedAt: [
+        { type: 18, commandSlot: 4 },
+        { type: 26, commandSlot: 3 },
+      ],
+    }),
+  },
+  {
+    family: "hero",
+    attackKind: "melee",
     id: 104,
     key: "greek-ajax",
     source: finalHeroSource(489, "Hero Greek Ajax", "Ajax", "hero greek ajax_anim.txt", {
@@ -483,6 +787,211 @@ export const GATE_C_UNIT_REFERENCES = [
       trainedAt: [
         { type: 18, commandSlot: 2 },
         { type: 26, commandSlot: 1 },
+      ],
+    }),
+  },
+  {
+    family: "hero",
+    attackKind: "melee",
+    id: 106,
+    key: "greek-achilles",
+    source: candidateVariableMeleeHeroSource(
+      432,
+      "Hero Greek Achilles",
+      "Achilles",
+      "hero greek achilles_anim.txt",
+      [
+        {
+          sha256: "eee2652ce190c767c34317d8521a232e214ec526d8e492d55da4a1922f14ad39",
+          action: "attack",
+          tag: "Attack",
+          fraction: 0.47,
+          durationTicks: 20,
+          model: "cavalry g cataphract_attacka.glb",
+          modelSha256: "919f88344b09a506ced98a1366fea37add1e76b726adac01ef3b9b32cb9cbb6a",
+        },
+        {
+          sha256: "eee2652ce190c767c34317d8521a232e214ec526d8e492d55da4a1922f14ad39",
+          action: "attack",
+          tag: "Attack",
+          fraction: 0.71,
+          durationTicks: 24,
+          model: "cavalry g cataphract_attackb.glb",
+          modelSha256: "9129cedcb97c855d504f2f39ad0c2a70359cf6378b408e627afb664fcf225086",
+        },
+        {
+          sha256: "eee2652ce190c767c34317d8521a232e214ec526d8e492d55da4a1922f14ad39",
+          action: "attack",
+          tag: "Attack",
+          fraction: 0.64,
+          durationTicks: 17,
+          model: "cavalry g cataphract_attackc.glb",
+          modelSha256: "4d6625a0fcdc01618214156b4afbb1885b39beadfd05fb84bde2cc380a358b47",
+        },
+      ],
+      [
+        {
+          field: "requiredAge",
+          trial: 1,
+          final: 2,
+          reason:
+            "The shipped Age of Mythology ruleset trains Hades's Achilles in the Heroic Age; the Trial row retains his pre-release Classical Age assignment.",
+        },
+      ],
+    ),
+    expected: greekHeroExpected({
+      label: "Achilles",
+      maxHp: 340,
+      lineOfSight: 16,
+      movementSpeed: 5.5,
+      armor: [0.4, 0.45, 0.99],
+      attack: {
+        ...meleeHeroAttack(9, 16, 20),
+        cycleVariants: [
+          { actionTicks: 20, impactDelayTicks: 9 },
+          { actionTicks: 24, impactDelayTicks: 17 },
+          { actionTicks: 17, impactDelayTicks: 11 },
+        ],
+      },
+      cost: [350, 0, 0, 4],
+      buildTicks: 460,
+      populationCost: 3,
+      requiredAge: 2,
+      requiredGod: 2,
+      trainedAt: [
+        { type: 18, commandSlot: 3 },
+        { type: 26, commandSlot: 2 },
+      ],
+    }),
+  },
+  {
+    family: "hero",
+    attackKind: "melee",
+    id: 107,
+    key: "greek-perseus",
+    source: {
+      stage: "candidate",
+      culture: "greek",
+      ruleset: "Age of Mythology Classic",
+      trialProto: {
+        sha256: TRIAL_PROTO_SHA256,
+        unitId: 491,
+        unitName: "Hero Greek Perseus",
+      },
+      assetInventory: {
+        sha256: GREEK_ASSET_INVENTORY_SHA256,
+        rosterName: "Perseus",
+        rootAnimation: "hero greek perseus_anim.txt",
+        meleeAttackCycles: [
+          {
+            sha256: "bc9abcad8506413da9852b639bfe4893b362222cc6ed508381896a232096fe87",
+            action: "attack",
+            tag: "Attack",
+            fraction: 0.53,
+            durationTicks: 30,
+            model: "hero g perseus_attacka.glb",
+            modelSha256: "1ded01ee4eaf52bf5eaa85880af6cd6c24729fa8c71980746e93c54ae540cf30",
+          },
+        ],
+        specialImpact: {
+          sha256: "bc9abcad8506413da9852b639bfe4893b362222cc6ed508381896a232096fe87",
+          action: "FreezeAttack",
+          tag: "Attack",
+          fraction: 0.4,
+          durationTicks: 60,
+        },
+      },
+      trialDeltas: [
+        displayNameDelta("Hero Greek Perseus", "Perseus"),
+        {
+          field: "attack.bonuses",
+          trial: [{ target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 10 }],
+          final: [
+            { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 10 },
+            {
+              target: { kind: "classes", classes: UNIT_CLASS_SET_ANIMAL },
+              multiplier: 3,
+            },
+          ],
+          reason:
+            "The shipped Classic Perseus deals 3x ordinary damage to Set animals in addition to his 10x myth-unit multiplier; the Trial row exposes only the myth bonus.",
+        },
+        {
+          field: "specialAttack.validTargets",
+          trial: [{ kind: "classes", classes: UNIT_CLASS_MYTH }],
+          final: [
+            {
+              kind: "classes",
+              classes: UNIT_CLASS_MYTH,
+              excludedClasses: UNIT_CLASS_AIR,
+            },
+            {
+              kind: "classes",
+              classes: UNIT_CLASS_SET_ANIMAL,
+              excludedClasses: UNIT_CLASS_AIR,
+            },
+          ],
+          reason:
+            "Classic Perseus can petrify myth units and Set animals but cannot target airborne units; the Trial rate table records only its broad MythUnit row.",
+        },
+        {
+          field: "specialAttack.invalidTargetConditions",
+          trial: 0,
+          final: UNIT_CONDITION_FROZEN | UNIT_CONDITION_STONE,
+          reason:
+            "Classic FreezeAttack cannot re-petrify frozen or already stone targets; these handler-owned immunities are not serialized as Trial action parameters.",
+        },
+      ],
+    },
+    expected: greekHeroExpected({
+      label: "Perseus",
+      maxHp: 360,
+      lineOfSight: 16,
+      movementSpeed: 4.3,
+      armor: [0.2, 0.4, 0.99],
+      attack: {
+        kind: "melee",
+        damage: [7, 0, 0],
+        range: 0.1,
+        aggroRange: 16,
+        cooldownTicks: 20,
+        bonuses: [
+          { target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 10 },
+          { target: { kind: "classes", classes: UNIT_CLASS_SET_ANIMAL }, multiplier: 3 },
+        ],
+        cycleVariants: [{ actionTicks: 30, impactDelayTicks: 16 }],
+      },
+      specialAttack: {
+        kind: "charged-terminal",
+        effect: "petrify-kill",
+        damage: [0, 0, 0],
+        range: 5,
+        bonuses: [],
+        rechargeTicks: 24 * 20,
+        actionTicks: 60,
+        impactDelayTicks: 24,
+        validTargets: [
+          {
+            kind: "classes",
+            classes: UNIT_CLASS_MYTH,
+            excludedClasses: UNIT_CLASS_AIR,
+          },
+          {
+            kind: "classes",
+            classes: UNIT_CLASS_SET_ANIMAL,
+            excludedClasses: UNIT_CLASS_AIR,
+          },
+        ],
+        invalidTargetConditions: UNIT_CONDITION_FROZEN | UNIT_CONDITION_STONE,
+      },
+      cost: [0, 0, 400, 6],
+      buildTicks: 27 * 20,
+      populationCost: 4,
+      requiredAge: 3,
+      requiredGod: 2,
+      trainedAt: [
+        { type: 18, commandSlot: 4 },
+        { type: 26, commandSlot: 3 },
       ],
     }),
   },

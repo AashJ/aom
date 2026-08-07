@@ -16,8 +16,13 @@ import { definition as egyptianBarracks } from "../unit-media/egyptian/barracks"
 import { definition as greekArcheryRange } from "../unit-media/greek/archery-range";
 import { definition as greekStable } from "../unit-media/greek/stable";
 import { definition as greekFortress } from "../unit-media/greek/fortress";
+import { definition as greekDock } from "../unit-media/greek/dock";
+import { definition as greekMarket } from "../unit-media/greek/market";
 import { definition as egyptianTemple } from "../unit-media/egyptian/temple";
 import { definition as egyptianMigdolStronghold } from "../unit-media/egyptian/migdol-stronghold";
+import { definition as egyptianSiegeWorks } from "../unit-media/egyptian/siege-works";
+import { definition as egyptianDock } from "../unit-media/egyptian/dock";
+import { definition as egyptianMarket } from "../unit-media/egyptian/market";
 import { definition as greekTemple } from "../unit-media/greek/temple";
 import { definition as greekHoplite } from "../unit-media/greek/hoplite";
 import { definition as greekHypaspist } from "../unit-media/greek/hypaspist";
@@ -28,24 +33,77 @@ import { definition as egyptianSpearman } from "../unit-media/egyptian/spearman"
 import { definition as egyptianAxeman } from "../unit-media/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-media/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-media/egyptian/war-elephant";
+import { definition as greekKataskopos } from "../unit-media/greek/kataskopos";
 import { definition as greekToxotes } from "../unit-media/greek/toxotes";
 import { definition as greekPeltast } from "../unit-media/greek/peltast";
 import { definition as greekGastraphetes } from "../unit-media/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-media/greek/hetairoi";
+import { definition as greekPetrobolos } from "../unit-media/greek/petrobolos";
+import { definition as greekHelepolis } from "../unit-media/greek/helepolis";
+import { definition as greekCaravan } from "../unit-media/greek/caravan";
+import { definition as greekFishingShip } from "../unit-media/greek/fishing-ship";
+import { definition as greekTransportShip } from "../unit-media/greek/transport-ship";
+import { definition as greekTrireme } from "../unit-media/greek/trireme";
+import { definition as greekPentekonter } from "../unit-media/greek/pentekonter";
+import { definition as greekJuggernaut } from "../unit-media/greek/juggernaut";
 import { definition as greekJason } from "../unit-media/greek/jason";
 import { definition as greekOdysseus } from "../unit-media/greek/odysseus";
 import { definition as greekHeracles } from "../unit-media/greek/heracles";
+import { definition as greekBellerophon } from "../unit-media/greek/bellerophon";
 import { definition as greekTheseus } from "../unit-media/greek/theseus";
 import { definition as greekHippolyta } from "../unit-media/greek/hippolyta";
 import { definition as greekAtalanta } from "../unit-media/greek/atalanta";
+import { definition as greekPolyphemus } from "../unit-media/greek/polyphemus";
 import { definition as greekAjax } from "../unit-media/greek/ajax";
 import { definition as greekChiron } from "../unit-media/greek/chiron";
+import { definition as greekAchilles } from "../unit-media/greek/achilles";
+import { definition as greekPerseus } from "../unit-media/greek/perseus";
+import { definition as greekPegasus } from "../unit-media/greek/pegasus";
 import { definition as greekMinotaur } from "../unit-media/greek/minotaur";
+import { definition as greekCentaur } from "../unit-media/greek/centaur";
+import { definition as greekCyclops } from "../unit-media/greek/cyclops";
 import { definition as greekNemeanLion } from "../unit-media/greek/nemean-lion";
+import { definition as greekManticore } from "../unit-media/greek/manticore";
+import { definition as greekHydra } from "../unit-media/greek/hydra";
+import { definition as greekScylla } from "../unit-media/greek/scylla";
+import { definition as greekMedusa } from "../unit-media/greek/medusa";
+import { definition as greekColossus } from "../unit-media/greek/colossus";
+import { definition as greekChimera } from "../unit-media/greek/chimera";
+import { definition as greekCarcinos } from "../unit-media/greek/carcinos";
+import { definition as greekTitan } from "../unit-media/greek/titan";
 import { definition as egyptianSlinger } from "../unit-media/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-media/egyptian/chariot-archer";
+import { definition as egyptianSiegeTower } from "../unit-media/egyptian/siege-tower";
+import { definition as egyptianCatapult } from "../unit-media/egyptian/catapult";
+import { definition as egyptianMercenary } from "../unit-media/egyptian/mercenary";
+import { definition as egyptianCaravan } from "../unit-media/egyptian/caravan";
+import { definition as egyptianFishingShip } from "../unit-media/egyptian/fishing-ship";
+import { definition as egyptianTransportShip } from "../unit-media/egyptian/transport-ship";
+import { definition as egyptianKebenit } from "../unit-media/egyptian/kebenit";
+import { definition as egyptianRammingGalley } from "../unit-media/egyptian/ramming-galley";
+import { definition as egyptianWarBarge } from "../unit-media/egyptian/war-barge";
+import { definition as egyptianPharaoh } from "../unit-media/egyptian/pharaoh";
+import { definition as egyptianPriest } from "../unit-media/egyptian/priest";
+import { definition as egyptianSonOfOsiris } from "../unit-media/egyptian/son-of-osiris";
+import { definition as egyptianAnubite } from "../unit-media/egyptian/anubite";
+import { definition as egyptianSphinx } from "../unit-media/egyptian/sphinx";
+import { definition as egyptianWadjet } from "../unit-media/egyptian/wadjet";
+import { definition as egyptianPetsuchos } from "../unit-media/egyptian/petsuchos";
+import { definition as egyptianRoc } from "../unit-media/egyptian/roc";
+import { definition as egyptianScarab } from "../unit-media/egyptian/scarab";
+import { definition as egyptianMummy } from "../unit-media/egyptian/mummy";
+import { definition as egyptianPhoenix } from "../unit-media/egyptian/phoenix";
+import { definition as egyptianAvenger } from "../unit-media/egyptian/avenger";
+import { definition as egyptianScorpionMan } from "../unit-media/egyptian/scorpion-man";
+import { definition as egyptianLeviathan } from "../unit-media/egyptian/leviathan";
+import { definition as egyptianWarTurtle } from "../unit-media/egyptian/war-turtle";
+import { definition as egyptianTitan } from "../unit-media/egyptian/titan";
+import { definition as egyptianMercenaryCavalry } from "../unit-media/egyptian/mercenary-cavalry";
+import { definition as egyptianMinion } from "../unit-media/egyptian/minion";
+import { definition as egyptianPhoenixEgg } from "../unit-media/egyptian/phoenix-egg";
 import { PROJECTILE_MEDIA_DEFINITIONS } from "../projectile-media";
 import type {
+  BeamEffectMediaDefinition,
   IconConfig,
   ModelAssetDefinition,
   ParticleEffectDefinition,
@@ -77,8 +135,13 @@ export const UNIT_MEDIA_DEFINITIONS = [
   greekArcheryRange,
   greekStable,
   greekFortress,
+  greekDock,
+  greekMarket,
   egyptianTemple,
   egyptianMigdolStronghold,
+  egyptianSiegeWorks,
+  egyptianDock,
+  egyptianMarket,
   greekTemple,
   greekHoplite,
   greekHypaspist,
@@ -89,25 +152,80 @@ export const UNIT_MEDIA_DEFINITIONS = [
   egyptianAxeman,
   egyptianCamelry,
   egyptianWarElephant,
+  greekKataskopos,
   greekToxotes,
   greekPeltast,
   greekGastraphetes,
   greekHetairoi,
+  greekPetrobolos,
+  greekHelepolis,
+  greekCaravan,
+  greekFishingShip,
+  greekTransportShip,
+  greekTrireme,
+  greekPentekonter,
+  greekJuggernaut,
   greekJason,
   greekOdysseus,
   greekHeracles,
+  greekBellerophon,
   greekTheseus,
   greekHippolyta,
   greekAtalanta,
+  greekPolyphemus,
   greekAjax,
   greekChiron,
+  greekAchilles,
+  greekPerseus,
+  greekPegasus,
   greekMinotaur,
+  greekCentaur,
+  greekCyclops,
   greekNemeanLion,
+  greekManticore,
+  greekHydra,
+  greekScylla,
+  greekMedusa,
+  greekColossus,
+  greekChimera,
+  greekCarcinos,
+  greekTitan,
   egyptianSlinger,
   egyptianChariotArcher,
+  egyptianSiegeTower,
+  egyptianCatapult,
+  egyptianMercenary,
+  egyptianCaravan,
+  egyptianFishingShip,
+  egyptianTransportShip,
+  egyptianKebenit,
+  egyptianRammingGalley,
+  egyptianWarBarge,
+  egyptianPharaoh,
+  egyptianPriest,
+  egyptianSonOfOsiris,
+  egyptianAnubite,
+  egyptianSphinx,
+  egyptianWadjet,
+  egyptianPetsuchos,
+  egyptianRoc,
+  egyptianScarab,
+  egyptianMummy,
+  egyptianPhoenix,
+  egyptianAvenger,
+  egyptianScorpionMan,
+  egyptianLeviathan,
+  egyptianWarTurtle,
+  egyptianTitan,
+  egyptianMercenaryCavalry,
+  egyptianMinion,
+  egyptianPhoenixEgg,
 ] as const satisfies readonly UnitMediaDefinition[];
 
-type ParticleEffectParameters = Omit<ParticleEffectDefinition, "key" | "trigger" | "textureUrl">;
+type ParticleEffectParameters = Omit<
+  ParticleEffectDefinition,
+  "key" | "trigger" | "textureUrl" | "appearanceWeightStart" | "appearanceWeightEnd"
+> & { readonly appearanceWeights: readonly number[] };
 const PARTICLE_EFFECT_PARAMETERS_BY_TYPE: Readonly<
   Record<number, readonly ParticleEffectParameters[]>
 > = {
@@ -115,6 +233,7 @@ const PARTICLE_EFFECT_PARAMETERS_BY_TYPE: Readonly<
     {
       blend: "additive",
       spreader: "radial-horizontal",
+      emissionMode: "finite",
       maxParticles: 20,
       particleLifetimeSeconds: 0.8,
       emissionStartSeconds: 1.1,
@@ -124,11 +243,164 @@ const PARTICLE_EFFECT_PARAMETERS_BY_TYPE: Readonly<
       initialVelocity: 5,
       heightOffset: 1.75,
       baseScale: 6,
+      scaleStart: 0,
+      scaleEnd: 1,
       scaleFadeInSeconds: 1,
       peakOpacity: 0.3,
       opacityVariance: 0.1,
       opacityFadeInSeconds: 0.2,
       opacityFadeOutSeconds: 0.2,
+      appearanceWeights: [1],
+    },
+  ],
+  "120": [
+    {
+      blend: "additive",
+      spreader: "vertical",
+      emissionMode: "continuous",
+      maxParticles: 5,
+      particleLifetimeSeconds: 0.5,
+      emissionStartSeconds: 0,
+      emissionDurationSeconds: 2,
+      emissionRatePerSecond: 4,
+      emissionRateVariance: 0,
+      initialVelocity: 0,
+      heightOffset: 2.1,
+      baseScale: 2,
+      scaleStart: 0.8,
+      scaleEnd: 1,
+      scaleFadeInSeconds: 1,
+      peakOpacity: 0.5,
+      opacityVariance: 0,
+      opacityFadeInSeconds: 1,
+      opacityFadeOutSeconds: 0.1,
+      appearanceWeights: [1],
+    },
+  ],
+  "122": [
+    {
+      blend: "additive",
+      spreader: "forward",
+      emissionMode: "finite",
+      maxParticles: 15,
+      particleLifetimeSeconds: 1,
+      emissionStartSeconds: 0.6,
+      emissionDurationSeconds: 1,
+      emissionRatePerSecond: 15,
+      emissionRateVariance: 0,
+      initialVelocity: 6,
+      heightOffset: 2.1,
+      baseScale: 1,
+      scaleStart: 0.2,
+      scaleEnd: 1,
+      scaleFadeInSeconds: 5,
+      peakOpacity: 1,
+      opacityVariance: 0.1,
+      opacityFadeInSeconds: 0,
+      opacityFadeOutSeconds: 1,
+      appearanceWeights: [1, 1, 1],
+    },
+  ],
+  "145": [
+    {
+      blend: "normal",
+      spreader: "vertical",
+      emissionMode: "finite",
+      maxParticles: 35,
+      particleLifetimeSeconds: 2,
+      emissionStartSeconds: 0,
+      emissionDurationSeconds: 1.6,
+      emissionRatePerSecond: 6,
+      emissionRateVariance: 0,
+      initialVelocity: 3,
+      heightOffset: 0,
+      baseScale: 5.5,
+      scaleStart: 1,
+      scaleEnd: 0.2,
+      scaleFadeInSeconds: 1,
+      peakOpacity: 1,
+      opacityVariance: 0,
+      opacityFadeInSeconds: 1,
+      opacityFadeOutSeconds: 1,
+      appearanceWeights: [1],
+    },
+  ],
+  "147": [
+    {
+      blend: "additive",
+      spreader: "vertical",
+      emissionMode: "continuous",
+      maxParticles: 5,
+      particleLifetimeSeconds: 2,
+      emissionStartSeconds: 0,
+      emissionDurationSeconds: 3,
+      emissionRatePerSecond: 1,
+      emissionRateVariance: 0,
+      initialVelocity: 0,
+      heightOffset: 1.3,
+      baseScale: 1,
+      scaleStart: 0.5,
+      scaleEnd: 1,
+      scaleFadeInSeconds: 1,
+      peakOpacity: 1,
+      opacityVariance: 0,
+      opacityFadeInSeconds: 1,
+      opacityFadeOutSeconds: 1,
+      appearanceWeights: [1],
+    },
+  ],
+  "152": [
+    {
+      blend: "additive",
+      spreader: "vertical",
+      emissionShape: "rectangle-horizontal",
+      emissionRadiusX: 0.25,
+      emissionRadiusZ: 0.25,
+      emissionMode: "finite",
+      maxParticles: 3,
+      particleLifetimeSeconds: 1,
+      emissionStartSeconds: 0.4,
+      emissionDurationSeconds: 0.5,
+      emissionRatePerSecond: 3,
+      emissionRateVariance: 0,
+      initialVelocity: 0,
+      heightOffset: 1,
+      baseScale: 3.5,
+      scaleStart: 1,
+      scaleEnd: 1,
+      scaleFadeInSeconds: 1,
+      peakOpacity: 1,
+      opacityVariance: 0.3,
+      opacityFadeInSeconds: 0.2,
+      opacityFadeOutSeconds: 0.2,
+      appearanceWeights: [1],
+    },
+  ],
+  "153": [
+    {
+      blend: "additive",
+      spreader: "vertical",
+      emissionShape: "rectangle-horizontal",
+      emissionRadiusX: 0.2,
+      emissionRadiusZ: 0.2,
+      emissionMode: "continuous",
+      maxParticles: 5,
+      particleLifetimeSeconds: 2,
+      emissionStartSeconds: 0,
+      emissionDurationSeconds: 15,
+      emissionRatePerSecond: 2,
+      emissionRateVariance: 0,
+      initialVelocity: 0.5,
+      heightOffset: 0,
+      baseScale: 1.5,
+      scaleStart: 0.8,
+      scaleEnd: 1,
+      scaleFadeInSeconds: 1,
+      peakOpacity: 0.3,
+      opacityVariance: 0,
+      opacityFadeInSeconds: 1,
+      opacityFadeOutSeconds: 1,
+      appearanceWeights: [1],
     },
   ],
 };
@@ -153,11 +425,14 @@ for (const definition of UNIT_MEDIA_DEFINITIONS) {
 }
 
 for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
-  if (modelIndex[definition.model.key] !== undefined) {
-    throw new Error(`Duplicate model key ${definition.model.key}.`);
+  if (definition.kind !== "model") continue;
+  for (const model of definition.models) {
+    if (modelIndex[model.key] !== undefined) {
+      throw new Error(`Duplicate model key ${model.key}.`);
+    }
+    modelIndex[model.key] = authoredModelConfigs.length;
+    authoredModelConfigs.push(model);
   }
-  modelIndex[definition.model.key] = authoredModelConfigs.length;
-  authoredModelConfigs.push(definition.model);
 }
 
 const modelConfigs: RuntimeModelAssetDefinition[] = authoredModelConfigs.map((model) => ({
@@ -195,24 +470,35 @@ function compilePresentation(presentation: UnitPresentation): RuntimeUnitPresent
 
 const presentations: RuntimeUnitPresentation[] = [];
 const icons: (IconConfig | undefined)[] = [];
+const beamPresentations: (BeamEffectMediaDefinition | undefined)[] = [];
 for (const definition of UNIT_MEDIA_DEFINITIONS) {
   presentations[definition.type] = compilePresentation(definition.presentation);
   icons[definition.type] = definition.icon ?? undefined;
+  beamPresentations[definition.type] = (definition as UnitMediaDefinition).beam;
 }
 
 const projectilePresentations: RuntimeProjectilePresentation[] = [];
 for (const definition of PROJECTILE_MEDIA_DEFINITIONS) {
-  projectilePresentations[definition.type] = {
-    modelIndex: modelIndex[definition.model.key]!,
-    flightHeight: definition.flightHeight,
-    arcHeight: definition.arcHeight,
-    forwardAxis: definition.forwardAxis,
-  };
+  projectilePresentations[definition.type] =
+    definition.kind === "model"
+      ? {
+          kind: "model",
+          modelIndices: definition.models.map((model) => modelIndex[model.key]!) as [
+            number,
+            ...number[],
+          ],
+          flightHeight: definition.flightHeight,
+          arcHeight: definition.arcHeight,
+          forwardAxis: definition.forwardAxis,
+        }
+      : definition;
 }
 
 const particleEffectDefinitions: ParticleEffectDefinition[] = [];
 const unitParticleEffectIndices: (readonly number[] | undefined)[] = [];
-let maxParticlesPerUnit = 0;
+const poisonStatusParticleEffectIndices: number[] = [];
+let maxSpecialParticlesPerUnit = 0;
+let poisonStatusParticlesPerUnit = 0;
 for (const definition of UNIT_MEDIA_DEFINITIONS) {
   const effects = (definition as UnitMediaDefinition).effects ?? [];
   const parameters = PARTICLE_EFFECT_PARAMETERS_BY_TYPE[definition.type] ?? [];
@@ -222,13 +508,39 @@ for (const definition of UNIT_MEDIA_DEFINITIONS) {
   const indices: number[] = [];
   let particlesForUnit = 0;
   for (let effectIndex = 0; effectIndex < effects.length; effectIndex += 1) {
-    const effect = { ...effects[effectIndex]!, ...parameters[effectIndex]! };
-    indices.push(particleEffectDefinitions.length);
-    particleEffectDefinitions.push(effect);
-    particlesForUnit += effect.maxParticles;
+    const media = effects[effectIndex]!;
+    const parametersForEffect = parameters[effectIndex]!;
+    const urls = [media.textureUrl, ...(media.additionalTextureUrls ?? [])];
+    const totalWeight = parametersForEffect.appearanceWeights.reduce(
+      (total, weight) => total + weight,
+      0,
+    );
+    let cumulativeWeight = 0;
+    for (let appearanceIndex = 0; appearanceIndex < urls.length; appearanceIndex += 1) {
+      const appearanceWeightStart = cumulativeWeight / totalWeight;
+      cumulativeWeight += parametersForEffect.appearanceWeights[appearanceIndex]!;
+      const { appearanceWeights: _, ...runtimeParameters } = parametersForEffect;
+      indices.push(particleEffectDefinitions.length);
+      if (media.trigger === "poisoned-status") {
+        poisonStatusParticleEffectIndices.push(particleEffectDefinitions.length);
+      }
+      particleEffectDefinitions.push({
+        key: appearanceIndex === 0 ? media.key : `${media.key}:${appearanceIndex}`,
+        trigger: media.trigger,
+        textureUrl: urls[appearanceIndex]!,
+        appearanceWeightStart,
+        appearanceWeightEnd: cumulativeWeight / totalWeight,
+        ...runtimeParameters,
+      });
+    }
+    if (media.trigger !== "poisoned-status") {
+      particlesForUnit += parametersForEffect.maxParticles;
+    } else {
+      poisonStatusParticlesPerUnit += parametersForEffect.maxParticles;
+    }
   }
   if (indices.length > 0) unitParticleEffectIndices[definition.type] = Object.freeze(indices);
-  maxParticlesPerUnit = Math.max(maxParticlesPerUnit, particlesForUnit);
+  maxSpecialParticlesPerUnit = Math.max(maxSpecialParticlesPerUnit, particlesForUnit);
 }
 
 export const UNIT_MEDIA: readonly UnitMediaDefinition[] = Object.freeze(unitMedia);
@@ -237,8 +549,13 @@ export const PROJECTILE_PRESENTATIONS: readonly RuntimeProjectilePresentation[] 
   Object.freeze(projectilePresentations);
 export const MODEL_CONFIGS: readonly RuntimeModelAssetDefinition[] = Object.freeze(modelConfigs);
 export const TYPE_ICONS: readonly (IconConfig | undefined)[] = Object.freeze(icons);
+export const BEAM_PRESENTATIONS: readonly (BeamEffectMediaDefinition | undefined)[] =
+  Object.freeze(beamPresentations);
 export const PARTICLE_EFFECT_DEFINITIONS: readonly ParticleEffectDefinition[] =
   Object.freeze(particleEffectDefinitions);
 export const UNIT_PARTICLE_EFFECT_INDICES: readonly (readonly number[] | undefined)[] =
   Object.freeze(unitParticleEffectIndices);
-export const MAX_PARTICLES_PER_UNIT = maxParticlesPerUnit;
+export const POISON_STATUS_PARTICLE_EFFECT_INDICES: readonly number[] = Object.freeze(
+  poisonStatusParticleEffectIndices,
+);
+export const MAX_PARTICLES_PER_UNIT = maxSpecialParticlesPerUnit + poisonStatusParticlesPerUnit;

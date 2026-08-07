@@ -1,0 +1,85 @@
+import { TICK_HZ } from "../../../clock";
+import { AGE_CLASSICAL, GOD_BAST } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_TEMPLE, TYPE_SPHINX } from "../../unit-type-ids";
+import {
+  AREA_DAMAGE_ENEMIES,
+  CULTURE_EGYPTIAN,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_CAVALRY,
+  UNIT_CLASS_HERO,
+  UNIT_CLASS_HUMAN,
+  UNIT_CLASS_MELEE,
+  UNIT_CLASS_MILITARY,
+  UNIT_CLASS_MYTH,
+  UNIT_CLASS_SIEGE,
+  UNIT_CLASS_WORKER,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_SPHINX,
+  key: "egyptian-sphinx",
+  label: "Sphinx",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_MYTH | UNIT_CLASS_CAVALRY | UNIT_CLASS_MILITARY | UNIT_CLASS_MELEE,
+  maxHp: 300,
+  lineOfSight: 22,
+  movementSpeed: 5.3,
+  armor: [0.45, 0.6, 0.8],
+  attack: {
+    kind: "melee",
+    // Classic stores the ordinary attack as a one-second rate. The 2.25-second
+    // source clip determines the damage of each landed hit.
+    damage: [11.25, 0, 5],
+    range: 0.1,
+    aggroRange: 22,
+    cooldownTicks: TICK_HZ,
+    bonuses: [{ target: { kind: "classes", classes: UNIT_CLASS_MYTH }, multiplier: 3 }],
+    cycleVariants: [{ actionTicks: 45, impactDelayTicks: 12 }],
+  },
+  specialAttack: {
+    kind: "charged-area-pulse",
+    damage: [20, 0, 0],
+    range: 1,
+    radius: 3,
+    falloff: "linear",
+    damageRelations: AREA_DAMAGE_ENEMIES,
+    bonuses: [
+      {
+        target: { kind: "classes", classes: UNIT_CLASS_HERO },
+        multiplier: 0.01,
+      },
+    ],
+    rechargeTicks: 12 * TICK_HZ,
+    actionTicks: 32,
+    impactDelayTicks: 11,
+    validTargets: [
+      {
+        kind: "classes",
+        classes: UNIT_CLASS_HUMAN,
+        excludedClasses: UNIT_CLASS_WORKER,
+      },
+      { kind: "classes", classes: UNIT_CLASS_MYTH },
+      { kind: "classes", classes: UNIT_CLASS_SIEGE },
+    ],
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.99,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 120,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 20,
+  buildTicks: 17 * TICK_HZ,
+  populationCost: 4,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_CLASSICAL,
+  requiredGod: GOD_BAST,
+  prerequisiteBuildings: [TYPE_EGYPTIAN_TEMPLE],
+  trainedAt: [{ type: TYPE_EGYPTIAN_TEMPLE, commandSlot: 1 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

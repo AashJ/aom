@@ -17,8 +17,6 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 
 **Milestone 7 (current focus):** fog of war — deterministic visibility becomes gameplay state, while WebGPU owns only presentation. Unexplored terrain is black, explored terrain remains dim, and current vision gates enemies, neutral resources, picking, commands, acquisition, and the minimap. See its section below.
 
----
-
 ## Decisions
 
 | Decision    | Choice                                              | Rationale                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -28,7 +26,7 @@ An Age of Mythology–style RTS for the browser. Guiding constraints, in priorit
 | Camera      | **Fixed pitch/yaw, pan + zoom**                     | Classic RTS camera. Simpler culling, picking, and minimap math. Yaw rotation can be added later without structural rework (nothing may assume axis-aligned view).                                                                                                                                                                                                                                                      |
 | Simulation  | **Deterministic lockstep-ready from day 1**         | "Online" means lockstep multiplayer eventually: identical inputs must produce identical state on every client. Retrofitting determinism into a float-soup sim is a rewrite; designing for it now costs almost nothing in M1.                                                                                                                                                                                           |
 | UI shell    | **React for chrome only**                           | React renders menus, HUD, routes. It never participates in the frame loop and never re-renders per frame. The game is one canvas owned by imperative code.                                                                                                                                                                                                                                                             |
-| Maps        | **Sim-owned deterministic generation**              | The selected map id and seed are lockstep state. The sim produces terrain heights, water masks, and starts; renderer, navigation, picking, and minimap consume those results instead of independently inferring geography.                                                                                                                                                                                               |
+| Maps        | **Sim-owned deterministic generation**              | The selected map id and seed are lockstep state. The sim produces terrain heights, water masks, and starts; renderer, navigation, picking, and minimap consume those results instead of independently inferring geography.                                                                                                                                                                                             |
 
 Rejected alternatives, for the record: 2D isometric sprites (cheapest path to performance, but not AoM), PixiJS/Three.js (faster start, less control), Canvas 2D (can't hit the perf bar), WebGPU+WebGL2 dual backend (too much surface area for a sequential build).
 
@@ -327,15 +325,15 @@ Scope: two or more browsers playing the same match — shared seed, shared comma
 
 ### Decisions
 
-| Decision       | Choice                                                        | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Topology       | **WebSocket relay server, not P2P**                           | Browsers have no raw UDP; the real choice is WebSocket vs. WebRTC DataChannel. WebRTC buys unordered delivery at the cost of STUN/TURN and NAT pain — but lockstep _wants_ ordered-reliable, and command traffic is tiny, so TCP head-of-line blocking is tolerable. The relay is also the natural authoritative command orderer. Parked: WebRTC as a later latency optimization.                                                                                                                                                                                                              |
-| Pacing scheme  | **Fixed input delay + server-paced turns; rollback rejected** | Commands execute at `issueTick + INPUT_DELAY_TICKS` (start: 4 ticks = 200 ms — genre-native "acknowledgement" feel). Rollback (fighting-game style) requires resimulating many ticks of 1k-unit state per correction — the wrong trade at RTS scale. The relay batches commands into numbered **turns** and broadcasts them on its own 20 Hz clock; a client may simulate tick T only after receiving turn T (possibly empty).                                                                                                                                                                 |
-| Relay brain    | **`packages/relay` (`@aom/relay`) — transport-free**          | The protocol types and the turn sequencer are consumed by BOTH ends (the engine's net layer and the server), so they must live in a package, not an app. `@aom/relay` holds: message types, the turn sequencer (commands in → player-id + arrival-order tiebreak → turn batches out), and the room/lobby state model as plain data. It imports `Command` from `@aom/sim` and nothing environmental — no sockets, no Bun APIs, no DB. It is to networking what `@aom/sim` is to gameplay: pure logic, drivable in-process.                                                                      |
+| Decision       | Choice                                                              | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Topology       | **WebSocket relay server, not P2P**                                 | Browsers have no raw UDP; the real choice is WebSocket vs. WebRTC DataChannel. WebRTC buys unordered delivery at the cost of STUN/TURN and NAT pain — but lockstep _wants_ ordered-reliable, and command traffic is tiny, so TCP head-of-line blocking is tolerable. The relay is also the natural authoritative command orderer. Parked: WebRTC as a later latency optimization.                                                                                                                                                             |
+| Pacing scheme  | **Fixed input delay + server-paced turns; rollback rejected**       | Commands execute at `issueTick + INPUT_DELAY_TICKS` (start: 4 ticks = 200 ms — genre-native "acknowledgement" feel). Rollback (fighting-game style) requires resimulating many ticks of 1k-unit state per correction — the wrong trade at RTS scale. The relay batches commands into numbered **turns** and broadcasts them on its own 20 Hz clock; a client may simulate tick T only after receiving turn T (possibly empty).                                                                                                                |
+| Relay brain    | **`packages/relay` (`@aom/relay`) — transport-free**                | The protocol types and the turn sequencer are consumed by BOTH ends (the engine's net layer and the server), so they must live in a package, not an app. `@aom/relay` holds: message types, the turn sequencer (commands in → player-id + arrival-order tiebreak → turn batches out), and the room/lobby state model as plain data. It imports `Command` from `@aom/sim` and nothing environmental — no sockets, no Bun APIs, no DB. It is to networking what `@aom/sim` is to gameplay: pure logic, drivable in-process.                     |
 | Server shell   | **`apps/server` — Cloudflare Worker + one Durable Object per room** | The Worker validates `/ws?room=...` and routes the upgrade by room code; that room's `GameRoom` Durable Object owns its WebSockets, lobby state, authoritative sequencer, hash tracker, and 20 Hz turn clock. Hibernatable WebSockets keep idle lobbies inexpensive, while an active clock intentionally keeps a running match resident. Hono still owns the HTTP surface so future saves, accounts, and lobby APIs remain outside `@aom/relay`. Invariant: the relay package stays transport-free and imports no Cloudflare or storage APIs. |
-| Wire format    | **JSON per message in M4; binary parked**                     | Command rates are human-click rates; JSON costs nothing measurable and keeps every message readable in devtools during the milestone where debugging matters most. The protocol is versioned from message one (`v` field) so binary can arrive without a flag day.                                                                                                                                                                                                                                                                                                                             |
-| Sim networking | **None. The sim gains zero IO**                               | All transport lives in `@aom/engine` (`src/net/`) behind a `CommandSink` interface: single-player = loopback sink (enqueue locally at `tick + delay`), multiplayer = relay sink (send up, enqueue what comes back). The load-bearing three-layer rule survives M4 untouched.                                                                                                                                                                                                                                                                                                                   |
-| Selection      | **Stays in World, with a new invariant**                      | Per-client selection arrays now genuinely diverge between clients. That is safe iff no sim code ever _branches_ on `selected` — selection influences gameplay only by choosing which unitIds go into a command at issue time, on the issuing client. Recorded as an invariant; the full move-out-of-World is deferred until it earns its disruption.                                                                                                                                                                                                                                           |
+| Wire format    | **JSON per message in M4; binary parked**                           | Command rates are human-click rates; JSON costs nothing measurable and keeps every message readable in devtools during the milestone where debugging matters most. The protocol is versioned from message one (`v` field) so binary can arrive without a flag day.                                                                                                                                                                                                                                                                            |
+| Sim networking | **None. The sim gains zero IO**                                     | All transport lives in `@aom/engine` (`src/net/`) behind a `CommandSink` interface: single-player = loopback sink (enqueue locally at `tick + delay`), multiplayer = relay sink (send up, enqueue what comes back). The load-bearing three-layer rule survives M4 untouched.                                                                                                                                                                                                                                                                  |
+| Selection      | **Stays in World, with a new invariant**                            | Per-client selection arrays now genuinely diverge between clients. That is safe iff no sim code ever _branches_ on `selected` — selection influences gameplay only by choosing which unitIds go into a command at issue time, on the issuing client. Recorded as an invariant; the full move-out-of-World is deferred until it earns its disruption.                                                                                                                                                                                          |
 
 ### New workspaces
 
@@ -984,7 +982,8 @@ The first infrastructure slice registered every existing Gate A assignment plus 
 - Audit every Greek hero against the C1 contract and B projectile contract, publish complete candidate references, and mark only fully represented lanes `ready`.
 - **Audit result:** Odysseus, Heracles, Theseus, Hippolyta, Atalanta, Ajax, and Chiron fit the shared C1/B contracts and may fan out. Achilles remains blocked: his Classic root action selects three mounted attack clips with unequal durations, so a fixed `cooldownTicks`/damage pair cannot reproduce both its per-cycle timing and DPS-scaled hit damage. A shared deterministic variable-cycle contract must own selection, damage scaling, hashing, and presentation before that lane opens.
 - A contributor still owns only its definition/test, media definition, and asset directory. Hero limits, relics, projectile mechanics, roster state, references, and catalogs remain integration-owned.
-- Egyptian Pharaoh, Priest, and Son of Osiris remain blocked until their automatic lifecycle, healing, empowerment, conversion, transformation, and chain-attack foundations exist.
+- Egyptian Pharaoh, Priest, and Son of Osiris now own automatic lifecycle, age scaling, healing,
+  empowerment, Set conversion, Osiris transformation, and chain-lightning foundations.
 - Myth units remain blocked until a separate serial myth slice establishes favor cost, hero counters, special-action/recharge state, and one representative end-to-end pack.
 
 ### C3 — serial Minotaur myth and charged-action foundation (complete)
@@ -1011,12 +1010,12 @@ The audit uses the pinned local Trial proto and original root animation inventor
 | Gore extension          | Polyphemus                                                                                        | Still blocked. `Gore` can reuse charged-melee and thrown-reaction state, but its Classic target set adds Huntable and every MythUnit plus frozen/stone immunity predicates that the current taxonomy cannot express.                                                                                                                           |
 | JumpAttack              | Bellerophon, Anubite                                                                              | Shared `serial-jump-special` candidate. Needs attacker launch/landing, collision, target revalidation, damage timing, recharge, hash/snapshot state, and presentation.                                                                                                                                                                         |
 | WhirlwindAttack         | Nemean Lion, Sphinx, Avenger, Scorpion Man                                                        | Shared `serial-area-whirlwind-special` candidate. Needs deterministic area enumeration, per-action movement, damage timing, recharge, and presentation. Nemean Lion is the preferred serial proof because it requires neither projectile nor Gate E substrate; siblings remain blocked until its contract is proven against their source rows. |
-| ChargedRangedAttack     | Centaur, Manticore; Chimera after area impact exists                                              | Shared `serial-charged-ranged-special` candidate on top of Gate B. Needs release ownership, target revalidation, recharge, projectile fan-out, and presentation. Chimera additionally needs deterministic projectile-area effects.                                                                                                             |
+| ChargedRangedAttack     | Centaur, Manticore; Chimera after area impact exists                                              | Centaur now proves single-projectile charged release, target revalidation, recharge, collision, and presentation. Manticore still needs its authored projectile fan-out; Chimera additionally needs deterministic projectile-area effects.                                                                                                     |
 | FreezeAttack            | Perseus, Medusa                                                                                   | Shared `serial-petrification-special` candidate. Needs target/immunity rules and authoritative terminal petrification/death semantics; the thrown-reaction store is not a generic status-effect store.                                                                                                                                         |
 | Pickup/throw            | Cyclops                                                                                           | May reuse the released-victim thrown reaction, but still needs pickup containment, attacker/victim synchronization, release, impact damage, and immunity rules. It remains a serial slice.                                                                                                                                                     |
 | Gate E movement         | Pegasus, Scylla, Carcinos, Roc, Leviathan, War Turtle                                             | C3 satisfies only their common myth economy. Air/water navigation, occupancy, targeting, visibility, transport, or naval-special behavior still blocks each lane.                                                                                                                                                                              |
 | Identity-specific state | Achilles, Hydra, Colossus, Wadjet, Petsuchos, Scarab, Mummy, Phoenix, Greek Titan, Egyptian Titan | Remain serial: variable attack cycles, head growth, resource eating, regeneration, continuous lightning, siege acquisition, conversion/minions, egg rebirth/flight, or Titan awakening cannot share C3 state without losing fidelity.                                                                                                          |
-| Egyptian hero family    | Pharaoh, Priest, Son of Osiris                                                                    | Remain blocked on Egyptian automatic lifecycle, healing/empowerment/conversion/construction, or god-power transformation and chain-attack rules. Greek hero uniqueness is not a faithful substitute.                                                                                                                                           |
+| Egyptian hero family    | Pharaoh, Priest, Son of Osiris                                                                    | Released through the Egyptian support/lifecycle slice: automatic Pharaoh return, age scaling, healing, Ra empowerment, Set conversion, Osiris transformation, and chain lightning are explicit authored contracts.                                                                                                                              |
 
 **Audit result:** no additional lane becomes `ready` in C4. Canonical roster blockers now name the residual mechanic after C3 instead of continuing to claim that generic myth or special-action infrastructure is missing. The next highest-leverage serial slice is Nemean Lion's area-whirlwind contract; a faithful proof can potentially open Sphinx, Avenger, and Scorpion Man as isolated workcells.
 
@@ -1031,7 +1030,7 @@ The audit uses the pinned local Trial proto and original root animation inventor
 
 ---
 
-### C5 — serial Nemean Lion variable-cycle and area-pulse foundation (in progress)
+### C5 — serial Nemean Lion variable-cycle and area-pulse foundation (complete)
 
 **Scope:** use Nemean Lion as the serial proof for two source-required mechanics that the fixed ordinary melee and C3 charged-melee contracts cannot represent: unequal ordinary attack clips whose landed damage scales with cycle duration, and an attacker-centered charged area pulse. This is a Classic fidelity slice, not a generic status/effect system and not permission to approximate every proto action named `WhirlwindAttack` with the same behavior.
 
@@ -1039,17 +1038,694 @@ The audit uses the pinned local Trial proto and original root animation inventor
 2. **Charged area-pulse shape.** The second `SpecialAttack` kind owns attacker-centered radius, linear distance falloff, an explicit enemy/neutral relationship mask, ordinary armor/bonus resolution, trigger-target predicates, recharge, action duration, and impact delay. Trigger eligibility and affected-victim relationships are intentionally separate: Nemean Lion must acquire a valid Human or Myth target before roaring, while the pulse damages every authored enemy or neutral unit in range. The fixed-capacity dense entity order is the authoritative enumeration order, and deaths are removed only after that pass.
 3. **Action lifecycle.** The C3 recharge/action store remains the sole charged-action state. Area pulse uses the same pre-impact target/reach revalidation, impact-time charge consumption, movement lock, interruption behavior, snapshot, hash, spawn, and swap-remove contracts as charged melee; only its exhaustive impact resolver differs. No parallel cooldown store or per-unit callback is introduced.
 4. **Classic evidence.** The pinned Trial row `530` provides the base unit, Whirlwind action, target rates, relationship options, damage, radius, and recharge. Structured final-ruleset deltas pin the shipped `2x` ordinary myth multiplier and `22` Favor cost. The original root animation plus hashed GLBs pin two ordinary cycles at `24` ticks/`46%` impact and `18` ticks/`43%` impact, and the roar at `60` ticks/`40%` impact. The pinned executable area handler at `0x77c6d0` binds attacker centering and linear falloff to the reference instead of leaving those engine-only semantics implicit.
-5. **Vertical slice and workcell state.** Nemean Lion is authored end to end as an integration-owned `candidate` reference and `ready` lane while the slice is reviewed. Its definition, two authoritative ordinary attack clips, roar/death/movement media, original audio, icon, source verification, area filtering/falloff tests, deterministic cycle-selection tests, death compaction, and presentation tests are present. Final review changes the reference to `final` and the lane to `implemented`; a checked-in candidate definition alone does not close C5.
-6. **Particle presentation and sibling boundary.** Nemean Lion's source PRT and `64x64` additive sound-wave texture are recovered, hash-pinned, parsed by source verification, and compiled into generated media. Keyed source evidence is the sole owner of emitter behavior and its explicit source-to-runtime mapping; the unit media pack owns only the matching effect identity, trigger, and texture URL. Catalog generation rejects missing, extra, duplicated, or unsupported mappings and emits immutable per-unit numeric effect indices, so the renderer never resolves authored string keys or silently skips an invalid effect. Particle evidence is validated independently from the `charged-area-pulse` gameplay discriminator: a gameplay shape does not mandate one presentation technology, and another special kind may still own source-proven particles. The reusable renderer reconstructs the attack-synchronized looping emitter from the authoritative special-action timer and stable entity identity; its `20`-particle capacity, `0.8`-second lifetime, dormancy, emission rate/variance, velocity, scale, opacity, texture, and blend are data rather than unit switches or mutable simulation state. Device recreation rebuilds its GPU resources through the ordinary unit-renderer lifecycle. Sphinx, Avenger, and Scorpion Man remain blocked until their own proto/actions and particles are audited against the proven shape. Matching action names do not prove identical locomotion, target filters, pulse counts, damage timing, poison, or presentation. Achilles likewise remains blocked until a candidate audit proves that the new variable-cycle contract covers its full unit behavior.
+5. **Vertical slice and workcell state.** Nemean Lion is authored end to end with an integration-owned final reference and implemented lane. Its definition, two authoritative ordinary attack clips, roar/death/movement media, original audio, icon, source verification, area filtering/falloff tests, deterministic cycle-selection tests, death compaction, and presentation tests are present. Commit `a7d21e61eeefa7278f89d21c3e8b1413271d1172` is the final ruleset review boundary.
+6. **Particle presentation and sibling boundary.** Nemean Lion's source PRT and `64x64` additive sound-wave texture are recovered, hash-pinned, parsed by source verification, and compiled into generated media. Keyed source evidence is the sole owner of emitter behavior and its explicit source-to-runtime mapping; the unit media pack owns only the matching effect identity, trigger, and texture URL. Catalog generation rejects missing, extra, duplicated, or unsupported mappings and emits immutable per-unit numeric effect indices, so the renderer never resolves authored string keys or silently skips an invalid effect. Particle evidence is validated independently from the `charged-area-pulse` gameplay discriminator: a gameplay shape does not mandate one presentation technology, and another special kind may still own source-proven particles. The reusable renderer reconstructs the attack-synchronized looping emitter from the authoritative special-action timer and stable entity identity; its `20`-particle capacity, `0.8`-second lifetime, dormancy, emission rate/variance, velocity, scale, opacity, texture, and blend are data rather than unit switches or mutable simulation state. Device recreation rebuilds its GPU resources through the ordinary unit-renderer lifecycle. Sphinx, Avenger, and Scorpion Man remained blocked at this milestone until their own proto/actions and particles could be audited against the proven shape; Sphinx opens in C10 and Avenger in C22. Matching action names do not prove identical locomotion, target filters, pulse counts, damage timing, poison, or presentation.
 
 ### C5 exit criteria
 
 - Fixed-cycle melee behavior and RNG consumption are unchanged, while variable-cycle selection, timing, damage scaling, interruption, copying, snapshots, hashing, animation selection, and two-world determinism are covered.
 - Charged area pulses have deterministic relationship filtering, radius/falloff, armor/bonus resolution, deferred removal, action lifecycle, and source-bound evidence with no renderer authority.
-- Nemean Lion matches its candidate reference and local evidence, trains from Greek Temple slot `2` under Aphrodite in the Heroic Age, and presents both ordinary cycles plus the source roar action/audio.
+- Nemean Lion matches its final reference and local evidence, trains from Greek Temple slot `2` under Aphrodite in the Heroic Age, and presents both ordinary cycles plus the source roar action/audio.
 - The original roar visual particle is represented through a reusable presentation contract before the candidate becomes final.
 - No sibling area-action or variable-cycle lane opens until its complete reference audit passes; each residual blocker names the behavior still outside C5.
 - Source verification, generated catalogs/manifest, focused tests, full tests, types, lint, formatting, and deterministic checks remain green before final closeout.
+
+### C6 — Achilles variable-cycle reuse (candidate)
+
+Achilles is the first consumer of C5's variable ordinary melee-cycle contract outside the Nemean
+Lion proof. The pinned Classic animation selects three mounted attacks lasting `20`, `24`, and `17`
+ticks, with impacts at ticks `9`, `17`, and `11`. The shared simulation owns selection, DPS-scaled
+damage, movement lock, snapshots, hashing, and presentation identity without an Achilles-specific
+runtime branch.
+
+The candidate pack pins the shipped Heroic-Age assignment as an explicit delta from the Trial's
+pre-release Classical-Age row. It includes the source Cataphract movement, death, relic-carrying,
+and three attack models; sword and shield attachments; portrait; creation cue; and Greek hero voice
+sets. The lane remains `ready` with a candidate reference until final ruleset review closes it.
+
+### C7 — Kataskopos starting-only lifecycle (candidate)
+
+Kataskopos is the first Gate D unit whose exceptional behavior is creation rather than a charged
+combat action. Standard playable-world setup appends exactly one Kataskopos for every Greek player
+and none for Egyptian players. Its empty `trainedAt` relationship keeps it out of every production
+catalog, so death is permanent for the match; scenario/test setup may still add explicit units
+through the existing culture-scoped start contract. Temporary myth-unit start injections are not
+part of normal or multiplayer setup.
+
+The candidate preserves the Classic `Scout` proto row: `70` HP, `14` line of sight, speed `5.5`,
+`10%/70%/99%` armor, `2` population, and `2` hack damage per second. It is classified as a human
+military scout, not cavalry. A generic optional `autoAcquire` attack field represents the Classic
+exception: Kataskopos obeys explicit attack orders but does not automatically attack nearby
+enemies. All other attacks retain auto-acquisition by omission.
+
+The original root animation repeats two attack choices across its armor selectors. Source
+verification reduces only an exactly repeating selector sequence and pins the two source clips at
+`20` and `24` ticks with impacts at ticks `10` and `16`; the shared variable-cycle simulation owns
+selection, duration-scaled damage, hashing, and matching presentation. The pack includes the
+original mounted movement/attack/death models, bronze sword attachment, Greek military voice sets,
+shared creation/death cues, and the original `64x64` portrait. The lane remains `ready` with a
+candidate reference until final ruleset review closes it.
+
+### C8 — Poseidon building-destruction Militia (candidate)
+
+Militia is the second exceptional Gate D creation path. A generic `deathSpawn` content contract is
+owned by the destroyed building and names the damage-only trigger, required major god, spawned type,
+building-specific count, and live-unit limit. Combat marks lethal damage separately from scripted or
+future delete removal; death processing preserves lethal-event order, removes the rubble and restores
+walkability first, then creates capped units at the destroyed building's position. The simulation has
+no Militia type switch, and generated-catalog validation rejects death-spawn targets that are absent,
+culture-incompatible, trainable, or attached to a non-building definition.
+
+The represented Classic Greek buildings own their original counts: House and Stable `2`, Military
+Academy and Archery Range `3`, Temple `4`, and Fortress `6`. The Town Center deliberately owns no
+rule because original Age of Mythology Town Centers did not spawn Militia. Future Sentry Tower,
+Granary, Storehouse, Dock, Armory, Market, and Wonder definitions must author their remaining
+`1/2/4/10` counts when those buildings enter the catalog. Only damage destruction under Poseidon
+fires the rule; other gods and scripted removal do not. Spawning bypasses production and population
+availability but clamps each player to the Classic limit of `25` live Militia.
+
+The prior Militia scaffold is replaced by the pinned Classic row: `100` HP, `20` line of sight,
+speed `4.8`, `30%/20%/99%` armor, `7` hack damage per second, `0.3` melee reach, and one population.
+It is an untrainable Archaic human infantry unit and uses the original idle, walk, attack, and death
+models, original `64x64` portrait, Greek male Villager voices, and shared military creation/male
+death cues. The lane remains `ready` with a candidate reference until final ruleset review closes it.
+
+### C9 — Egyptian fixed-lifetime Mercenaries (candidate)
+
+Mercenary and Mercenary Cavalry establish the shared temporary-unit lifecycle. `lifespanTicks` is
+optional authored unit content; spawn initializes a per-entity countdown, each existing unit receives
+its full number of active ticks, and expiration enters the ordinary deferred death/event pipeline.
+Units produced during a tick begin aging on the next tick. The countdown survives dense compaction,
+is copied to render snapshots, and participates in `hashWorld`; catalog validation bounds it to the
+`Uint16` store and requires it for every opened `serial-temporary-units` lane.
+
+The candidate packs preserve the launch-era Classic rows represented by the pinned local source,
+before patch 1.04 reduced both lifetimes from `45` to `40` seconds. Mercenary costs `90` Gold, trains
+in `1` second from an Egyptian Town Center in the Archaic Age, uses zero population, and has `85` HP,
+`45%/30%/99%` armor, speed `4.3`, and `8` hack damage. Mercenary Cavalry costs `120` Gold, trains in
+`3` seconds in the Heroic Age, uses zero population, and has `190` HP, `60%/70%/99%` armor, speed
+`5.3`, and `8` hack damage. Its original three attack clips use `20`, `24`, and `17` ticks with impacts
+at ticks `10`, `17`, and `11`, reusing the authoritative variable-cycle contract.
+
+Both packs include the original movement, attack, and death models, required equipment attachments,
+Egyptian military voices, shared creation/death cues, and original `64x64` portraits. Their lanes
+remain `ready` with candidate references until final ruleset review closes them.
+
+### C10 — Sphinx Whirlwind and point-emitter presentation (candidate)
+
+Sphinx reuses the deterministic attacker-centered area-pulse simulation established by C5. Its
+Classic `WhirlwindAttack` locks the attacker for `32` ticks, lands one pulse at tick `11`, deals
+`20` hack damage with linear falloff across radius `3`, and recharges in `12` seconds. Trial target
+rates admit human soldiers, myth units, and siege weapons; the area option damages enemies only,
+and the original `0.01x` hero multiplier is preserved. The single ordinary source clip lasts `45`
+ticks and lands at tick `12`, using the shared clip-duration damage scaling contract.
+
+Presentation adds the second source-backed particle shape. Classic's looping point emitter becomes
+a vertical column, retains its normal alpha blend, `35`-particle cap, `2`-second particle life,
+`6` particles per second, speed `3`, and `5.5` base scale shrinking from `1` to `0.2`. The decoded
+`128x128` DXT3-swizzled tornado texture keeps its original alpha. Because the root animation authors
+`VisualNone`, the Sphinx model is hidden for the charged action while the authoritative special timer
+drives particles and audio. The candidate otherwise includes the original idle, walk, attack, and
+death models, original Egyptian voice set, and original command portrait.
+
+### C11 — Scarab constant death-area foundation (candidate)
+
+Scarab introduces a death-owned area attack independently from charged-action state. A unit type may
+author one damage profile, radius, constant falloff rule, relationship mask, and ordinary damage
+bonuses. Death processing consumes lethal events in their original order and extends the same queue
+when a burst kills another death-area unit, so chained Scarabs each burst exactly once before dense
+removal. Allies are excluded; the source-authored enemy and neutral relationships are explicit.
+
+The launch Classic pack has `670` HP, `30%/75%/80%` armor, speed `3.2`, and `6` hack plus `12` crush
+damage per second with `5x` building damage. Its `30`-tick source attack clip lands at tick `13` via
+the variable melee-cycle contract. It costs `200` Food and `20` Favor, occupies `5` population, and
+trains for `20` seconds from Egyptian Temple slot `2` under Sekhmet in the Heroic Age. The Trial's
+later `300`-Food row is recorded as an explicit ruleset delta rather than copied into Classic.
+
+On death, the pinned `Scarab Blood` replacement performs constant `30` pierce damage through radius
+`7.5`, damages enemies and neutral units, and applies the original `0.01x` hero multiplier. The source
+verifier binds the replacement identity, `AreaAttack` values, relationship options, bonuses, and
+`AreaDamageConstant` flag to the runtime definition. The pack includes the original idle, walk,
+attack, and death models, Scarab voice set, and original `64x64` command portrait.
+
+### C12 — Hydra kill-experience progression (candidate)
+
+Hydra establishes source-authored combat experience without a unit-specific runtime branch. A melee
+attack may add `1/6` of its base damage for each credited kill through a cap of `12`; lethal direct
+hits credit the attacker exactly once, and the capped counter is preserved by dense compaction,
+snapshots, and `hashWorld`. The damage progression therefore runs from `20` hack plus `10` crush at
+zero kills to `60` hack plus `30` crush at twelve kills. Animals count because credit follows any
+valid lethal melee target rather than requiring a military class.
+
+Presentation groups every three kills into one of the root animation's five `ExperienceLogic`
+tiers. Idle, walk, attack, and death models select the corresponding one-, two-, three-, four-, or
+five-headed source asset. An authored attack retains the tier selected at wind-up through recovery,
+even when its impact supplies the third kill that unlocks the next tier; subsequent actions use the
+new model. Source verification binds the five attack selectors to thresholds `0/25/50/75/100`, and
+pins each `30`-tick clip to its original tick-`15` or tick-`16` impact.
+
+The candidate otherwise preserves the launch Classic row: `800` HP, `60%/40%/80%` armor, speed `4`,
+range `2`, and `0.5x` hero plus `2x` myth-unit damage. It costs `250` Food and `28` Favor, occupies
+`5` population, and trains for `20` seconds from Greek Temple slot `2` under Dionysus in the Heroic
+Age. The pack includes all twenty original tiered action models, Hydra voice set, and original
+`64x64` command portrait.
+
+### C13 — Wadjet persistent regeneration and particle projectile (candidate)
+
+Wadjet establishes persistent per-unit regeneration as a table-driven unit stat. Each living unit
+with a positive rate restores that many hit points per second after projectile impacts, capped at
+its authored maximum. Lethal damage still enters the death pipeline and cannot be undone by the
+same tick's regeneration. The rate needs no action state, does not interrupt orders, and is covered
+by snapshots and deterministic world hashes through the existing HP component.
+
+The launch Classic row preserves `240` HP, `20%/30%/80%` armor, speed `3.8`, range `18`, and `16`
+pierce damage per second with `3x` myth-unit and `0.25x` hero damage. It regenerates `1` HP per
+second, costs `150` Wood and `15` Favor, occupies `3` population, and trains for `17` seconds from
+Egyptian Temple slot `1` under Ptah in the Classical Age. Its perfect-accuracy projectile travels
+at speed `30`, lives for `2` seconds, and launches on tick `12` of the original `30`-tick attack.
+
+Presentation adds a generic particle-projectile path rather than substituting a model. The original
+Classic point emitter becomes a `16`-particle, five-meter normal-blended trail using the decoded
+`64x64` mist texture, source scale progression, straight flight height, and original spit cue.
+Source verification pins the root release tag, attack model, PRT, texture, and projectile mapping.
+The pack otherwise includes the original idle, walk, attack, and death models, Wadjet voice set,
+and original `64x64` command portrait.
+
+### C14 — Polyphemus special-target taxonomy (candidate)
+
+Polyphemus reuses the charged-melee action and thrown-reaction foundations while making their target
+predicate complete. Two new curated class bits distinguish huntables and Set-created animals; the
+latter supports Polyphemus's separate `3x` ordinary damage bonus without treating every Egyptian or
+huntable unit as a Set animal. A per-unit condition mask represents frozen and stone states as
+authoritative target state. It initializes and clears at spawn, survives dense compaction, and joins
+`hashWorld`; charged actions check their authored exclusion mask both before wind-up and at impact.
+
+The launch Classic row has `540` HP, `40%/40%/99%` armor, speed `3.5`, and `15` hack plus `5` crush
+damage per second with `5x` myth-unit damage. Its `30`- and `40`-tick ordinary source clips land at
+ticks `15` and `25`. Gore starts ready, lasts `30` ticks, lands at tick `16`, deals `90` hack damage
+with `7x` myth-unit damage, throws a surviving target through the existing source-pinned reaction,
+and recharges in `18` seconds. Humans, huntables, and every myth unit are valid; frozen and stone
+targets are not. It costs `400` Gold and `6` Favor, occupies `4` population, and trains in `27`
+seconds from Poseidon's Mythic-age Town Center/Fortress hero slots.
+
+The pack includes Polyphemus's original movement, attack, death, and relic-carry models, decoded
+Classic portrait, and the original Colossus voice set used by Classic Polyphemus. Source verification
+pins both ordinary clips, the Gore impact, target rates, immunity flags, final-ruleset deltas, and
+shared executable throw evidence.
+
+### C15 — Perseus terminal petrification and recursive attachments (candidate)
+
+Perseus establishes a terminal charged effect independently from armor-resolved damage. A valid
+target is marked stone on the source impact tag and then enters the ordinary deferred damage-death
+pipeline; the death event and render snapshot preserve that condition so the existing corpse model
+can be presented as stone. Charged actions may begin from their own authored edge range even when it
+exceeds the primary attack range, while invalid special targets still use the ordinary attack.
+
+The launch Classic row has `360` HP, `20%/40%/99%` armor, speed `4.3`, and `7` hack damage per
+second with `10x` myth-unit and `3x` Set-animal damage. Petrify has range `5`, lasts `60` ticks,
+lands at tick `24`, instantly kills eligible ground myth units and Animals of Set, rejects frozen,
+stone, and airborne targets, and recharges in `24` seconds. Perseus costs `400` Gold and `6` Favor,
+occupies `4` population, and trains in `27` seconds from Hades's Mythic-age hero slots.
+
+Presentation recursively resolves and animates source model attachments, including the carried
+Medusa head and both snakes, with cycle detection and precomputed capacity. The pack includes every
+original action and relic-carry clip, decoded portrait, Greek hero voices, petrification cue, and
+source-pinned action/model hashes.
+
+### C16 — Medusa ranged petrification and continuous particles (candidate)
+
+Medusa reuses terminal petrification with an ordinary projectile attack. The charged action has its
+own range, timing, recharge, target predicates, and action presentation; no special projectile is
+invented. Humans, huntables, myth units, and Animals of Set are eligible, while heroes, airborne,
+frozen, and already-stone targets are rejected at acquisition and impact. If several Medusai wind up
+on one victim, dense combat order lets the first terminal hit mark it dying and later casters cancel
+without consuming a second charge.
+
+The launch Classic row has `360` HP, `60%/70%/80%` armor, speed `4.3`, range `10`, and `15` pierce
+plus `12.5` crush damage per second. Petrify lasts `40` ticks, lands at tick `24`, and recharges in
+`20` seconds. Medusa costs `250` Gold and `40` Favor, occupies `5` population, and trains in `20`
+seconds from Greek Temple slot `3` under Hera in the Mythic Age.
+
+The original special attaches a looping, animation-unsynchronized box emitter to the head. The
+shared particle contract now distinguishes finite bursts from bounded continuous emission, retaining
+the source five-particle cap, half-second life, four-particle-per-second rate, additive blend, scale
+and opacity envelopes, and decoded `64x64` hero-glow texture. The reusable DDT decoder adds Classic
+format-4 DXT1 support for that texture. Original body, snake, attack, petrify, death, voice, sound,
+and portrait assets complete the candidate pack.
+
+### C17 — Centaur charged tracking projectile (candidate)
+
+Centaur establishes a charged projectile as a distinct special-attack delivery shape. It reuses the
+single charged-action timer and target revalidation contract, but the source impact tag now releases
+an authoritative projectile instead of resolving damage immediately. A one-byte projectile identity
+selects ordinary versus charged attack content through launch, collision, snapshots, dense removal,
+and `hashWorld`; the projectile store still owns all flight state and never infers the special from a
+unit key. The charged shot uses its own accuracy, tracking, unintended-hit multiplier, bonuses, and
+projectile values, independently from the ordinary bow attack.
+
+The launch Classic row has `220` HP, `30%/35%/80%` armor, speed `5`, range `12`, and `12` pierce
+damage per second with `2x` myth-unit and `0.25x` hero damage. Its tracking shot lasts `50` ticks,
+releases at tick `40`, deals `50` pierce damage with `3x` myth-unit damage, cannot miss, and recharges
+in `15` seconds. Human soldiers, villagers, and myth units are eligible. Centaur costs `200` Wood
+and `12` Favor, occupies `3` population, and trains in `19` seconds from Greek Temple slot `1` under
+Hermes in the Classical Age.
+
+The candidate pack includes both original bow attacks, the dedicated special, movement, death,
+standard head, and held-arrow models with their authored attachment nodes; the original `64x64`
+portrait; the three Greek military select and acknowledge lines; the myth-unit birth cue; the shared
+five-variation Arrow release sound; and the death animation's HeavyFall set. Classic intentionally
+provides neither an attack voice nor a death voice for Centaur. Source verification pins the Trial
+action rows and root-animation timing, while explicit launch-ruleset deltas own armor, ordinary myth
+damage, special damage, and Favor cost.
+
+### C18 — Manticore projectile volleys and impact areas (candidate)
+
+Manticore extends projectile delivery with source-authored `VolleyMode`. One attack transition
+reserves an entire bounded group, advances the attacker's aim history once, assigns contiguous
+stable projectile identities, and either queues every member or none. Each projectile then consumes
+its own deterministic accuracy/spread draws and independently flies, collides, snapshots, hashes,
+and resolves damage. Ordinary Manticore attacks therefore release three real projectiles instead of
+folding their damage into one synthetic hit; the charged action releases six.
+
+The charged spines also establish impact-centered projectile areas. A collision centers the area on
+the struck body, while a completed miss detonates at its captured flight endpoint; a projectile that
+expires before reaching that endpoint does not detonate. Each area uses its own radius, falloff, and
+enemy/neutral relationship mask and resolves against the stable dense-unit order before projectile
+removal. Manticore's six radius-`4`, linear-falloff spines damage enemies only. No renderer state or
+unit-specific branch owns volley or splash behavior.
+
+The launch Classic row has `420` HP, `30%/60%/80%` armor, speed `4.3`, range `16`, and three `11`
+pierce-damage spines per ordinary one-second cycle with `2x` myth-unit and `0.1x` hero damage. Its
+charged volley lasts `19` ticks, releases at tick `11`, fires six `15`-pierce spines with `0.01x`
+hero damage, and recharges in `15` seconds. Manticore costs `300` Wood and `28` Favor, occupies `5`
+population, and trains in `17` seconds from Greek Temple slot `2` under Apollo in the Heroic Age.
+
+The candidate pack uses the original idle, walk, tail-volley, and death models, decoded `64x64`
+portrait, Manticore selection/acknowledge/death sets, myth birth cue, and the source `Manticore
+SpecialAttack` release sound. The original `Special G Manticore Barbs` BRG is converted as a distinct
+projectile model. Source verification pins the three- and six-projectile counts, both accuracy
+contracts, radius, relationship options, animation/model hashes, and the shipped ordinary myth
+multiplier delta.
+
+### C19 — Chimera directional fire breath and invisible area volley (candidate)
+
+Chimera reuses the charged-projectile volley and impact-area foundations while preserving the
+source's unusual presentation split. The special releases three authoritative but intentionally
+invisible projectiles at tick `28` of its `40`-tick action. Each projectile travels at speed `50`,
+lives for `40` ticks, and independently resolves `28` hack damage through a radius-`5` linear area.
+The relationship mask includes enemies and neutral units, matching Classic's
+`AttackEnemy|AttackGAIAUnits` flags; allies and neutral buildings remain excluded.
+
+The launch Classic row has `800` HP, `60%/60%/80%` armor, speed `5.3`, and a one-second melee cycle
+dealing `20` hack damage with `3x` myth-unit and `0.5x` hero damage. Fire breath has range `8`, deals
+`3x` damage to myth units and `0.25x` to heroes, and recharges in `20` seconds. Chimera costs `300`
+Gold and `30` Favor, occupies `4` population, and trains in `20` seconds from Greek Temple slot `4`
+under Artemis in the Mythic Age. The Trial-only `Poison=0.8` field is recorded as an explicit
+pre-release delta and is not promoted into the shipped Classic ruleset.
+
+Presentation adds a generic forward particle emitter and weighted multi-texture appearances. The
+source-bound effect emits fifteen synchronized particles from the tail-head attachment using all
+three equally weighted original fire-pot textures, starts at `0.6` seconds, and plays the original
+flame cue on its authored `0.74`-second sound tag. Original idle, walk, attack, special, death,
+selection, acknowledge, creation, death, and portrait media complete the candidate pack.
+
+### C20 — Anubite phased jump attack (candidate)
+
+Anubite establishes attacker displacement as authoritative charged-action state. JumpAttack has a
+source-authored minimum and maximum range, fixes its launch and landing points when the action
+commits, ignores ordinary ground obstruction while airborne, and advances through explicit takeoff,
+flight, landing-impact, and recovery phases. Position, elevation, phase time, impact-pending state,
+and recharge are derived from hashed simulation fields; presentation only selects the matching
+source clip from snapshots. A target that becomes invalid during takeoff cancels the unspent charge,
+while a jump already in flight completes at its locked landing point.
+
+The launch Classic row has `200` HP, `60%/55%/80%` armor, speed `5.3`, and `13` hack damage with
+`3x` myth-unit and `0.5x` hero damage. Its jump is selected only from range `4` through `8`, travels
+through the authored `13`-tick takeoff, two-second flight, and `20`-tick landing phases, and resolves
+`15` hack damage in an enemy-only radius-`3` landing area before recharging for `5` seconds. Human
+and myth units are valid leap targets; Classic excludes heroes from activation. Anubite costs `100`
+Food and `15` Favor, occupies `3` population, and trains in `9` seconds from Egyptian Temple slot
+`1` under Anubis in the Classical Age.
+
+The candidate pack uses both original unequal melee cycles, all three dedicated jump models, run,
+idle, death, the original `64x64` portrait, Anubite select and acknowledge sets, myth birth, and death
+audio. Classic's documented missing leap sounds are preserved rather than filling the gap with the
+unused Trial jump and landing samples.
+
+### C21 — ranged siege minimum range and projectile DPS (candidate)
+
+Petrobolos and Catapult establish the ordinary projectile dead-zone and ranged-siege acquisition
+contracts. A projectile attack may author a minimum center-to-target-surface range independently
+from its maximum range. An ordered or automatically acquired target inside that band makes the
+attacker retreat along the target-relative line until it can fire; it never launches from inside
+the dead zone. Ranged siege also authors building-priority acquisition while explicit player orders
+remain authoritative. Existing swept projectile collision continues to let intervening hostile and
+neutral bodies intercept Classic shots and applies the authored half-damage multiplier.
+
+Classic proto attack values are damage per second rather than per hit. Ordinary projectile impacts
+now multiply armor- and bonus-resolved damage by the source attack cycle in seconds, matching the
+variable-melee rule already proven in C5. This corrects every non-one-second projectile cycle and is
+especially visible for both four-second stone-thrower attacks. Charged projectile rows remain
+per-hit effects and do not inherit this scaling.
+
+The Heroic Greek Petrobolos has `110` HP, `30%/90%/90%` armor, speed `2.4`, sight `40`, and a
+range band of `10–28`. Every `80`-tick cycle releases three independently aimed stones at tick `2`;
+each carries `5` pierce plus `11` crush DPS, `2.5x` ship damage, and the source accuracy, spread,
+tracking, collision, and two-second lifetime values. It costs `150` Wood and `200` Gold, occupies
+`3` population, and trains in `19` seconds from Greek Fortress slot `4`.
+
+The Mythic Egyptian Catapult has `115` HP with the same armor, speed, sight, and range band. Its
+`80`-tick cycle releases one stone at tick `6`, carrying `10` pierce plus `50` crush DPS and `2.5x`
+ship damage. It costs `200` Wood and `200` Gold, occupies `3` population, and trains in `24`
+seconds from Siege Works slot `1`. The required original Siege Works producer is included with its
+launch `1,200` HP, `30%/96%/5%` armor, `5x5` footprint, `25` Gold cost, and `50`-second base build
+time rather than relocating the unit to another building.
+
+Trial's `ballisticsplashproto` rows are presentation effects, not damage radii; neither attack gains
+invented area damage. Presentation uses each unit's original idle, walk, four-second attack, death,
+portrait, and siege audio. Both stone projectile families preserve all three original BRG variants,
+selected from stable projectile identity without renderer randomness, and play their source release
+cue. Root-animation hashes, raw model durations, four-second overrides, release tags, projectile
+proto values, and final launch balance are pinned by source verification and focused tests.
+
+### C22 — Avenger Whirlwind and rectangle-emitter presentation (candidate)
+
+Avenger reuses the deterministic attacker-centered Whirlwind pulse while preserving the action's
+own timing, target predicates, launch balance, and visual source. Classic area attacks are an
+exception to animation-scaled ordinary DPS: the full `70` hack hit lands once at the sole `Attack`
+tag, tick `18` of the `30`-tick spin. Damage falls linearly through radius `7`, affects enemies and
+Gaia units but not allies or Gaia buildings, applies `0.1x` against heroes, and recharges in `10`
+seconds. Human and myth units can activate the action. The attacker remains locked for the complete
+source clip, and a target that leaves range before the impact cancels the still-unspent charge.
+
+The launch row has `600` HP, `60%/40%/80%` armor, speed `5.3`, sight `18`, and `28` hack damage per
+second. Both ordinary source clips last one second and land at ticks `8` and `12`; they deal `3x`
+damage to myth units and preserve Classic's `0.8x` hero multiplier. Avenger costs `250` Food and
+`30` Favor, occupies `4` population, and trains in `24` seconds from Egyptian Temple slot `4` under
+Horus in the Mythic Age. The Trial's pre-release `25`-damage Whirlwind row is recorded as an
+explicit final-ruleset delta rather than silently promoted.
+
+Presentation adds non-looping rectangle emitters and constant-scale PRTs to the shared particle
+contract. The original additive sword-swoosh source emits from a `0.25 x 0.25` horizontal rectangle,
+starts at `0.4` seconds, retains its three-particle cap, one-second lifetime, source opacity
+variation, decoded `64x64` texture, and root-relative height. Original idle, walk, two attacks,
+Whirlwind, death, portrait, Avenger voices, myth birth cue, and source-timed special grunt complete
+the candidate pack.
+
+### C23 — Scorpion Man stackable poison and target-side status presentation (candidate)
+
+Scorpion Man extends the attacker-centered Whirlwind action with an authoritative timed poison.
+The special lands at tick `11` of its `22`-tick source clip, enumerates enemy human units through a
+radius-`3` linear falloff, and installs one independent effect per target. Every effect stores stable
+source and target identities, remaining lifetime, start tick, and its impact-time falloff multiplier;
+it therefore survives dense-unit compaction and source death. Multiple Scorpion Men stack rather
+than refresh or replace one another. Poison integrates its armor-resolved per-second rate at the
+fixed `20 Hz` simulation step for exactly `300` ticks, and the complete effect store participates in
+the lockstep hash.
+
+The launch row has `500` HP, `50%/40%/80%` armor, speed `5`, sight `16`, and `25` hack damage per
+second with `2x` myth-unit and `0.8x` hero damage. Its two ordinary clips last `22` and `26` ticks
+and land at ticks `17` and `20`. Poison deals `18` raw hack damage over `15` seconds and recharges
+in `12` seconds. Scorpion Man costs `150` Wood and `25` Favor, occupies `4` population, and trains
+in `20` seconds from Egyptian Temple slot `2` under Nephthys in the Heroic Age. The Trial's
+pre-release `1.5` poison rate is recorded as an explicit final-ruleset delta; launch Classic's
+documented `18 / 15 = 1.2` rate is used.
+
+Target-side status presentation is snapshot-only. The renderer receives a poison bit and elapsed
+status clock derived from authoritative effects, then reconstructs the original looping additive
+plume on each affected target. Source verification pins the separate `poison sfx` animation,
+rectangle emitter, `0.2 x 0.2` footprint, five-particle cap, two-second lifetime, `0.5` upward
+velocity, scale and opacity stages, and decoded `64x64` texture. Original idle, walk, both attacks,
+special, death, portrait, selection, acknowledge, attack, creation, and death media complete the
+candidate pack.
+
+### C24 — Petsuchos direct sunlight beam and tracked presentation (candidate)
+
+Petsuchos introduces the source `LightningAttack` delivery family rather than disguising its ray
+as a projectile. A beam action owns a stable target, facing, movement lock, impact-pending bit, and
+full-cycle clock. It deals one armor-resolved packet at tick `27` of the original three-second
+`Charging` action; the stored `50` pierce plus `20` crush values are damage per attack and are not
+scaled again by clip length. The target is revalidated for life, ownership, visibility, and range
+at impact. Replacement orders interrupt the wind-up, while a completed impact retains its recovery
+animation. Active and pending beam state participates in the lockstep hash.
+
+The launch row has `480` HP, `30%/50%/80%` armor, speed `3.6`, sight `24`, range `20`, and a `0.25x`
+hero multiplier. Petsuchos costs `200` Gold and `20` Favor, occupies `4` population, and trains in
+`20` seconds from Egyptian Temple slot `2` under Hathor in the Heroic Age.
+
+Presentation projects the stable beam target through the snapshot only while both endpoints are
+visible. A dedicated camera-facing additive ribbon uses the original `32x32` sunlight-beam texture
+and `32x16` beam-head texture from the source `VisualLightning` and projectile animations. The
+original unsynchronized ball-glow PRT remains active over the three-second action with its
+five-particle cap, two-second lifetime, one-particle-per-second emission, source scale and opacity
+stages, and `32x32` glow texture. The charging model is stretched from its raw `30` ticks to the
+root animation's explicit `3.0`-second override, and its source-timed attack sound, original idle,
+walk, death, portrait, and voices complete the candidate pack.
+
+### C25 — Helepolis garrisoned siege volley (candidate)
+
+Helepolis introduces reusable unit containment rather than a unit-specific damage switch. Enter
+and eject are versioned lockstep commands; eligible units chase the moving container to the
+source-authored four-unit edge range, revalidate ownership, life, class, capacity, and containment
+cycles at entry, then become non-selectable and leave collision, targeting, movement, and ordinary
+task execution. Contained positions follow the outermost carrier deterministically. Ejection uses
+a fixed adjacent-cell order, and a destroyed Helepolis releases its occupants before invalidating
+its stable handle. Occupancy remains derivable from hashed stable containment relationships.
+
+The launch row has `700` HP, `20%/96%/50%` armor, speed `2.9`, sight `18`, and a two-second attack
+cycle. Tick `16` releases three simultaneous Ballista Shot entities, each carrying `5` pierce plus
+`17` crush DPS, source accuracy/spread/tracking, speed `30`, and a two-second lifespan. Up to five
+Villagers, heroes, human infantry, human archers, Pharaohs, or Priests can enter. Every occupant
+adds `5%` attack damage. That multiplier is frozen separately into every projectile at release and
+hashed, so unloading while a volley is airborne cannot rewrite its damage.
+
+The Mythic unit costs `300` Wood and `200` Gold, occupies `4` population, and trains in `24`
+seconds from Greek Fortress slot `5`. Presentation preserves the original idle, walk, attack,
+death, portrait, siege voices, source-timed attack/death sounds, and the dedicated Ballista Shot
+mesh and texture. Trial proto, root animation, attack tag, and raw model hashes are independently
+pinned by the candidate reference.
+
+### C26 — Caravan trade routes and fractional cargo (candidate)
+
+Trade is an authored economic task rather than gathering with a larger carry cap. A versioned
+lockstep command targets a completed friendly Town Center and deterministically pins the farthest
+completed owned Market, with stable-id tie-breaking. The Caravan alternates between those two
+endpoints until interrupted or either endpoint disappears. At the Town Center it receives the
+greater of `distance² * 0.511 / mapWidth` and `distance * 0.066`, capped at `1000` Gold; at the
+Market it deposits whole Gold and retains the fractional remainder. Route endpoints and the full
+`Float64` cargo value survive dense compaction and participate in the lockstep hash.
+
+The Greek Donkey Caravan launches with `115` HP, `40%/40%/99%` armor, speed `3.8`, sight `16`,
+one population, a `100` Food cost, and a `15`-second training time from a Market once Heroic. The
+Classical Age Greek Market is now a real producer and trade endpoint with its launch `1200` HP,
+`30%/96%/5%`
+armor, `300` Wood cost, and `40`-second construction time. Presentation preserves the Caravan's
+source inventory selector for loaded idle, walk, and death models, and the Market's Heroic-to-
+Mythic architecture selector. Original portraits and unit/building audio complete the pack.
+
+The Egyptian Camel Caravan reuses the same source trade action but applies the released culture's
+`0.9x` income multiplier after the distance calculation, including its minimum-rate floor. It has
+the same `115` HP, armor, speed, sight, population, cost, capacity, and training time as the Greek
+Caravan. Its Market is free and takes one Laborer `53.33` seconds (`1067` simulation ticks) to
+construct. Egyptian loaded/unloaded camel-and-cart models preserve the same inventory-driven
+idle, walk, and death selection, while the Market selects its original Heroic and Mythic Egyptian
+architecture and matching death variants from owner age.
+
+### C27 — shoreline Docks and fractional fishing economy (candidate)
+
+Water movement uses a navigation domain independent from land while sharing the same deterministic
+flow-field and no-corner-cutting rules. A Dock may be placed only across a free footprint containing
+both land and water tiles. It obstructs both runtime navigation masks, restores each tile from the
+immutable terrain-domain map when destroyed, and exposes water-side footprint goals to gathering,
+garrison, and production. Trained units emerge on the navigation domain authored by the produced
+unit, so a ship never inherits a land building's exit search. Both runtime obstruction masks
+participate in the lockstep hash; the immutable water mask remains available to terrain rendering.
+
+Fishing cargo is authoritative `Float64` state. The gather rate advances on the ordinary half-second
+work cadence, the HUD-visible carried value is its whole-food floor, and a full ship returns only to
+a completed dropsite serving its own water domain. Depositing transfers whole Food and preserves a
+fractional remainder. Cargo survives command interruption and dense-unit compaction and is hashed at
+full precision.
+
+The launch Greek Fishing Ship has `120` HP, `60%/50%/5%` armor, speed `4.8`, sight `20`, one
+population, a `50` Wood cost, and a `14`-second training time from the Archaic Dock. It gathers Fish
+at `0.61` Food per second with a `25`-Food capacity. The launch Dock has `1,600` HP,
+`30%/96%/20%` armor, sight `22`, a `4x4` shoreline footprint, a `125` Wood cost, and a
+`30`-second base construction time. It accepts up to ten Fishing Ships and is a water Food
+dropsite; Poseidon's destruction rule creates two Militia through the existing building-owned death
+spawn contract. Presentation preserves all four Greek tradedock age models and death variants,
+the Fishing Ship's source idle, sail, gather, loaded-sail, death, attached fish flag, portrait, and
+original ship and Greek voice audio.
+
+The Egyptian Fishing Ship shares the `120` HP, armor, speed, sight, population, Wood cost,
+training time, and `25`-Food capacity, but preserves its culture's `0.54` Food-per-second Fish
+rate. It can also construct Docks from range `4` at the source `0.28` work rate versus the
+Laborer's Dock-specific `0.99`; fractional construction progress keeps that ratio authoritative.
+Builder eligibility comes from the target's authored `builtBy` relationship instead of assuming
+that every builder has the Worker class. The released Egyptian Dock costs `50` Gold, no Wood, and
+takes one Laborer `40` seconds to construct. Its four Egyptian tradedock architecture models,
+matching death variants, original portrait, building cue, Fishing Ship models, fish flag, Egyptian
+selection voices, ship acknowledgements, birth, and death audio complete the culture lane.
+
+### C28 — Classical arrow-ship volleys (candidate)
+
+Naval combat reuses ordinary projectile acquisition, accuracy, swept interception, armor, and
+animation-scaled DPS without creating a water-only combat loop. Movement still consults the ship's
+water domain, while projectile targets may remain on water or across a reachable shoreline. The
+arrow-ship action releases three independent projectile identities from one source tag; each arrow
+consumes the shared accuracy sequence and can miss or be intercepted separately. `TransportShip`
+is an explicit curated class so the counter bonus is never guessed from garrison capacity or a
+display name.
+
+The Greek Trireme and Egyptian Kebenit share the launch row: `290` HP, `30%/20%/10%` armor,
+speed `6`, sight `24`, range `12`, two population, `100` Wood plus `50` Gold, and a `14`-second
+Dock training time in the Classical Age. Their `30`-tick attack releases three Arrow Flaming
+projectiles at tick `12`; every projectile carries `6` pierce DPS, `80%` accuracy, speed `30`, a
+two-second lifespan, and `3x` Transport Ship damage. The no-upgrade Arrow Flaming selector uses
+the ordinary arrow model; its fire particle remains correctly gated behind the future Burning Pitch
+technology. Both packs preserve their original hull-specific idle, sail, attack, and death models,
+portraits, culture military selection voices, ship acknowledgements, birth/death audio, and the
+shared source arrow cue.
+
+### C29 — Heroic hammer-ship rams (candidate)
+
+Hammer ships use the ordinary authored melee-cycle state on the water navigation domain. The ram
+is not instantaneous command damage: its single source action lasts `30` simulation ticks and
+applies one armor-resolved packet at tick `2`, matching the root animation's `Attack` tag after its
+explicit `1.5`-second duration override. Replacement orders and lost targets therefore interrupt
+the strike under the same deterministic rules as land melee attacks.
+
+The Greek Pentekonter and Egyptian Ramming Galley share their launch row: `240` HP,
+`30%/15%/75%` armor, speed `7`, sight `16`, range `2`, two population, `100` Wood plus `50` Gold,
+and a `9`-second Dock training time in the Heroic Age. Each ram deals `20` hack DPS with no hidden
+counter multiplier. The `15%` pierce armor is an explicit released-Classic correction to the
+Trial proto's `20%`. Both packs preserve their original culture-specific hull, sail, ram, and
+death models, portraits, military selection voices, ship acknowledgements, birth/death audio, and
+the source ballista cue played with the ram action.
+
+### C30 — Heroic siege-ship volleys (candidate)
+
+Siege ships combine the existing water navigation and projectile-siege contracts. Their root
+action stretches the raw one-second hull animation to `70` simulation ticks and releases four
+independent Ballista Shot identities at tick `28`. Each bolt uses the ordinary deterministic
+accuracy, spread, tracking, swept interception, and unintended-target rules. Siege ships also
+prefer buildings during automatic acquisition, while the released naval counter row applies
+`3.5x` damage to ships or myth units and `1.75x` to buildings. A myth ship receives the counter
+once rather than multiplying two overlapping class bonuses.
+
+The Greek Juggernaut and Egyptian War Barge share `480` HP, `10%/50%/10%` armor, speed `4.8`,
+sight `24`, range `18`, three population, a `100` Wood plus `100` Gold cost, and a `17`-second
+Dock training time in the Heroic Age. Juggernaut fires four bolts carrying `6` crush DPS each;
+War Barge preserves its released `7` crush DPS per bolt. Both packs preserve their original hull,
+sail, attack, and death models, portraits, culture military voices, ship acknowledgements,
+birth/death audio, and source catapult cue. The reviewed launch multipliers and War Barge damage
+are explicit deltas from the provisional Trial proto rather than undocumented substitutions.
+
+### C31 — shoreline troop transport and cargo loss (candidate)
+
+Transport embarkation reuses stable containment while respecting different navigation domains.
+A land unit routes to the nearest deterministic land cell beside its moving water target, then
+enters only inside the source four-unit interaction range. Unloading searches fixed square rings
+for each occupant's own navigation domain; an offshore order with no land in range keeps the cargo
+aboard instead of spawning soldiers onto water. The existing contained position, selection, hash,
+snapshot, and maximum-contained-unit line-of-sight behavior remain shared with other garrisons.
+
+A destroyed transport marks all nested cargo for deterministic death in the same lethal batch;
+unlike a land garrison, it never ejects survivors into the sea. Greek and Egyptian Transport Ships
+share the launch row: `180` HP, `40%/80%/5%` armor, speed `5.3`, sight `14`, ten cargo slots, two
+population, a `120` Wood cost, and a `19`-second Dock training time in the Classical Age. Both
+packs preserve their culture hull, sail, and death models, portrait, military selection voices,
+ship acknowledgements, and birth/death audio.
+
+### C32 — naval myth growth and death bursts (candidate)
+
+Water myth units reuse ordinary melee cycles, armor, ownership relations, death-event ordering,
+and myth-unit lifecycle rules on the water navigation domain. Scylla shares Hydra's source-authored
+combat-experience contract: every credited kill adds one sixth of base damage through twelve kills,
+and every third kill selects the next of five body models. Its five attacks each last `30` ticks and
+impact at tick `12`; the launch row is `800` HP, `40%/70%/99%` armor, speed `5.3`, sight `16`,
+`20` hack plus `10` crush DPS, `2x` myth damage, five population, `200` Gold plus `15` Favor, and
+a five-second Heroic-Age Dock training time for Dionysus.
+
+Carcinos has two alternating source actions lasting `22` and `24` ticks and impacting at ticks `10`
+and `11`. Its death queues Crab Blood through the deterministic lethal-event pipeline: one constant
+`300` hack packet in a `7.5`-unit radius against enemies only, with no ally or neutral damage. The
+launch row is `720` HP, `70%/60%/80%` armor, speed `4.3`, sight `16`, `20` hack plus `12` crush DPS,
+four population, `200` Wood plus `20` Favor, and a nine-second Mythic-Age Dock training time for
+Hera. Both packs retain every experience-tier/attack/death model, portrait, ship voice, and source
+birth/death cue.
+
+### C33 — living naval transport (candidate)
+
+Leviathan composes the water melee and shoreline containment contracts without a parallel cargo
+system. It accepts the same mobile land occupants as ordinary transports, explicitly rejects ships,
+buildings, relics, and Titans, carries twenty units, preserves maximum-contained-unit sight, and
+sinks every occupant in the same ordered lethal batch when destroyed. Its curated Transport Ship
+class keeps the ordinary arrow-ship counter operational even though the creature is also a myth
+unit; myth and transport identity are not inferred from capacity or presentation.
+
+The launch row is `1020` HP, `40%/60%/80%` armor, speed `4.2`, sight `22`, four population,
+`200` Gold plus `20` Favor, and a ten-second Heroic-Age Dock training time for Nephthys. Its
+`30`-tick bite lands `25` hack DPS at tick `18`, matching the source animation's `0.60` Attack
+tag. The pack retains the original idle, swim, attack, and death models, portrait, three selection
+and movement voices, two creation grunts, and death cue.
+
+### C34 — Cyclops committed pickup/throw action (candidate)
+
+Cyclops owns a dedicated charged pickup action rather than reusing the ordinary thrown-target
+reaction. The source `Pickup` tag at tick `23` commits an eligible non-hero worker or human
+soldier: its pending work, combat, and unreleased projectiles stop, its HP becomes terminal, and
+its authoritative entity remains contained and unselectable. The combined Cyclops model presents
+both carrier and victim for the remainder of the five-second action. Ordinary commands cannot
+interrupt the carrier after pickup, and carrier death takes the committed victim down with it.
+
+The source `Throw` tag at tick `69` applies the proto-authored constant `30` hack area packet in a
+ten-unit attacker-centered radius against enemies and neutral units. It does not release the hidden
+victim into `BUnitThrownAction`; the pinned Trial executable constructs unit action type `35`, whose
+handler at `0x789ea0` calls the victim's terminal death path only when normalized action progress
+reaches one. Simulation stages preserve that committed recovery through tick `100`, then release
+and remove the victim through the ordinary deterministic death pipeline. Pickup ownership and all
+action stages participate in snapshots, dense compaction, and `hashWorld`.
+
+The launch row preserves original Classic's `500` HP (rather than the Trial's provisional `550` or
+The Titans' later `650`), `15` hack plus `12` crush DPS, `3x` myth bonus, and unequal 24/32-tick
+club cycles landing at ticks `13`/`20`. It costs `250` Food plus `22` Favor, takes `20` seconds,
+uses four population, and trains from Ares's Classical Temple slot. Presentation retains the
+original models, portrait, Colossus-derived voice set, and the Pickup action's GiantGrunt and
+SwordSwing tags at `1.15` and `3.45` seconds.
+
+### C35 — Egyptian hero support and lifecycle (candidate)
+
+Pharaoh and Priest support orders are first-class lockstep commands. Healing uses the source rates
+of `10` and `7.5` HP per second and halves while the target is active; Son of Osiris heals at `20`
+HP per second but cannot itself be healed. Pharaoh empowerment doubles construction, multiplies
+gather yield by `1.2`, training work by `1.3`, and attack intervals by `0.5`; Ra Priests use the
+source `1.3` construction, `1.2` gather/training, and `0.5` attack-interval row. Set alone enables
+the Priest's deterministic neutral-animal conversion task.
+
+Pharaoh and Priest hit points, sight, range, and attack damage advance through explicit four-age
+tables instead of identity checks. A slain Pharaoh returns from a surviving Egyptian Town Center
+after exactly `90` seconds, while a living Son of Osiris suppresses that return. Osiris
+transformation mutates the stable Pharaoh entity in place and preserves its hit-point percentage.
+The Son's three-second lightning action lands at tick `33` and chains at full damage through at
+most four nearest hostile targets with stable-handle tie-breaking. All support timers, fractional
+empowerment work, and Pharaoh lifecycle state participate in dense compaction, snapshots where
+needed, and the deterministic world hash. Original portraits, voices, carry models, and distinct
+attack/heal/empower/convert clips back the generated media catalog.
+
+### C36 — shared Titan combat (blocked presentation/gate integration)
+
+Greek and Egyptian Titans share the published *The Titans* expansion row: `7,000` HP,
+`90%/95%/90%` armor, speed `3.75`, sight `25`, twenty population, and `70` hack plus `70` crush.
+The attack applies the original `2x` human, `2x` myth, `5x` building, and `20x` Titan modifiers,
+with the source area hit, while Titanic Smash is represented as its charged enemy-area pulse.
+Titans are explicitly unhealable and too large for transport eligibility.
+
+These two lanes remain blocked. This workspace contains the pre-expansion Trial archives, not the
+licensed Greek Cerberus and Egyptian Horus model/animation/portrait/audio rows, and Titan Gate
+research, one-use placement, excavation, destruction, and awakening are not yet implemented.
+Development-only Colossus/Avenger media proxies keep unexposed definitions buildable, but they are
+not acceptable release media and must never be used to mark either lane ready.
 
 ---
 

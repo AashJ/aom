@@ -16,8 +16,13 @@ import { definition as egyptianBarracks } from "../unit-types/egyptian/barracks"
 import { definition as greekArcheryRange } from "../unit-types/greek/archery-range";
 import { definition as greekStable } from "../unit-types/greek/stable";
 import { definition as greekFortress } from "../unit-types/greek/fortress";
+import { definition as greekDock } from "../unit-types/greek/dock";
+import { definition as greekMarket } from "../unit-types/greek/market";
 import { definition as egyptianTemple } from "../unit-types/egyptian/temple";
 import { definition as egyptianMigdolStronghold } from "../unit-types/egyptian/migdol-stronghold";
+import { definition as egyptianSiegeWorks } from "../unit-types/egyptian/siege-works";
+import { definition as egyptianDock } from "../unit-types/egyptian/dock";
+import { definition as egyptianMarket } from "../unit-types/egyptian/market";
 import { definition as greekTemple } from "../unit-types/greek/temple";
 import { definition as greekHoplite } from "../unit-types/greek/hoplite";
 import { definition as greekHypaspist } from "../unit-types/greek/hypaspist";
@@ -28,22 +33,74 @@ import { definition as egyptianSpearman } from "../unit-types/egyptian/spearman"
 import { definition as egyptianAxeman } from "../unit-types/egyptian/axeman";
 import { definition as egyptianCamelry } from "../unit-types/egyptian/camelry";
 import { definition as egyptianWarElephant } from "../unit-types/egyptian/war-elephant";
+import { definition as greekKataskopos } from "../unit-types/greek/kataskopos";
 import { definition as greekToxotes } from "../unit-types/greek/toxotes";
 import { definition as greekPeltast } from "../unit-types/greek/peltast";
 import { definition as greekGastraphetes } from "../unit-types/greek/gastraphetes";
 import { definition as greekHetairoi } from "../unit-types/greek/hetairoi";
+import { definition as greekPetrobolos } from "../unit-types/greek/petrobolos";
+import { definition as greekHelepolis } from "../unit-types/greek/helepolis";
+import { definition as greekCaravan } from "../unit-types/greek/caravan";
+import { definition as greekFishingShip } from "../unit-types/greek/fishing-ship";
+import { definition as greekTransportShip } from "../unit-types/greek/transport-ship";
+import { definition as greekTrireme } from "../unit-types/greek/trireme";
+import { definition as greekPentekonter } from "../unit-types/greek/pentekonter";
+import { definition as greekJuggernaut } from "../unit-types/greek/juggernaut";
 import { definition as greekJason } from "../unit-types/greek/jason";
 import { definition as greekOdysseus } from "../unit-types/greek/odysseus";
 import { definition as greekHeracles } from "../unit-types/greek/heracles";
+import { definition as greekBellerophon } from "../unit-types/greek/bellerophon";
 import { definition as greekTheseus } from "../unit-types/greek/theseus";
 import { definition as greekHippolyta } from "../unit-types/greek/hippolyta";
 import { definition as greekAtalanta } from "../unit-types/greek/atalanta";
+import { definition as greekPolyphemus } from "../unit-types/greek/polyphemus";
 import { definition as greekAjax } from "../unit-types/greek/ajax";
 import { definition as greekChiron } from "../unit-types/greek/chiron";
+import { definition as greekAchilles } from "../unit-types/greek/achilles";
+import { definition as greekPerseus } from "../unit-types/greek/perseus";
+import { definition as greekPegasus } from "../unit-types/greek/pegasus";
 import { definition as greekMinotaur } from "../unit-types/greek/minotaur";
+import { definition as greekCentaur } from "../unit-types/greek/centaur";
+import { definition as greekCyclops } from "../unit-types/greek/cyclops";
 import { definition as greekNemeanLion } from "../unit-types/greek/nemean-lion";
+import { definition as greekManticore } from "../unit-types/greek/manticore";
+import { definition as greekHydra } from "../unit-types/greek/hydra";
+import { definition as greekScylla } from "../unit-types/greek/scylla";
+import { definition as greekMedusa } from "../unit-types/greek/medusa";
+import { definition as greekColossus } from "../unit-types/greek/colossus";
+import { definition as greekChimera } from "../unit-types/greek/chimera";
+import { definition as greekCarcinos } from "../unit-types/greek/carcinos";
+import { definition as greekTitan } from "../unit-types/greek/titan";
 import { definition as egyptianSlinger } from "../unit-types/egyptian/slinger";
 import { definition as egyptianChariotArcher } from "../unit-types/egyptian/chariot-archer";
+import { definition as egyptianSiegeTower } from "../unit-types/egyptian/siege-tower";
+import { definition as egyptianCatapult } from "../unit-types/egyptian/catapult";
+import { definition as egyptianMercenary } from "../unit-types/egyptian/mercenary";
+import { definition as egyptianCaravan } from "../unit-types/egyptian/caravan";
+import { definition as egyptianFishingShip } from "../unit-types/egyptian/fishing-ship";
+import { definition as egyptianTransportShip } from "../unit-types/egyptian/transport-ship";
+import { definition as egyptianKebenit } from "../unit-types/egyptian/kebenit";
+import { definition as egyptianRammingGalley } from "../unit-types/egyptian/ramming-galley";
+import { definition as egyptianWarBarge } from "../unit-types/egyptian/war-barge";
+import { definition as egyptianPharaoh } from "../unit-types/egyptian/pharaoh";
+import { definition as egyptianPriest } from "../unit-types/egyptian/priest";
+import { definition as egyptianSonOfOsiris } from "../unit-types/egyptian/son-of-osiris";
+import { definition as egyptianAnubite } from "../unit-types/egyptian/anubite";
+import { definition as egyptianSphinx } from "../unit-types/egyptian/sphinx";
+import { definition as egyptianWadjet } from "../unit-types/egyptian/wadjet";
+import { definition as egyptianPetsuchos } from "../unit-types/egyptian/petsuchos";
+import { definition as egyptianRoc } from "../unit-types/egyptian/roc";
+import { definition as egyptianScarab } from "../unit-types/egyptian/scarab";
+import { definition as egyptianMummy } from "../unit-types/egyptian/mummy";
+import { definition as egyptianPhoenix } from "../unit-types/egyptian/phoenix";
+import { definition as egyptianAvenger } from "../unit-types/egyptian/avenger";
+import { definition as egyptianScorpionMan } from "../unit-types/egyptian/scorpion-man";
+import { definition as egyptianLeviathan } from "../unit-types/egyptian/leviathan";
+import { definition as egyptianWarTurtle } from "../unit-types/egyptian/war-turtle";
+import { definition as egyptianTitan } from "../unit-types/egyptian/titan";
+import { definition as egyptianMercenaryCavalry } from "../unit-types/egyptian/mercenary-cavalry";
+import { definition as egyptianMinion } from "../unit-types/egyptian/minion";
+import { definition as egyptianPhoenixEgg } from "../unit-types/egyptian/phoenix-egg";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
 
 export const UNIT_TYPE_DEFINITIONS = [
@@ -64,8 +121,13 @@ export const UNIT_TYPE_DEFINITIONS = [
   greekArcheryRange,
   greekStable,
   greekFortress,
+  greekDock,
+  greekMarket,
   egyptianTemple,
   egyptianMigdolStronghold,
+  egyptianSiegeWorks,
+  egyptianDock,
+  egyptianMarket,
   greekTemple,
   greekHoplite,
   greekHypaspist,
@@ -76,22 +138,74 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianAxeman,
   egyptianCamelry,
   egyptianWarElephant,
+  greekKataskopos,
   greekToxotes,
   greekPeltast,
   greekGastraphetes,
   greekHetairoi,
+  greekPetrobolos,
+  greekHelepolis,
+  greekCaravan,
+  greekFishingShip,
+  greekTransportShip,
+  greekTrireme,
+  greekPentekonter,
+  greekJuggernaut,
   greekJason,
   greekOdysseus,
   greekHeracles,
+  greekBellerophon,
   greekTheseus,
   greekHippolyta,
   greekAtalanta,
+  greekPolyphemus,
   greekAjax,
   greekChiron,
+  greekAchilles,
+  greekPerseus,
+  greekPegasus,
   greekMinotaur,
+  greekCentaur,
+  greekCyclops,
   greekNemeanLion,
+  greekManticore,
+  greekHydra,
+  greekScylla,
+  greekMedusa,
+  greekColossus,
+  greekChimera,
+  greekCarcinos,
+  greekTitan,
   egyptianSlinger,
   egyptianChariotArcher,
+  egyptianSiegeTower,
+  egyptianCatapult,
+  egyptianMercenary,
+  egyptianCaravan,
+  egyptianFishingShip,
+  egyptianTransportShip,
+  egyptianKebenit,
+  egyptianRammingGalley,
+  egyptianWarBarge,
+  egyptianPharaoh,
+  egyptianPriest,
+  egyptianSonOfOsiris,
+  egyptianAnubite,
+  egyptianSphinx,
+  egyptianWadjet,
+  egyptianPetsuchos,
+  egyptianRoc,
+  egyptianScarab,
+  egyptianMummy,
+  egyptianPhoenix,
+  egyptianAvenger,
+  egyptianScorpionMan,
+  egyptianLeviathan,
+  egyptianWarTurtle,
+  egyptianTitan,
+  egyptianMercenaryCavalry,
+  egyptianMinion,
+  egyptianPhoenixEgg,
 ] as const satisfies readonly UnitTypeStats[];
 
 const unitTypes: UnitTypeStats[] = [];

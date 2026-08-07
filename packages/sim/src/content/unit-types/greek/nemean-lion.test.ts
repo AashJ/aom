@@ -32,10 +32,10 @@ function attackWorld() {
 }
 
 describe("Greek Nemean Lion unit pack", () => {
-  test("matches the integration-owned candidate Classic reference", () => {
-    expect(() =>
-      validateDefinitionAgainstReference(definition, GATE_C_MYTH_UNIT_REFERENCES[1]!),
-    ).not.toThrow();
+  test("matches the integration-owned final Classic reference", () => {
+    const reference = GATE_C_MYTH_UNIT_REFERENCES.find((entry) => entry.key === definition.key);
+    expect(reference).toBeDefined();
+    expect(() => validateDefinitionAgainstReference(definition, reference!)).not.toThrow();
   });
 
   test("pins Classic final balance and both source attack cycles", () => {

@@ -35,5 +35,6 @@ fn vs(
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
   let texel = textureSample(particleTexture, particleSampler, in.uv);
-  return vec4f(texel.rgb * in.opacity, in.opacity);
+  let alpha = texel.a * in.opacity;
+  return vec4f(texel.rgb * alpha, alpha);
 }

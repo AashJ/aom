@@ -1,0 +1,61 @@
+import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_DOCK, TYPE_EGYPTIAN_TRANSPORT_SHIP } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  MOVEMENT_DOMAIN_WATER,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  UNIT_CLASS_RELIC,
+  UNIT_CLASS_SHIP,
+  UNIT_CLASS_TITAN,
+  UNIT_CLASS_TRANSPORT_SHIP,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_TRANSPORT_SHIP,
+  key: "egyptian-transport-ship",
+  label: "Transport Ship",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_SHIP | UNIT_CLASS_TRANSPORT_SHIP,
+  maxHp: 180,
+  lineOfSight: 14,
+  movementSpeed: 5.3,
+  movementDomain: MOVEMENT_DOMAIN_WATER,
+  armor: [0.4, 0.8, 0.05],
+  attack: null,
+  garrison: {
+    capacity: 10,
+    enterRange: 4,
+    validOccupants: [
+      {
+        kind: "classes",
+        classes: 0,
+        excludedClasses:
+          UNIT_CLASS_BUILDING | UNIT_CLASS_RELIC | UNIT_CLASS_SHIP | UNIT_CLASS_TITAN,
+      },
+    ],
+    attackMultiplierPerOccupant: 0,
+    ejectOnDeath: false,
+  },
+  isStatic: false,
+  resource: -1,
+  bodyRadius: 0.99,
+  collidesWithProjectiles: true,
+  footprint: 0,
+  costFood: 0,
+  costWood: 120,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 380,
+  populationCost: 2,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_CLASSICAL,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: [{ type: TYPE_EGYPTIAN_DOCK, commandSlot: 1 }],
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

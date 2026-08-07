@@ -109,6 +109,13 @@ describe("Classic particle source reader", () => {
       initialVelocity: 5,
       usesSpreader: true,
       shapeType: 0,
+      outerXRadius: 0,
+      innerXRadius: 0,
+      outerYRadius: 0,
+      innerYRadius: 0,
+      outerZRadius: 0,
+      innerZRadius: 0,
+      centerHeight: 0,
       offAxisDegrees: -45,
       offPlaneDegrees: 90,
       materialType: 1,
@@ -123,6 +130,7 @@ describe("Classic particle source reader", () => {
         [0, 0, 0, 1],
         [1, 0, 0, 0],
       ],
+      appearanceWeights: [1],
       appearanceFiles: ["Special G Nemean Lion SoundWave.tga"],
     });
   });

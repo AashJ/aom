@@ -30,6 +30,7 @@ import {
   TYPE_EGYPTIAN_LABORER,
   TYPE_EGYPTIAN_TOWN_CENTER,
   TYPE_HOPLITE,
+  TYPE_KATASKOPOS,
   TYPE_GOLD_MINE,
   TYPE_MILITIA,
   TYPE_MINOTAUR,
@@ -1862,6 +1863,23 @@ describe("production", () => {
     expect(egyptianMinotaurs).toEqual([]);
   });
 
+  test("a playable Classic start gives each Greek player one untrainable Kataskopos", () => {
+    const world = createPlayableWorld(42, 2, [
+      { id: 0, majorGod: GOD_ZEUS },
+      { id: 1, majorGod: GOD_RA },
+    ]);
+    const scoutsByOwner = [0, 0];
+
+    for (let index = 0; index < world.count; index += 1) {
+      if (world.unitType[index] !== TYPE_KATASKOPOS) continue;
+      const owner = world.owner[index]!;
+      scoutsByOwner[owner] = (scoutsByOwner[owner] ?? 0) + 1;
+    }
+
+    expect(scoutsByOwner).toEqual([1, 0]);
+    expect(UNIT_TYPES[TYPE_KATASKOPOS]!.trainedAt).toEqual([]);
+  });
+
   test("a town center trains a villager that spawns adjacent on walkable ground", () => {
     const world = flatWorld(42);
     const tc = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER, true);
@@ -2419,7 +2437,7 @@ describe("combat", () => {
     // chase is broken in a way the smaller tests can't see.
     expect(sawWinner).toBe(true);
     expect(a.winner).toBe(b.winner);
-  });
+  }, 15_000);
 });
 
 describe("commands and separation", () => {

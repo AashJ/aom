@@ -1,10 +1,10 @@
-import type { ProjectileAttack } from "../content/unit-type-schema";
+import type { ProjectileGuidance } from "../content/unit-type-schema";
 
 const PERCENT = 100;
 
 /** Classic's pre-roll hit score; distance is measured center to center at release. */
 export function classicProjectileHitScore(
-  attack: ProjectileAttack,
+  attack: ProjectileGuidance,
   distance: number,
   priorShots: number,
 ): number {
@@ -24,7 +24,7 @@ export function classicProjectileHits(hitScore: number, roll: number): boolean {
 
 /** Half-width of each axis of Classic's square miss region. */
 export function classicProjectileSpread(
-  attack: ProjectileAttack,
+  attack: ProjectileGuidance,
   distance: number,
   priorShots: number,
 ): number {

@@ -8,6 +8,7 @@ export interface AudioCueDefinition {
   readonly files: readonly string[];
   readonly volume: number;
   readonly maxVoices: number;
+  readonly delaySeconds?: number;
 }
 
 export interface UnitAudioDefinition {
@@ -21,18 +22,32 @@ export interface UnitAudioDefinition {
   readonly created?: AudioCueDefinition;
   readonly death?: AudioCueDefinition;
   readonly completed?: AudioCueDefinition;
+  readonly attack?: AudioCueDefinition;
   readonly specialAttack?: AudioCueDefinition;
+  // Some Classic animation actions emit several independently timed specific
+  // sound tags. Layers play together instead of being randomized as variants.
+  readonly specialAttackLayers?: readonly AudioCueDefinition[];
 }
 
 export interface ParticleEffectMediaDefinition {
   readonly key: string;
-  readonly trigger: "special-attack";
+  readonly trigger: "special-attack" | "beam-attack" | "poisoned-status";
   readonly textureUrl: string;
+  readonly additionalTextureUrls?: readonly string[];
 }
 
-export interface ParticleEffectDefinition extends ParticleEffectMediaDefinition {
-  readonly blend: "additive";
-  readonly spreader: "radial-horizontal";
+export interface ParticleEffectDefinition {
+  readonly key: string;
+  readonly trigger: "special-attack" | "beam-attack" | "poisoned-status";
+  readonly textureUrl: string;
+  readonly blend: "additive" | "normal";
+  readonly spreader: "forward" | "radial-horizontal" | "vertical";
+  readonly emissionShape?: "rectangle-horizontal";
+  readonly emissionRadiusX?: number;
+  readonly emissionRadiusZ?: number;
+  readonly appearanceWeightStart: number;
+  readonly appearanceWeightEnd: number;
+  readonly emissionMode: "finite" | "continuous";
   readonly maxParticles: number;
   readonly particleLifetimeSeconds: number;
   readonly emissionStartSeconds: number;
@@ -42,11 +57,25 @@ export interface ParticleEffectDefinition extends ParticleEffectMediaDefinition 
   readonly initialVelocity: number;
   readonly heightOffset: number;
   readonly baseScale: number;
+  readonly scaleStart: number;
+  readonly scaleEnd: number;
   readonly scaleFadeInSeconds: number;
   readonly peakOpacity: number;
   readonly opacityVariance: number;
   readonly opacityFadeInSeconds: number;
   readonly opacityFadeOutSeconds: number;
+}
+
+export interface BeamEffectMediaDefinition {
+  readonly beamTextureUrl: string;
+  readonly headTextureUrl: string;
+  readonly blend: "additive";
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly width: number;
+  readonly headLength: number;
+  readonly sourceHeight: number;
+  readonly targetHeightFactor: number;
 }
 
 export interface ModelAttachmentDefinition {
@@ -66,19 +95,30 @@ export type UnitMediaAction =
   | "idle"
   | "walk"
   | "attack"
+  | "secondaryAttack"
   | "specialAttack"
+  | "jumpTakeoff"
+  | "jumpLand"
   | "death"
   | "build"
   | "gatherFood"
   | "gatherWood"
   | "gatherGold"
   | "pray"
+  | "heal"
+  | "empower"
+  | "convert"
   | "carryIdle"
   | "carryWalk"
   | "construction";
 
 export type ModelAnimationClock = "loop" | "action-cycle" | "once";
-export type ModelVariantPolicy = "entity" | "construction-stage";
+export type ModelVariantPolicy =
+  | "entity"
+  | "construction-stage"
+  | "experience-tier"
+  | "inventory"
+  | "owner-age";
 
 export interface ModelActionDefinition {
   readonly models: readonly [string, ...string[]];
@@ -106,18 +146,55 @@ interface ProjectilePresentationMetrics {
   // remains entirely in the simulation's horizontal plane.
   readonly flightHeight: number;
   readonly arcHeight: number;
+  readonly audio?: AudioCueDefinition;
+}
+
+export interface ProjectileModelMediaDefinition extends ProjectilePresentationMetrics {
+  readonly type: number;
+  readonly key: string;
+  readonly kind: "model";
+  // Classic projectile proto visuals may select among multiple authored meshes.
+  // Stable projectile identity selects the presentation variant without adding
+  // renderer RNG or authoritative simulation state.
+  readonly models: readonly [ModelAssetDefinition, ...ModelAssetDefinition[]];
   readonly forwardAxis: ProjectileModelForwardAxis;
 }
 
-export interface ProjectileMediaDefinition extends ProjectilePresentationMetrics {
+export interface ProjectileParticleMediaDefinition extends ProjectilePresentationMetrics {
   readonly type: number;
   readonly key: string;
-  readonly model: ModelAssetDefinition;
+  readonly kind: "particle";
+  readonly textureUrl: string;
+  readonly blend: "additive" | "normal";
+  readonly particleCount: number;
+  readonly trailLength: number;
+  readonly baseScale: number;
+  readonly scaleStart: number;
+  readonly scaleEnd: number;
+  readonly peakOpacity: number;
 }
 
-export interface RuntimeProjectilePresentation extends ProjectilePresentationMetrics {
-  readonly modelIndex: number;
+export interface ProjectileInvisibleMediaDefinition extends ProjectilePresentationMetrics {
+  readonly type: number;
+  readonly key: string;
+  readonly kind: "invisible";
 }
+
+export type ProjectileMediaDefinition =
+  | ProjectileModelMediaDefinition
+  | ProjectileParticleMediaDefinition
+  | ProjectileInvisibleMediaDefinition;
+
+export interface RuntimeProjectileModelPresentation extends ProjectilePresentationMetrics {
+  readonly kind: "model";
+  readonly modelIndices: readonly [number, ...number[]];
+  readonly forwardAxis: ProjectileModelForwardAxis;
+}
+
+export type RuntimeProjectilePresentation =
+  | RuntimeProjectileModelPresentation
+  | ProjectileParticleMediaDefinition
+  | ProjectileInvisibleMediaDefinition;
 
 export interface RuntimeModelActionDefinition {
   readonly modelIndices: readonly [number, ...number[]];
@@ -132,6 +209,7 @@ interface PresentationMetrics {
 
 export interface ModelUnitPresentation extends PresentationMetrics {
   readonly kind: "model";
+  readonly hideDuringSpecialAttack?: boolean;
   readonly actions: Readonly<
     { idle: ModelActionDefinition } & Partial<Record<UnitMediaAction, ModelActionDefinition>>
   >;
@@ -139,6 +217,7 @@ export interface ModelUnitPresentation extends PresentationMetrics {
 
 export interface RuntimeModelUnitPresentation extends PresentationMetrics {
   readonly kind: "model";
+  readonly hideDuringSpecialAttack?: boolean;
   readonly actions: Readonly<
     { idle: RuntimeModelActionDefinition } & Partial<
       Record<UnitMediaAction, RuntimeModelActionDefinition>
@@ -177,6 +256,7 @@ export interface UnitMediaDefinition {
   readonly presentation: UnitPresentation;
   readonly models: readonly ModelAssetDefinition[];
   readonly effects?: readonly ParticleEffectMediaDefinition[];
+  readonly beam?: BeamEffectMediaDefinition;
   readonly icon: IconConfig | null;
   readonly audio: UnitAudioDefinition;
 }

@@ -13,6 +13,10 @@ import {
   COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
+  COMMAND_HEAL,
+  COMMAND_EMPOWER,
+  COMMAND_CONVERT,
+  COMMAND_GARRISON,
   COMMAND_MOVE,
   COMMAND_DROP_OFF_RELIC,
   COMMAND_PICK_UP_RELIC,
@@ -20,6 +24,8 @@ import {
   COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
+  COMMAND_TRADE,
+  COMMAND_UNGARRISON,
   MAP_AEGEAN_COAST,
   type CheatId,
   type MapId,
@@ -108,6 +114,27 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         commands: [{ type: COMMAND_GATHER, unitIds, targetId }],
       });
     },
+    submitHeal(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_HEAL, unitIds, targetId }],
+      });
+    },
+    submitEmpower(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_EMPOWER, unitIds, targetId }],
+      });
+    },
+    submitConvert(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_CONVERT, unitIds, targetId }],
+      });
+    },
 
     submitPray(unitIds: number[], targetId: number): void {
       send({
@@ -130,6 +157,30 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_DROP_OFF_RELIC, unitIds, targetId }],
+      });
+    },
+
+    submitGarrison(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_GARRISON, unitIds, targetId }],
+      });
+    },
+
+    submitUngarrison(containerId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_UNGARRISON, containerId }],
+      });
+    },
+
+    submitTrade(unitIds: number[], targetId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TRADE, unitIds, targetId }],
       });
     },
 

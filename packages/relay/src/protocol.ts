@@ -6,9 +6,11 @@ import type { Command, MapId } from "@aom/sim";
 // v2 added COMMAND_CHEAT, v3 added COMMAND_ADVANCE_AGE, v4 added COMMAND_PRAY,
 // v5 added COMMAND_CANCEL_TRAIN, v6 added relic pickup/drop-off, v7 added
 // deterministic map selection to the match handshake, v8 added Egyptian heal
-// and empower commands, and v9 adds the ready/go startup barrier. Older clients would
+// and empower commands, v9 added the ready/go startup barrier, and v10 adds
+// garrison/ungarrison orders, v11 adds caravan trade routes, and v12 adds
+// Egyptian heal, empower, and animal-conversion orders. Older clients would
 // otherwise construct a different world and immediately desync.
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 12;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

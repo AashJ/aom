@@ -1,5 +1,12 @@
 import { TICK_S } from "../clock";
-import type { TargetReaction, ThrownTargetReaction } from "../content/unit-type-schema";
+import {
+  MOVEMENT_DOMAIN_AIR,
+  MOVEMENT_DOMAIN_LAND,
+  MOVEMENT_DOMAIN_WATER,
+  type MovementDomain,
+  type TargetReaction,
+  type ThrownTargetReaction,
+} from "../content/unit-type-schema";
 import { nextFloat, nextU32, type Pcg32 } from "../math/prng";
 import { heightAt, MAP_TILES } from "../terrain";
 import { resetAttackSequence, type AttackSequenceState } from "./attack-state";
@@ -38,6 +45,7 @@ export interface TargetReactionStore {
   readonly maxHeight: Float64Array;
   readonly numberBounces: Uint8Array;
   readonly numberBouncesDone: Int8Array;
+  readonly landingDomain: Uint8Array;
   readonly arcStartX: Float64Array;
   readonly arcStartZ: Float64Array;
   readonly arcStartY: Float64Array;
@@ -54,6 +62,7 @@ export interface TargetReactionStore {
 export interface TargetReactionWorld {
   readonly heights: Float32Array;
   readonly walkable: Uint8Array;
+  readonly waterWalkable: Uint8Array;
   readonly posX: Float64Array;
   readonly posZ: Float64Array;
   readonly targetReactions: TargetReactionStore;
@@ -76,6 +85,7 @@ export function createTargetReactionStore(capacity: number): TargetReactionStore
     maxHeight: new Float64Array(capacity),
     numberBounces: new Uint8Array(capacity),
     numberBouncesDone: new Int8Array(capacity),
+    landingDomain: new Uint8Array(capacity),
     arcStartX: new Float64Array(capacity),
     arcStartZ: new Float64Array(capacity),
     arcStartY: new Float64Array(capacity),
@@ -133,6 +143,7 @@ export function clearTargetReaction(store: TargetReactionStore, index: number): 
   store.maxHeight[index] = 0;
   store.numberBounces[index] = 0;
   store.numberBouncesDone[index] = 0;
+  store.landingDomain[index] = MOVEMENT_DOMAIN_LAND;
   store.arcStartX[index] = 0;
   store.arcStartZ[index] = 0;
   store.arcStartY[index] = 0;
@@ -159,6 +170,7 @@ export function copyTargetReaction(
   store.maxHeight[destination] = store.maxHeight[source]!;
   store.numberBounces[destination] = store.numberBounces[source]!;
   store.numberBouncesDone[destination] = store.numberBouncesDone[source]!;
+  store.landingDomain[destination] = store.landingDomain[source]!;
   store.arcStartX[destination] = store.arcStartX[source]!;
   store.arcStartZ[destination] = store.arcStartZ[source]!;
   store.arcStartY[destination] = store.arcStartY[source]!;
@@ -172,11 +184,14 @@ export function copyTargetReaction(
   store.elevation[destination] = store.elevation[source]!;
 }
 
-function isValidLanding(world: TargetReactionWorld, x: number, z: number): boolean {
+function isValidLanding(world: TargetReactionWorld, index: number, x: number, z: number): boolean {
   if (x < 0 || x >= MAP_TILES || z < 0 || z >= MAP_TILES) return false;
   const tileX = Math.floor(x);
   const tileZ = Math.floor(z);
-  return world.walkable[tileZ * MAP_TILES + tileX] === 1;
+  const domain = world.targetReactions.landingDomain[index]! as MovementDomain;
+  if (domain === MOVEMENT_DOMAIN_AIR) return true;
+  const navigation = domain === MOVEMENT_DOMAIN_WATER ? world.waterWalkable : world.walkable;
+  return navigation[tileZ * MAP_TILES + tileX] === 1;
 }
 
 function startThrownArc(
@@ -193,7 +208,7 @@ function startThrownArc(
 
   // BUnitThrownAction terminates when the path manager rejects the next
   // landing. Flight may cross blocked terrain; only the landing is queried.
-  if (!isValidLanding(world, endX, endZ)) return false;
+  if (!isValidLanding(world, index, endX, endZ)) return false;
 
   const startY = heightAt(world.heights, startX, startZ);
   const endY = heightAt(world.heights, endX, endZ);
@@ -234,15 +249,32 @@ function beginThrownTargetReaction(
   sourceX: number,
   sourceZ: number,
   reaction: ThrownTargetReaction,
+  landingDomain: MovementDomain,
 ): boolean {
   const store = world.targetReactions;
-  // Preserve the executable's synchronized draw order even if the eventual
-  // landing is invalid: distance, velocity, height, then integer bounces.
-  const distance = reaction.distanceBase + nextFloat(world.rng) * reaction.distanceRandomRange;
-  const maxVelocity =
-    reaction.maxVelocityBase + nextFloat(world.rng) * reaction.maxVelocityRandomRange;
-  const maxHeight = reaction.maxHeightBase + nextFloat(world.rng) * reaction.maxHeightRandomRange;
-  const numberBounces = reaction.bounceBase + (nextU32(world.rng) % reaction.bounceRandomRange);
+  let distance = reaction.distanceBase;
+  let maxVelocity = reaction.maxVelocityBase;
+  let maxHeight = reaction.maxHeightBase;
+  let numberBounces = reaction.bounceBase;
+  for (const draw of reaction.randomDrawOrder) {
+    switch (draw) {
+      case "distance":
+        distance += nextFloat(world.rng) * reaction.distanceRandomRange;
+        break;
+      case "maxVelocity":
+        maxVelocity += nextFloat(world.rng) * reaction.maxVelocityRandomRange;
+        break;
+      case "maxHeight":
+        maxHeight += nextFloat(world.rng) * reaction.maxHeightRandomRange;
+        break;
+      case "bounces":
+        if (reaction.bounceRandomRange < 1) {
+          throw new RangeError("A thrown-reaction bounce RNG draw requires a positive modulus.");
+        }
+        numberBounces += nextU32(world.rng) % reaction.bounceRandomRange;
+        break;
+    }
+  }
   const dx = world.posX[index]! - sourceX;
   const dz = world.posZ[index]! - sourceZ;
   const directionLength = Math.sqrt(dx * dx + dz * dz);
@@ -255,11 +287,12 @@ function beginThrownTargetReaction(
   store.maxVelocity[index] = maxVelocity;
   store.maxHeight[index] = maxHeight;
   store.numberBounces[index] = numberBounces;
-  store.numberBouncesDone[index] = -1;
+  store.numberBouncesDone[index] = 0;
+  store.landingDomain[index] = landingDomain;
 
   const firstEndX = world.posX[index]! + store.directionX[index]! * distance;
   const firstEndZ = world.posZ[index]! + store.directionZ[index]! * distance;
-  if (!isValidLanding(world, firstEndX, firstEndZ)) {
+  if (!isValidLanding(world, index, firstEndX, firstEndZ)) {
     // The initial BUnitThrownAction setup does not abort on a rejected landing.
     // It replaces the throw with a 0.1-unit horizontal fallback directed away
     // from the x=0 map edge. Later rejected bounce landings do terminate.
@@ -284,11 +317,19 @@ export function installTargetReaction(
   sourceX: number,
   sourceZ: number,
   reaction: TargetReaction,
+  landingDomain: MovementDomain = MOVEMENT_DOMAIN_LAND,
 ): boolean {
   let installed: boolean;
   switch (reaction.kind) {
     case "thrown":
-      installed = beginThrownTargetReaction(world, index, sourceX, sourceZ, reaction);
+      installed = beginThrownTargetReaction(
+        world,
+        index,
+        sourceX,
+        sourceZ,
+        reaction,
+        landingDomain,
+      );
       break;
     default:
       return unsupportedTargetReaction(reaction);

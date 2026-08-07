@@ -20,6 +20,7 @@ export const definition = {
   movementSpeed: 0,
   armor: NO_ARMOR,
   attack: null,
+  tradeSite: "town-center",
   isStatic: true,
   resource: -1,
   bodyRadius: 2.9,

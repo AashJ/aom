@@ -18,6 +18,13 @@ export interface ClassicParticleSource {
   readonly initialVelocity: number;
   readonly usesSpreader: boolean;
   readonly shapeType: number;
+  readonly outerXRadius: number;
+  readonly innerXRadius: number;
+  readonly outerYRadius: number;
+  readonly innerYRadius: number;
+  readonly outerZRadius: number;
+  readonly innerZRadius: number;
+  readonly centerHeight: number;
   readonly offAxisDegrees: number;
   readonly offPlaneDegrees: number;
   readonly materialType: number;
@@ -25,6 +32,7 @@ export interface ClassicParticleSource {
   readonly scaleCycleSeconds: number;
   readonly opacityStages: readonly (readonly [number, number, number, number])[];
   readonly scaleStages: readonly (readonly [number, number, number, number])[];
+  readonly appearanceWeights: readonly number[];
   readonly appearanceFiles: readonly string[];
 }
 
@@ -70,6 +78,10 @@ function barEntries(bytes: Uint8Array): readonly ClassicBarEntry[] {
     });
   }
   return entries;
+}
+
+export function classicBarEntryNames(bytes: Uint8Array): readonly string[] {
+  return barEntries(bytes).map((entry) => entry.name);
 }
 
 export function readClassicBarEntry(bytes: Uint8Array, requestedName: string): Uint8Array {
@@ -202,13 +214,27 @@ export function readClassicParticleSource(bytes: Uint8Array): ClassicParticleSou
   reader.floats(2);
   reader.string(); // BRG filename
   reader.skip(paletteCount * 4);
-  reader.floats(appearanceFileCount); // appearance weights
+  const appearanceWeights = reader.floats(appearanceFileCount);
   const appearanceFiles = Array.from({ length: appearanceFileCount }, () => reader.string());
   const opacityStages = stages(reader, opacityStageCount);
   const scaleStages = stages(reader, scaleStageCount);
-  // Color and collision records are not used by the source sound-wave effect.
-  if (colorStageCount !== 0 || collisionCount !== 0 || !reader.atEnd()) {
-    throw new Error("Unsupported Classic PRT color or collision records.");
+  // Color stages and collision responses do not affect the presentation fields
+  // returned below, but they are part of the serialized PRT tail and must be
+  // consumed so source-bound effects that use them can still be audited.
+  for (let index = 0; index < colorStageCount; index += 1) {
+    reader.skip(8); // palette flag, padding, and RGBA texel
+    reader.floats(2); // hold and fade
+  }
+  for (let index = 0; index < collisionCount; index += 1) {
+    reader.skip(4); // spawn/collision flags
+    reader.int32(); // result
+    const fileCount = reader.int32();
+    reader.floats(6); // linger, fade, and energy-loss values/variance
+    reader.string(); // collision-system name
+    for (let fileIndex = 0; fileIndex < fileCount; fileIndex += 1) reader.string();
+  }
+  if (!reader.atEnd()) {
+    throw new Error("Classic PRT has unsupported trailing data.");
   }
 
   return {
@@ -224,6 +250,13 @@ export function readClassicParticleSource(bytes: Uint8Array): ClassicParticleSou
     initialVelocity: emitter[22]!,
     usesSpreader: shapeFlags[2] === 1,
     shapeType,
+    outerXRadius: shape[0]!,
+    innerXRadius: shape[1]!,
+    outerYRadius: shape[2]!,
+    innerYRadius: shape[3]!,
+    outerZRadius: shape[4]!,
+    innerZRadius: shape[5]!,
+    centerHeight: shape[6]!,
     offAxisDegrees: shape[7]!,
     offPlaneDegrees: shape[9]!,
     materialType,
@@ -231,6 +264,7 @@ export function readClassicParticleSource(bytes: Uint8Array): ClassicParticleSou
     scaleCycleSeconds: scale[8]!,
     opacityStages,
     scaleStages,
+    appearanceWeights,
     appearanceFiles,
   };
 }

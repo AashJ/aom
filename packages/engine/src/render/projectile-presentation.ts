@@ -21,6 +21,13 @@ export function resolveProjectilePresentation(
   return PROJECTILE_PRESENTATIONS[snapshot.projectileTypes[index]!] ?? null;
 }
 
+export function projectileModelIndex(
+  presentation: Extract<RuntimeProjectilePresentation, { readonly kind: "model" }>,
+  projectileId: number,
+): number {
+  return presentation.modelIndices[(projectileId - 1) % presentation.modelIndices.length]!;
+}
+
 /** Writes one allocation-free render interpolation sample. */
 export function writeProjectileVisualState(
   out: Float32Array,

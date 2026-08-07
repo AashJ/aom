@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { COMMAND_ATTACK, COMMAND_MOVE, enqueueCommand } from "../../../commands";
 import { resolveDamage, resolveMeleeDamage } from "../../../ecs/combat";
 import { registerPlayer } from "../../../ecs/players";
-import { NO_PROJECTILE_TICK } from "../../../ecs/projectiles";
+import { NO_PROJECTILE_TICK, beginProjectileAttack } from "../../../ecs/projectiles";
 import { TARGET_REACTION_THROWN } from "../../../ecs/target-reactions";
 import { createWorld, killUnit, spawnUnit, tickWorld } from "../../../ecs/world";
 import { hashWorld } from "../../../hash";
@@ -39,9 +39,9 @@ function duel() {
 
 describe("Greek Minotaur unit pack", () => {
   test("matches the integration-owned final Classic reference", () => {
-    expect(() =>
-      validateDefinitionAgainstReference(definition, GATE_C_MYTH_UNIT_REFERENCES[0]),
-    ).not.toThrow();
+    const reference = GATE_C_MYTH_UNIT_REFERENCES.find((entry) => entry.key === definition.key);
+    expect(reference).toBeDefined();
+    expect(() => validateDefinitionAgainstReference(definition, reference!)).not.toThrow();
   });
 
   test("pins myth, Favor, primary counter, and gore target rules as authored content", () => {
@@ -65,6 +65,7 @@ describe("Greek Minotaur unit pack", () => {
         impactDelayTicks: 19,
         targetReaction: {
           kind: "thrown",
+          randomDrawOrder: ["distance", "maxVelocity", "maxHeight", "bounces"],
           distanceBase: 8,
           distanceRandomRange: 2,
           maxVelocityBase: 12,
@@ -220,13 +221,10 @@ describe("Greek Minotaur unit pack", () => {
       unitIds: [attacker],
       targetId: victim,
     });
-    enqueueCommand(world, {
-      tick: 0,
-      issuer: 1,
-      type: COMMAND_ATTACK,
-      unitIds: [victim],
-      targetId: attacker,
-    });
+    // Queue the authored nineteen-tick release before the combat pass so it
+    // launches at the start of the same tick that Gore lands. Launched shots
+    // survive interruption; only unreleased shots are cancelled.
+    beginProjectileAttack(world, 1, 0, UNIT_TYPES);
     for (let tick = 0; tick < 20; tick += 1) tickWorld(world);
 
     expect(world.targetReactions.kind[1]).toBe(TARGET_REACTION_THROWN);

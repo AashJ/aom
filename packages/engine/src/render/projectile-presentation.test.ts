@@ -10,13 +10,15 @@ import {
   PROJECTILE_VISUAL_X,
   PROJECTILE_VISUAL_Z,
   projectileFlightHeight,
+  projectileModelIndex,
   resolveProjectilePresentation,
   writeProjectileModelTransform,
   writeProjectileVisualState,
 } from "./projectile-presentation";
 
 const presentation: RuntimeProjectilePresentation = {
-  modelIndex: 0,
+  kind: "model",
+  modelIndices: [0],
   flightHeight: 1,
   arcHeight: 0.75,
   forwardAxis: "positive-z",
@@ -84,5 +86,10 @@ describe("projectile presentation", () => {
 
     writeProjectileModelTransform(transform, "positive-z");
     expect(transform).toEqual(mat4.create());
+  });
+
+  test("selects authored projectile model variants from stable identity", () => {
+    const variants = { ...presentation, modelIndices: [10, 11, 12] } as const;
+    expect([1, 2, 3, 4].map((id) => projectileModelIndex(variants, id))).toEqual([10, 11, 12, 10]);
   });
 });

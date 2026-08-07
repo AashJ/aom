@@ -7,7 +7,7 @@ export interface BuildingCompletionState {
   unitType: Uint16Array;
   dying: Uint8Array;
   hp: ArrayLike<number>;
-  buildProgress: Uint16Array;
+  buildProgress: ArrayLike<number>;
 }
 
 export type HasCompletedBuilding = (buildingType: number) => boolean;
@@ -114,13 +114,18 @@ export function getTypeAvailability(
     }
   }
 
-  for (let i = 0; i < stats.prerequisiteBuildings.length; i += 1) {
-    if (!context.hasCompletedBuilding(stats.prerequisiteBuildings[i]!)) {
-      return {
-        available: false,
-        reason: "building",
-        buildingType: stats.prerequisiteBuildings[i]!,
-      };
+  const producerSubstitutesForPrerequisites =
+    producerType !== NO_UNIT_TYPE &&
+    UNIT_TYPES[producerType]?.trainingSite?.substitutesForPrerequisites === true;
+  if (!producerSubstitutesForPrerequisites) {
+    for (let i = 0; i < stats.prerequisiteBuildings.length; i += 1) {
+      if (!context.hasCompletedBuilding(stats.prerequisiteBuildings[i]!)) {
+        return {
+          available: false,
+          reason: "building",
+          buildingType: stats.prerequisiteBuildings[i]!,
+        };
+      }
     }
   }
 

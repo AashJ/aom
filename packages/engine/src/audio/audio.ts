@@ -9,6 +9,8 @@ import {
   type RenderSnapshot,
 } from "@aom/sim";
 import { UNIT_MEDIA, UNIT_MEDIA_DEFINITIONS } from "../content/generated/unit-media";
+import { PROJECTILE_MEDIA_DEFINITIONS } from "../content/projectile-media";
+import type { ProjectileMediaDefinition } from "../content/unit-media-schema";
 import { AUDIO_CUES, CULTURE_MUSIC_TRACKS, MUSIC_TRACKS, type AudioCue } from "./assets";
 
 const BATTLE_HOLD_MS = 20_000;
@@ -19,6 +21,7 @@ type CommandMarkerKind = 1 | 2 | 3 | 4;
 type MusicPhase = "battle" | "culture" | "peaceful";
 
 interface EntityAudioState {
+  actionCooldown: number;
   buildProgress: number;
   hp: number;
   owner: number;
@@ -62,6 +65,7 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
   const cueVariation = new Map<AudioCue, number>();
   const activeSources = new Set<AudioBufferSourceNode>();
   let entities = new Map<number, EntityAudioState>();
+  let projectileIds = new Set<number>();
   let active = false;
   let disposed = false;
   let initialized = false;
@@ -126,7 +130,13 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
     cueActiveCounts.clear();
   }
 
-  function playCue(cue: AudioCue, destination: AudioNode, x?: number, z?: number): void {
+  function playCue(
+    cue: AudioCue,
+    destination: AudioNode,
+    x?: number,
+    z?: number,
+    delaySeconds = cue.delaySeconds ?? 0,
+  ): void {
     if (!active || disposed || cue.files.length === 0) {
       return;
     }
@@ -181,7 +191,7 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
           { once: true },
         );
         activeSources.add(source);
-        source.start();
+        source.start(context.currentTime + delaySeconds);
       })
       .catch((error: unknown) => {
         cueActiveCounts.set(cue, Math.max(0, (cueActiveCounts.get(cue) ?? 1) - 1));
@@ -411,6 +421,7 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
       const id = snapshot.ids[i]!;
       const type = snapshot.unitType[i]!;
       const state: EntityAudioState = {
+        actionCooldown: snapshot.actionCooldown[i]!,
         buildProgress: snapshot.buildProgress[i]!,
         hp: snapshot.hp[i]!,
         owner: snapshot.owner[i]!,
@@ -463,8 +474,17 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
       }
 
       if (previous.specialActionRemaining === 0 && state.specialActionRemaining > 0) {
-        const specialCue = UNIT_MEDIA[type]?.audio.specialAttack;
+        const audio = UNIT_MEDIA[type]?.audio;
+        const specialCue = audio?.specialAttack;
         if (specialCue) playCue(specialCue, effectsGain, state.x, state.z);
+        for (const layer of audio?.specialAttackLayers ?? []) {
+          playCue(layer, effectsGain, state.x, state.z);
+        }
+      }
+
+      if (previous.actionCooldown === 0 && state.actionCooldown > 0) {
+        const attackCue = UNIT_MEDIA[type]?.audio.attack;
+        if (attackCue) playCue(attackCue, effectsGain, state.x, state.z);
       }
 
       if (state.buildProgress > previous.buildProgress) {
@@ -475,6 +495,21 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
         if (previous.buildProgress < buildTicks && state.buildProgress >= buildTicks) {
           playBuildingCue(type, state.x, state.z);
         }
+      }
+    }
+
+    const nextProjectileIds = new Set<number>();
+    for (let i = 0; i < snapshot.projectileCount; i += 1) {
+      const id = snapshot.projectileIds[i]!;
+      nextProjectileIds.add(id);
+      if (!initialized || snapshot.projectileVisible[i] === 0 || projectileIds.has(id)) continue;
+
+      const media = PROJECTILE_MEDIA_DEFINITIONS[snapshot.projectileTypes[i]!] as
+        | ProjectileMediaDefinition
+        | undefined;
+      const cue = media?.audio;
+      if (cue) {
+        playCue(cue, effectsGain, snapshot.projectilePosX[i]!, snapshot.projectilePosZ[i]!);
       }
     }
 
@@ -498,6 +533,7 @@ export function createGameAudio(majorGod = GOD_ZEUS): GameAudio {
     }
 
     entities = nextEntities;
+    projectileIds = nextProjectileIds;
     initialized = true;
   }
 

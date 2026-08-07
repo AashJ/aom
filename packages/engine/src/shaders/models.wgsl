@@ -130,6 +130,11 @@ fn fs(in: VertexOut) -> @location(0) vec4f {
   color *= lighting;
   color = mix(color, vec3f(1.0, 0.85, 0.3), in.selected * 0.28);
 
+  if (in.ghostKind < -0.5) {
+    let luminance = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+    color = mix(vec3f(luminance), vec3f(0.47, 0.49, 0.48), 0.72);
+  }
+
   if (in.ghostKind > 0.5) {
     let valid = step(in.ghostKind, 1.5);
     color *= mix(vec3f(1.2, 0.4, 0.35), vec3f(0.5, 1.1, 0.6), valid);

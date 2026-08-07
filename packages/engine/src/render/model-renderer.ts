@@ -1,4 +1,4 @@
-import { TICK_HZ, UNIT_TYPES, heightAt, type RenderSnapshot } from "@aom/sim";
+import { TICK_HZ, UNIT_CONDITION_STONE, UNIT_TYPES, heightAt, type RenderSnapshot } from "@aom/sim";
 import { DEPTH_FORMAT } from "../gpu/device";
 import * as mat4 from "../math/mat4";
 import modelsWgsl from "../shaders/models.wgsl?raw";
@@ -41,6 +41,7 @@ import {
   PROJECTILE_VISUAL_X,
   PROJECTILE_VISUAL_Z,
   projectileFlightHeight,
+  projectileModelIndex,
   resolveProjectilePresentation,
   writeProjectileModelTransform,
   writeProjectileVisualState,
@@ -83,6 +84,7 @@ interface DeathInstance {
   readonly facingX: number;
   readonly facingZ: number;
   readonly owner: number;
+  readonly stone: boolean;
 }
 
 export interface ModelRenderer {
@@ -328,11 +330,28 @@ export async function createModelRenderer(
     }
   }
 
-  const maxAttachments = MODEL_CONFIGS.reduce(
-    (maximum, config) => Math.max(maximum, config.attachments?.length ?? 0),
-    0,
-  );
-  const instanceCapacity = (maxInstances * 2 + 1) * (1 + maxAttachments) + maxProjectiles;
+  function attachmentTreeMetrics(modelIndex: number, path: Set<number>): [number, number] {
+    if (path.has(modelIndex)) throw new Error(`Cyclic model attachment graph at ${modelIndex}.`);
+    path.add(modelIndex);
+    let descendants = 0;
+    let depth = 0;
+    for (const attachment of models[modelIndex]!.attachments) {
+      const [childDescendants, childDepth] = attachmentTreeMetrics(attachment.modelIndex, path);
+      descendants += 1 + childDescendants;
+      depth = Math.max(depth, 1 + childDepth);
+    }
+    path.delete(modelIndex);
+    return [descendants, depth];
+  }
+
+  let maxAttachmentDescendants = 0;
+  let maxAttachmentDepth = 0;
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const [descendants, depth] = attachmentTreeMetrics(modelIndex, new Set());
+    maxAttachmentDescendants = Math.max(maxAttachmentDescendants, descendants);
+    maxAttachmentDepth = Math.max(maxAttachmentDepth, depth);
+  }
+  const instanceCapacity = (maxInstances * 2 + 1) * (1 + maxAttachmentDescendants) + maxProjectiles;
   const instanceBuffer = device.createBuffer({
     size: instanceCapacity * MODEL_INSTANCE_STRIDE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -341,21 +360,25 @@ export async function createModelRenderer(
   const counts = new Uint32Array(MODEL_CONFIGS.length);
   const firstInstances = new Uint32Array(MODEL_CONFIGS.length);
   const writeOffsets = new Uint32Array(MODEL_CONFIGS.length);
-  const animationState: ModelAnimationState = {
-    weights: new Float32Array(MAX_MORPH_TARGETS),
-    nodeMatrix: mat4.create(),
-  };
-  const attachmentAnimationState: ModelAnimationState = {
-    weights: new Float32Array(MAX_MORPH_TARGETS),
-    nodeMatrix: mat4.create(),
-  };
-  const attachmentMatrix = mat4.create();
-  const modelInstanceMatrix = mat4.create();
+  const animationStates: ModelAnimationState[] = Array.from(
+    { length: maxAttachmentDepth + 1 },
+    () => ({ weights: new Float32Array(MAX_MORPH_TARGETS), nodeMatrix: mat4.create() }),
+  );
+  const attachmentAnimationStates: ModelAnimationState[] = Array.from(
+    { length: Math.max(1, maxAttachmentDepth) },
+    () => ({ weights: new Float32Array(MAX_MORPH_TARGETS), nodeMatrix: mat4.create() }),
+  );
+  const attachmentMatrices = Array.from({ length: Math.max(1, maxAttachmentDepth) }, () =>
+    mat4.create(),
+  );
+  const modelInstanceMatrices = Array.from({ length: maxAttachmentDepth + 1 }, () => mat4.create());
   const projectileVisualState = new Float32Array(PROJECTILE_VISUAL_FLOATS);
   const unitPose = new Float64Array(UNIT_POSE_FLOATS);
   const projectileModelTransforms = PROJECTILE_PRESENTATIONS.map((presentation) => {
     const transform = mat4.create();
-    writeProjectileModelTransform(transform, presentation.forwardAxis);
+    if (presentation.kind === "model") {
+      writeProjectileModelTransform(transform, presentation.forwardAxis);
+    }
     return transform;
   });
   const statistics: RendererStatistics = { drawCalls: 0, instances: 0 };
@@ -365,7 +388,7 @@ export async function createModelRenderer(
   function countModelInstances(modelIndex: number): void {
     counts[modelIndex] = counts[modelIndex]! + 1;
     for (const attachment of models[modelIndex]!.attachments) {
-      counts[attachment.modelIndex] = counts[attachment.modelIndex]! + 1;
+      countModelInstances(attachment.modelIndex);
     }
   }
 
@@ -383,9 +406,11 @@ export async function createModelRenderer(
     heightOffset: number,
     localTransform: mat4.Mat4 | null,
     heights: Float32Array,
+    attachmentDepth = 0,
   ): void {
     const model = models[modelIndex]!;
     const modelConfig = MODEL_CONFIGS[modelIndex]!;
+    const animationState = animationStates[attachmentDepth]!;
     sampleModelAnimation(model.asset, animationTime, -1, animationState);
     const instanceIndex = writeOffsets[modelIndex]!;
     const offset = instanceIndex * MODEL_INSTANCE_FLOATS;
@@ -403,38 +428,43 @@ export async function createModelRenderer(
     staging[offset + 7] = buildFraction;
     staging[offset + 8] = ghostMode;
     staging.set(animationState.weights, offset + MODEL_INSTANCE_MORPH_OFFSET);
+    const modelInstanceMatrix = modelInstanceMatrices[attachmentDepth]!;
     const instanceMatrix = localTransform
       ? mat4.multiply(modelInstanceMatrix, localTransform, animationState.nodeMatrix)
       : animationState.nodeMatrix;
     staging.set(instanceMatrix, offset + MODEL_INSTANCE_MATRIX_OFFSET);
 
     for (const attachment of model.attachments) {
+      const attachmentAnimationState = attachmentAnimationStates[attachmentDepth]!;
       sampleModelAnimation(
         model.asset,
         animationTime,
         attachment.targetIndex,
         attachmentAnimationState,
       );
-      mat4.multiply(attachmentMatrix, attachmentAnimationState.nodeMatrix, attachment.inverse);
-      const attachmentIndex = writeOffsets[attachment.modelIndex]!;
-      const attachmentOffset = attachmentIndex * MODEL_INSTANCE_FLOATS;
-      writeOffsets[attachment.modelIndex] = attachmentIndex + 1;
-      staging[attachmentOffset] = x;
-      staging[attachmentOffset + 1] =
-        heightAt(heights, x, z) + model.asset.groundOffset + heightOffset;
-      staging[attachmentOffset + 2] = z;
-      staging[attachmentOffset + 3] = facingX;
-      staging[attachmentOffset + 4] = facingZ;
-      staging[attachmentOffset + 5] = selected;
-      staging[attachmentOffset + 6] = owner;
-      staging[attachmentOffset + 7] = buildFraction;
-      staging[attachmentOffset + 8] = ghostMode;
-      staging.fill(
-        0,
-        attachmentOffset + MODEL_INSTANCE_MORPH_OFFSET,
-        attachmentOffset + MODEL_INSTANCE_MATRIX_OFFSET,
+      const attachmentMatrix = attachmentMatrices[attachmentDepth]!;
+      if (localTransform === null) {
+        attachmentMatrix.set(attachmentAnimationState.nodeMatrix);
+      } else {
+        mat4.multiply(attachmentMatrix, localTransform, attachmentAnimationState.nodeMatrix);
+      }
+      mat4.multiply(attachmentMatrix, attachmentMatrix, attachment.inverse);
+      writeModelInstance(
+        attachment.modelIndex,
+        x,
+        z,
+        facingX,
+        facingZ,
+        selected,
+        owner,
+        buildFraction,
+        ghostMode,
+        animationTime,
+        heightOffset,
+        attachmentMatrix,
+        heights,
+        attachmentDepth + 1,
       );
-      staging.set(attachmentMatrix, attachmentOffset + MODEL_INSTANCE_MATRIX_OFFSET);
     }
   }
 
@@ -445,7 +475,13 @@ export async function createModelRenderer(
     for (let index = 0; index < curr.deathCount; index += 1) {
       if (curr.deathVisible[index] === 0 || deathInstances.size >= maxInstances) continue;
       const id = curr.deathIds[index]!;
-      const presentation = resolveModelDeathPresentation(curr.deathTypes[index]!, id);
+      const presentation = resolveModelDeathPresentation(
+        curr.deathTypes[index]!,
+        id,
+        curr.deathCombatExperienceKills[index]!,
+        curr.playerAges[curr.deathOwners[index]!]!,
+        curr.deathCarried[index]!,
+      );
       if (!presentation) continue;
       deathInstances.set(id, {
         id,
@@ -456,6 +492,7 @@ export async function createModelRenderer(
         facingX: curr.deathFacingX[index]!,
         facingZ: curr.deathFacingZ[index]!,
         owner: curr.deathOwners[index]!,
+        stone: (curr.deathConditions[index]! & UNIT_CONDITION_STONE) !== 0,
       });
     }
   }
@@ -493,7 +530,9 @@ export async function createModelRenderer(
 
       for (let i = 0; i < curr.projectileCount; i += 1) {
         const presentation = resolveProjectilePresentation(curr, i);
-        if (presentation) countModelInstances(presentation.modelIndex);
+        if (presentation?.kind === "model") {
+          countModelInstances(projectileModelIndex(presentation, curr.projectileIds[i]!));
+        }
       }
 
       const ghostPresentation =
@@ -577,10 +616,10 @@ export async function createModelRenderer(
 
       for (let i = 0; i < curr.projectileCount; i += 1) {
         const presentation = resolveProjectilePresentation(curr, i);
-        if (!presentation) continue;
+        if (presentation?.kind !== "model") continue;
         writeProjectileVisualState(projectileVisualState, prev, curr, i, alpha);
         writeModelInstance(
-          presentation.modelIndex,
+          projectileModelIndex(presentation, curr.projectileIds[i]!),
           projectileVisualState[PROJECTILE_VISUAL_X]!,
           projectileVisualState[PROJECTILE_VISUAL_Z]!,
           projectileVisualState[PROJECTILE_VISUAL_FACING_X]!,
@@ -608,7 +647,7 @@ export async function createModelRenderer(
           0,
           death.owner,
           1,
-          0,
+          death.stone ? -1 : 0,
           animationTime,
           0,
           null,

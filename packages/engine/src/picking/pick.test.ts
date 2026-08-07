@@ -20,6 +20,7 @@ import {
   spawnBuilding,
   spawnUnit,
   TYPE_EGYPTIAN_LABORER,
+  TYPE_GREEK_CARAVAN,
   TYPE_GREEK_HOUSE as TYPE_HOUSE,
   TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
@@ -119,6 +120,18 @@ function recordingSink(): CommandSink & {
       calls.push("drop-off-relic");
       targetIds.push(targetId);
     },
+    submitGarrison: (_ids, targetId) => {
+      calls.push("garrison");
+      targetIds.push(targetId);
+    },
+    submitUngarrison: (targetId) => {
+      calls.push("ungarrison");
+      targetIds.push(targetId);
+    },
+    submitTrade: (_ids, targetId) => {
+      calls.push("trade");
+      targetIds.push(targetId);
+    },
     submitBuild: (_ids, targetId) => {
       calls.push("build");
       targetIds.push(targetId);
@@ -145,8 +158,13 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     mode: new Uint8Array(xs.length),
     gatherTargetType: new Uint16Array(xs.length).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(xs.length),
+    beamTargetId: new Uint32Array(xs.length).fill(NO_TARGET),
+    beamTargetVisible: new Uint8Array(xs.length),
     meleeActionVariant: new Uint8Array(xs.length),
+    combatExperienceKills: new Uint8Array(xs.length),
     specialActionRemaining: new Uint16Array(xs.length),
+    poisoned: new Uint8Array(xs.length),
+    poisonElapsedTicks: new Uint16Array(xs.length),
     targetReactionKind: new Uint8Array(xs.length),
     elevation: new Float32Array(xs.length),
     visible: new Uint8Array(xs.length).fill(1),
@@ -174,11 +192,15 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     deathFacingX: new Float32Array(xs.length),
     deathFacingZ: new Float32Array(xs.length),
     deathOwners: new Uint8Array(xs.length),
+    deathCombatExperienceKills: new Uint8Array(xs.length),
+    deathConditions: new Uint8Array(xs.length),
+    deathCarried: new Uint16Array(xs.length),
     deathVisible: new Uint8Array(xs.length),
     stockpiles: new Uint32Array(256 * RESOURCE_COUNT),
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
     playerMajorGods: new Uint8Array(256).fill(NO_GOD),
+    playerAges: new Uint8Array(256),
     minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
     ageAdvanceTarget: NO_AGE,
     ageAdvanceGod: NO_GOD,
@@ -189,6 +211,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
+    lifespanRemaining: new Uint16Array(xs.length),
     trainRemaining: new Uint16Array(xs.length),
     trainQueueLength: new Uint8Array(xs.length),
     trainQueueTypes: new Uint16Array(xs.length * MAX_TRAIN_QUEUE).fill(NO_UNIT_TYPE),
@@ -290,7 +313,10 @@ describe("pickUnit", () => {
     registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
 
     spawnUnit(world, camera.target[0]!, camera.target[2]!, 0, 0);
     spawnUnit(world, camera.target[0]! + 4, camera.target[2]! + 4, 0, 0);
@@ -331,7 +357,10 @@ describe("pickUnit", () => {
     prev.elevation[0] = 6;
     curr.elevation[0] = 6;
     updateMatrices(camera, 16 / 9);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const presentation = UNIT_PRESENTATIONS[curr.unitType[0]!]!;
     const x = curr.posX[0]!;
     const z = curr.posZ[0]!;
@@ -352,7 +381,10 @@ describe("pickUnit", () => {
     const camera = createCamera();
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
     const snap = snapshot([32], [48]);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
     const input = commandInput(0, 0);
     const marker = new Float32Array(2);
@@ -390,20 +422,15 @@ describe("pickUnit", () => {
     registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
     const input = commandInput(0, 0);
 
     spawnUnit(world, camera.target[0]!, camera.target[2]!, 0, 0);
-    spawnUnit(
-      world,
-      camera.target[0]! + 4,
-      camera.target[2]! + 4,
-      0,
-      0,
-      NEUTRAL_OWNER,
-      TYPE_TREE,
-    );
+    spawnUnit(world, camera.target[0]! + 4, camera.target[2]! + 4, 0, 0, NEUTRAL_OWNER, TYPE_TREE);
     updateVisibility(world);
     writeSnapshot(world, prev);
     writeSnapshot(world, curr);
@@ -454,7 +481,10 @@ describe("pickUnit", () => {
     registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
 
     world.walkable.fill(1);
@@ -499,7 +529,10 @@ describe("pickUnit", () => {
     registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
 
     world.walkable.fill(1);
@@ -545,7 +578,10 @@ describe("pickUnit", () => {
     registerPlayer(world, 0, god);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
 
     world.walkable.fill(1);
@@ -588,7 +624,10 @@ describe("pickUnit", () => {
     registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
 
     world.walkable.fill(1);
@@ -624,6 +663,47 @@ describe("pickUnit", () => {
     expect(sink.calls).toEqual(["move"]);
   });
 
+  test("right-click on an own completed Town Center routes selected Caravans to Trade", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(43);
+    registerPlayer(world, 0);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const sink = recordingSink();
+    world.walkable.fill(1);
+    const townCenter = spawnBuilding(
+      world,
+      Math.round(camera.target[0]!) - 2,
+      Math.round(camera.target[2]!) - 2,
+      0,
+      TYPE_TOWN_CENTER,
+      true,
+    );
+    spawnUnit(world, camera.target[0]! - 20, camera.target[2]!, 0, 0, 0, TYPE_GREEK_CARAVAN);
+    setSelected(world, 1, true);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+    expect(issued).toBe(1);
+    expect(sink.calls).toEqual(["trade"]);
+    expect(sink.targetIds).toEqual([townCenter]);
+  });
+
   test("right-click on a ground relic routes a selected relic-capable hero to PickUp", () => {
     const camera = createCamera();
     const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
@@ -632,7 +712,10 @@ describe("pickUnit", () => {
     world.walkable.fill(1);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
 
     const heroId = spawnUnit(world, camera.target[0]! - 8, camera.target[2]!, 0, 0, 0, TYPE_JASON);
@@ -678,7 +761,10 @@ describe("pickUnit", () => {
     world.walkable.fill(1);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
     const sink = recordingSink();
 
     const templeId = spawnBuilding(
@@ -732,7 +818,10 @@ describe("pickUnit", () => {
     registerPlayer(world, 0);
     const prev = createSnapshot(8);
     const curr = createSnapshot(8);
-    const canvas = { clientWidth: 1600, clientHeight: 900 } as HTMLCanvasElement;
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
 
     spawnUnit(world, camera.target[0]!, camera.target[2]!, 0, 0);
     spawnUnit(world, camera.target[0]! + 4, camera.target[2]! + 4, 0, 0);

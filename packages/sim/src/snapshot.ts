@@ -1,6 +1,10 @@
 // The only sim->engine channel. The engine reads snapshots, never World.
 import { FAVOR, NO_UNIT_TYPE, RESOURCE_COUNT, UNIT_TYPES } from "./ecs/types";
-import { UNIT_CLASS_RELIC, type UnitTypeStats } from "./content/unit-type-schema";
+import {
+  UNIT_CLASS_BUILDING,
+  UNIT_CLASS_RELIC,
+  type UnitTypeStats,
+} from "./content/unit-type-schema";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
 import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
@@ -8,6 +12,7 @@ import { findAgeAdvanceResearch } from "./ecs/research";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { MAX_PROJECTILES, NO_PROJECTILE_TICK, projectileProgressAt } from "./ecs/projectiles";
 import { NO_MELEE_ATTACK_VARIANT } from "./ecs/melee-attack-cycles";
+import { jumpElevation } from "./ecs/special-attacks";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
 import {
@@ -29,8 +34,14 @@ export interface RenderSnapshot {
   mode: Uint8Array;
   gatherTargetType: Uint16Array;
   actionCooldown: Uint16Array;
+  secondaryAttack: Uint8Array;
+  beamTargetId: Uint32Array;
+  beamTargetVisible: Uint8Array;
   meleeActionVariant: Uint8Array;
+  combatExperienceKills: Uint8Array;
   specialActionRemaining: Uint16Array;
+  poisoned: Uint8Array;
+  poisonElapsedTicks: Uint16Array;
   targetReactionKind: Uint8Array;
   elevation: Float32Array;
   visible: Uint8Array;
@@ -57,9 +68,13 @@ export interface RenderSnapshot {
   deathFacingX: Float32Array;
   deathFacingZ: Float32Array;
   deathOwners: Uint8Array;
+  deathCombatExperienceKills: Uint8Array;
+  deathConditions: Uint8Array;
+  deathCarried: Uint16Array;
   deathVisible: Uint8Array;
   hp: Float32Array;
   buildProgress: Uint16Array;
+  lifespanRemaining: Uint16Array;
   trainRemaining: Uint16Array;
   trainQueueLength: Uint8Array;
   trainQueueTypes: Uint16Array;
@@ -68,6 +83,7 @@ export interface RenderSnapshot {
   age: number;
   majorGod: number;
   playerMajorGods: Uint8Array;
+  playerAges: Uint8Array;
   minorGods: Uint8Array;
   ageAdvanceTarget: number;
   ageAdvanceGod: number;
@@ -95,8 +111,14 @@ export function createSnapshot(
     mode: new Uint8Array(capacity),
     gatherTargetType: new Uint16Array(capacity).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(capacity),
+    secondaryAttack: new Uint8Array(capacity),
+    beamTargetId: new Uint32Array(capacity).fill(NO_TARGET),
+    beamTargetVisible: new Uint8Array(capacity),
     meleeActionVariant: new Uint8Array(capacity).fill(NO_MELEE_ATTACK_VARIANT),
+    combatExperienceKills: new Uint8Array(capacity),
     specialActionRemaining: new Uint16Array(capacity),
+    poisoned: new Uint8Array(capacity),
+    poisonElapsedTicks: new Uint16Array(capacity),
     targetReactionKind: new Uint8Array(capacity),
     elevation: new Float32Array(capacity),
     visible: new Uint8Array(capacity),
@@ -123,9 +145,13 @@ export function createSnapshot(
     deathFacingX: new Float32Array(capacity),
     deathFacingZ: new Float32Array(capacity),
     deathOwners: new Uint8Array(capacity),
+    deathCombatExperienceKills: new Uint8Array(capacity),
+    deathConditions: new Uint8Array(capacity),
+    deathCarried: new Uint16Array(capacity),
     deathVisible: new Uint8Array(capacity),
     hp: new Float32Array(capacity),
     buildProgress: new Uint16Array(capacity),
+    lifespanRemaining: new Uint16Array(capacity),
     trainRemaining: new Uint16Array(capacity),
     trainQueueLength: new Uint8Array(capacity),
     trainQueueTypes: new Uint16Array(capacity * MAX_TRAIN_QUEUE).fill(NO_UNIT_TYPE),
@@ -134,6 +160,7 @@ export function createSnapshot(
     age: AGE_ARCHAIC,
     majorGod: NO_GOD,
     playerMajorGods: new Uint8Array(256).fill(NO_GOD),
+    playerAges: new Uint8Array(256),
     minorGods: new Uint8Array(AGE_COUNT).fill(NO_GOD),
     ageAdvanceTarget: NO_AGE,
     ageAdvanceGod: NO_GOD,
@@ -170,8 +197,16 @@ export function writeProjectileSnapshot(
     const x = launchX + dx * progress;
     const z = launchZ + dz * progress;
     const sourceType = world.projectiles.sourceTypes[index]!;
-    const attack = unitTypes[sourceType]?.attack;
-    if (!attack || attack.kind !== "projectile") continue;
+    const stats = unitTypes[sourceType];
+    const attack =
+      world.projectiles.specialAttacks[index] === 1
+        ? stats?.specialAttack?.kind === "charged-projectile"
+          ? stats.specialAttack
+          : null
+        : stats?.attack?.kind === "projectile"
+          ? stats.attack
+          : null;
+    if (attack === null || attack === undefined) continue;
 
     out.projectileIds[output] = world.projectiles.ids[index]!;
     out.projectileTypes[output] = attack.projectile.type;
@@ -198,8 +233,11 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   // Full copy each write: 4 KB at 20 Hz is negligible.
   out.stockpiles.set(world.stockpiles);
   out.playerMajorGods.set(world.playerMajorGod);
+  out.playerAges.set(world.playerAge);
   out.completedBuildings.fill(0);
   out.carriedRelicCount.fill(0);
+  out.poisoned.fill(0);
+  out.poisonElapsedTicks.fill(0);
   const viewerSlot = world.playerSlotById[viewerId]!;
   out.ageAdvanceTarget = NO_AGE;
   out.ageAdvanceGod = NO_GOD;
@@ -255,12 +293,26 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.deathFacingX[eventIndex] = world.deathEventFacingX[eventIndex]!;
     out.deathFacingZ[eventIndex] = world.deathEventFacingZ[eventIndex]!;
     out.deathOwners[eventIndex] = owner;
+    out.deathCombatExperienceKills[eventIndex] = world.deathEventCombatExperienceKills[eventIndex]!;
+    out.deathConditions[eventIndex] = world.deathEventConditions[eventIndex]!;
+    out.deathCarried[eventIndex] = world.deathEventCarried[eventIndex]!;
     out.deathVisible[eventIndex] = isTypeAtPositionVisibleTo(world, viewerId, owner, unitType, x, z)
       ? 1
       : 0;
   }
 
   writeProjectileSnapshot(world, out, viewerId);
+
+  for (let effectIndex = 0; effectIndex < world.poisonEffects.count; effectIndex += 1) {
+    const target = resolveId(world, world.poisonEffects.targetIds[effectIndex]!);
+    if (target < 0 || world.dying[target] === 1 || world.hp[target] === 0) continue;
+    const elapsedTicks = Math.max(0, world.tick - world.poisonEffects.startTicks[effectIndex]! - 1);
+    out.poisoned[target] = 1;
+    out.poisonElapsedTicks[target] = Math.max(
+      out.poisonElapsedTicks[target]!,
+      Math.min(0xffff, elapsedTicks),
+    );
+  }
 
   for (let i = 0; i < world.count; i += 1) {
     // The renderer will use id equality to decide interpolate-vs-snap once swap-remove exists;
@@ -277,10 +329,35 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;
     out.actionCooldown[i] = world.attackCooldown[i]!;
+    const actionTarget = resolveId(world, world.attackTarget[i]!);
+    const stats = UNIT_TYPES[world.unitType[i]!]!;
+    const secondaryCycles = stats.buildingAttack?.cycleVariants;
+    out.secondaryAttack[i] =
+      stats.buildingAttack !== undefined &&
+      ((actionTarget >= 0 &&
+        (UNIT_TYPES[world.unitType[actionTarget]!]!.classes & UNIT_CLASS_BUILDING) !== 0) ||
+        (secondaryCycles !== undefined &&
+          world.meleeActionVariant[i]! < secondaryCycles.length))
+        ? 1
+        : 0;
+    const attack = stats.attack;
+    const beamTarget =
+      attack?.kind === "beam" && world.beamActionActive[i] === 1
+        ? resolveId(world, world.attackTarget[i]!)
+        : -1;
+    out.beamTargetId[i] = beamTarget >= 0 ? unitIdAt(world, beamTarget) : NO_TARGET;
+    out.beamTargetVisible[i] =
+      beamTarget >= 0 && isEntityVisibleTo(world, viewerId, beamTarget) ? 1 : 0;
     out.meleeActionVariant[i] = world.meleeActionVariant[i]!;
+    out.combatExperienceKills[i] = world.combatExperienceKills[i]!;
     out.specialActionRemaining[i] = world.specialActionRemaining[i]!;
     out.targetReactionKind[i] = world.targetReactions.kind[i]!;
-    out.elevation[i] = world.targetReactions.elevation[i]!;
+    const special = UNIT_TYPES[world.unitType[i]!]!.specialAttack;
+    const actionElevation =
+      special?.kind === "charged-jump" && world.specialActionRemaining[i]! > 0
+        ? jumpElevation(special, world.specialActionRemaining[i]!)
+        : 0;
+    out.elevation[i] = world.targetReactions.elevation[i]! + actionElevation;
     out.visible[i] =
       world.containedBy[i] === NO_TARGET && isEntityVisibleTo(world, viewerId, i) ? 1 : 0;
     // Copies selected, not selectable; selectable only means the unit may be selected.
@@ -291,6 +368,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.unitType[i] = world.unitType[i]!;
     out.hp[i] = world.hp[i]!;
     out.buildProgress[i] = world.buildProgress[i]!;
+    out.lifespanRemaining[i] = world.lifespanRemaining[i]!;
     if (viewerSlot >= 0 && isCompletedOwnedBuilding(world, i, viewerId)) {
       out.completedBuildings[world.unitType[i]!] = 1;
     }

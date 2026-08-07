@@ -1,5 +1,6 @@
 import { UNIT_TYPES } from "./ecs/types";
 import type { World } from "./ecs/world";
+import { effectiveLineOfSight } from "./ecs/unit-age";
 import { MAP_TILES } from "./terrain";
 
 export const VIS_UNSEEN = 0;
@@ -27,9 +28,10 @@ export function updateVisibility(world: World): void {
     if (slot < 0) continue;
 
     const stats = UNIT_TYPES[world.unitType[i]!]!;
+    const lineOfSight = effectiveLineOfSight(stats, world.playerAge[world.owner[i]!]!);
 
     if (
-      stats.lineOfSight <= 0 ||
+      lineOfSight <= 0 ||
       (stats.footprint > 0 && world.buildProgress[i]! < stats.buildTicks)
     ) {
       continue;
@@ -37,7 +39,7 @@ export function updateVisibility(world: World): void {
 
     const centerX = world.posX[i]!;
     const centerZ = world.posZ[i]!;
-    const radius = stats.lineOfSight;
+    const radius = lineOfSight;
     const radiusSq = radius * radius;
     const minX = Math.max(0, Math.floor(centerX - radius));
     const maxX = Math.min(MAP_TILES - 1, Math.floor(centerX + radius));

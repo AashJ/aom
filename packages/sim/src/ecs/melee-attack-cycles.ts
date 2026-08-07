@@ -38,6 +38,22 @@ export function beginMeleeAttackCycle(
   return cycle;
 }
 
+export function beginAuthoredMeleeAttackCycle(
+  state: MeleeAttackCycleState,
+  index: number,
+  attack: MeleeAttack,
+  variant: number,
+): MeleeAttackCycle {
+  const cycle = attack.cycleVariants?.[variant];
+  if (cycle === undefined) {
+    throw new RangeError(`Requested melee attack variant ${variant} is not authored.`);
+  }
+  state.attackCooldown[index] = cycle.actionTicks;
+  state.meleeActionVariant[index] = variant;
+  state.meleeActionImpactPending[index] = 1;
+  return cycle;
+}
+
 export function interruptMeleeAttackCycle(state: MeleeAttackCycleState, index: number): void {
   state.meleeActionVariant[index] = NO_MELEE_ATTACK_VARIANT;
   state.meleeActionImpactPending[index] = 0;

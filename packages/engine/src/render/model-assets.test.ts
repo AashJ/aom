@@ -15,7 +15,12 @@ describe("named model registry", () => {
 
   test("keeps projectile models in the same registry rebuilt after device loss", () => {
     for (const presentation of PROJECTILE_PRESENTATIONS) {
-      expect(MODEL_CONFIGS[presentation.modelIndex]).toBeDefined();
+      if (presentation.kind === "model") {
+        expect(presentation.modelIndices.length).toBeGreaterThan(0);
+        for (const modelIndex of presentation.modelIndices) {
+          expect(MODEL_CONFIGS[modelIndex]).toBeDefined();
+        }
+      }
     }
   });
 
