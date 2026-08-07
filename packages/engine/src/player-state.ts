@@ -24,6 +24,7 @@ export interface PlayerState {
   gold: number;
   favor: number;
   favorPerMinute: number;
+  townBellActive: boolean;
   pop: number;
   popCap: number;
   completedBuildings: Uint8Array;
@@ -88,6 +89,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     gold: 0,
     favor: 0,
     favorPerMinute: 0,
+    townBellActive: false,
     pop: 0,
     popCap: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
@@ -106,6 +108,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     const gold = snapshot.stockpiles[stockpileBase + GOLD] ?? 0;
     const favor = snapshot.stockpiles[stockpileBase + FAVOR] ?? 0;
     const favorPerMinute = snapshot.favorRateMilliPerMinute / 1_000;
+    const townBellActive = snapshot.townBellActive === 1;
     let pop = 0;
     let popCap = 0;
     const ownedOrQueuedUnitCounts = new Uint32Array(UNIT_TYPES.length);
@@ -153,6 +156,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       gold === state.gold &&
       favor === state.favor &&
       favorPerMinute === state.favorPerMinute &&
+      townBellActive === state.townBellActive &&
       pop === state.pop &&
       popCap === state.popCap &&
       ageAdvancement?.targetAge === state.ageAdvancement?.targetAge &&
@@ -175,6 +179,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       gold,
       favor,
       favorPerMinute,
+      townBellActive,
       pop,
       popCap,
       completedBuildings: snapshot.completedBuildings.slice(),

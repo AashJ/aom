@@ -88,6 +88,7 @@ export function canEnterGarrison(
     world.hp[unitIndex]! <= 0 ||
     world.dying[containerIndex] === 1 ||
     world.hp[containerIndex]! <= 0 ||
+    world.buildProgress[containerIndex]! < UNIT_TYPES[world.unitType[containerIndex]!]!.buildTicks ||
     world.containedBy[unitIndex] !== NO_TARGET ||
     world.containedBy[containerIndex] !== NO_TARGET
   ) {
@@ -182,37 +183,36 @@ export function releaseGarrisonedUnits(world: World, containerIndex: number): vo
     ) {
       continue;
     }
-    const offset = EJECT_OFFSETS[released % EJECT_OFFSETS.length]!;
-    const ring = 1 + Math.floor(released / EJECT_OFFSETS.length);
-    const preferredX = Math.min(
-      MAP_TILES - 0.5,
-      Math.max(0.5, world.posX[containerIndex]! + offset[0] * ring),
-    );
-    const preferredZ = Math.min(
-      MAP_TILES - 0.5,
-      Math.max(0.5, world.posZ[containerIndex]! + offset[1] * ring),
-    );
-    const releaseCell = navigableCellNear(
-      world,
-      preferredX,
-      preferredZ,
-      movementDomainForType(world.unitType[index]!),
-    );
-    const releaseGrid = navigationGridForDomain(
-      world,
-      movementDomainForType(world.unitType[index]!),
-    );
-    if (releaseGrid[releaseCell] !== 1) continue;
-    const releaseX = (releaseCell % MAP_TILES) + 0.5;
-    const releaseZ = Math.floor(releaseCell / MAP_TILES) + 0.5;
-    world.containedBy[index] = NO_TARGET;
-    world.posX[index] = releaseX;
-    world.posZ[index] = releaseZ;
-    world.selectable[index] = 1;
-    world.moving[index] = 0;
-    world.unitField[index] = null;
-    released += 1;
+    if (releaseGarrisonedUnit(world, index, released)) released += 1;
   }
+}
+
+export function releaseGarrisonedUnit(world: World, unitIndex: number, releaseOrder = 0): boolean {
+  if (unitIndex < 0 || unitIndex >= world.count) return false;
+  const containerIndex = resolveId(world, world.containedBy[unitIndex]!);
+  if (containerIndex < 0) return false;
+  const offset = EJECT_OFFSETS[releaseOrder % EJECT_OFFSETS.length]!;
+  const ring = 1 + Math.floor(releaseOrder / EJECT_OFFSETS.length);
+  const preferredX = Math.min(
+    MAP_TILES - 0.5,
+    Math.max(0.5, world.posX[containerIndex]! + offset[0] * ring),
+  );
+  const preferredZ = Math.min(
+    MAP_TILES - 0.5,
+    Math.max(0.5, world.posZ[containerIndex]! + offset[1] * ring),
+  );
+  const movementDomain = movementDomainForType(world.unitType[unitIndex]!);
+  const releaseCell = navigableCellNear(world, preferredX, preferredZ, movementDomain);
+  const releaseGrid = navigationGridForDomain(world, movementDomain);
+  if (releaseGrid[releaseCell] !== 1) return false;
+
+  world.containedBy[unitIndex] = NO_TARGET;
+  world.posX[unitIndex] = (releaseCell % MAP_TILES) + 0.5;
+  world.posZ[unitIndex] = Math.floor(releaseCell / MAP_TILES) + 0.5;
+  world.selectable[unitIndex] = 1;
+  world.moving[unitIndex] = 0;
+  world.unitField[unitIndex] = null;
+  return true;
 }
 
 export function isGarrisonCommand(command: Command): command is GarrisonCommandType {

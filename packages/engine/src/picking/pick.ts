@@ -178,16 +178,16 @@ function classifyTargetCommand(
     return "drop-off-relic";
   }
 
-  if (snapshot.owner[hit] === selfPlayerId && stats.garrison !== undefined) {
-    return "garrison";
-  }
-
   if (
     snapshot.owner[hit] === selfPlayerId &&
     stats.footprint > 0 &&
-    snapshot.buildProgress[hit]! < stats.buildTicks
+    (snapshot.buildProgress[hit]! < stats.buildTicks || snapshot.hp[hit]! < stats.maxHp)
   ) {
     return "build";
+  }
+
+  if (snapshot.owner[hit] === selfPlayerId && stats.garrison !== undefined) {
+    return "garrison";
   }
 
   if (

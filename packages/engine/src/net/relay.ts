@@ -25,6 +25,7 @@ import {
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   COMMAND_UNGARRISON,
   MAP_AEGEAN_COAST,
   type CheatId,
@@ -183,6 +184,13 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         commands: [{ type: COMMAND_TRADE, unitIds, targetId }],
       });
     },
+    submitTownBell(buildingId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TOWN_BELL, buildingId }],
+      });
+    },
 
     submitBuild(unitIds: number[], targetId: number): void {
       // No tick stamping here: the sequencer's turn assignment IS the execution time, unlike the loopback sink.
@@ -226,12 +234,27 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
       });
     },
 
-    submitPlace(buildingType: number, tileX: number, tileZ: number, rotation: 0 | 1 = 0): void {
+    submitPlace(
+      buildingType: number,
+      tileX: number,
+      tileZ: number,
+      rotation: 0 | 1 = 0,
+      builderIds: number[] = [],
+    ): void {
       // No tick stamping here: the sequencer's turn assignment IS the execution time, unlike the loopback sink.
       send({
         v: PROTOCOL_VERSION,
         kind: "commands",
-        commands: [{ type: COMMAND_PLACE, buildingType, tileX, tileZ, rotation }],
+        commands: [
+          {
+            type: COMMAND_PLACE,
+            buildingType,
+            tileX,
+            tileZ,
+            rotation,
+            ...(builderIds.length > 0 ? { builderIds } : {}),
+          },
+        ],
       });
     },
   };

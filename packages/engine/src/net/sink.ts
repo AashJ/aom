@@ -23,6 +23,7 @@ import {
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   COMMAND_UNGARRISON,
   enqueueCommand,
   type CheatId,
@@ -48,12 +49,19 @@ export interface CommandSink {
   submitGarrison(unitIds: number[], targetId: number): void;
   submitUngarrison(containerId: number): void;
   submitTrade(unitIds: number[], targetId: number): void;
+  submitTownBell(buildingId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
   submitCancelTrain(buildingId: number, queueIndex: number): void;
   submitAdvanceAge(buildingId: number, minorGod: number): void;
   submitCheat(cheat: CheatId): void;
-  submitPlace(buildingType: number, tileX: number, tileZ: number, rotation?: 0 | 1): void;
+  submitPlace(
+    buildingType: number,
+    tileX: number,
+    tileZ: number,
+    rotation?: 0 | 1,
+    builderIds?: number[],
+  ): void;
 }
 
 export function createLoopbackSink(world: World): CommandSink {
@@ -178,6 +186,14 @@ export function createLoopbackSink(world: World): CommandSink {
         targetId,
       });
     },
+    submitTownBell(buildingId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_TOWN_BELL,
+        buildingId,
+      });
+    },
     submitBuild(unitIds: number[], targetId: number): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
@@ -224,7 +240,13 @@ export function createLoopbackSink(world: World): CommandSink {
         cheat,
       });
     },
-    submitPlace(buildingType: number, tileX: number, tileZ: number, rotation: 0 | 1 = 0): void {
+    submitPlace(
+      buildingType: number,
+      tileX: number,
+      tileZ: number,
+      rotation: 0 | 1 = 0,
+      builderIds: number[] = [],
+    ): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
         // Single-player is player 0 and owns everything spawned by default.
@@ -234,6 +256,7 @@ export function createLoopbackSink(world: World): CommandSink {
         tileX,
         tileZ,
         rotation,
+        ...(builderIds.length > 0 ? { builderIds } : {}),
       });
     },
   };

@@ -64,7 +64,7 @@ describe("Classic hammer-ship unit packs", () => {
 
     const targetIndex = resolveId(world, target);
     expect(targetIndex).toBeGreaterThanOrEqual(0);
-    const fullHp = world.hp[targetIndex];
+    const fullHp = world.hp[targetIndex]!;
     tickWorld(world);
     expect(world.hp[targetIndex]).toBe(fullHp);
     tickWorld(world);

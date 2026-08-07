@@ -22,6 +22,7 @@ export const COMMAND_TRADE = 15;
 export const COMMAND_HEAL = 16;
 export const COMMAND_EMPOWER = 17;
 export const COMMAND_CONVERT = 18;
+export const COMMAND_TOWN_BELL = 19;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -96,12 +97,14 @@ export interface PlaceCommand {
   tick: number;
   issuer: number;
   type: typeof COMMAND_PLACE;
-  // No unitIds — placement is a player act, not a unit order; the villagers come in M6-5's Build command.
+  // Placement remains a player act; optional builder ids carry the selected
+  // workers that should immediately begin this successful blueprint.
   buildingType: number;
   tileX: number;
   tileZ: number;
   // Quarter-turn around the vertical axis. Omitted is the authored orientation.
   rotation?: 0 | 1;
+  builderIds?: number[];
 }
 
 export interface BuildCommand {
@@ -192,6 +195,13 @@ export interface ConvertCommand {
   targetId: number;
 }
 
+export interface TownBellCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_TOWN_BELL;
+  buildingId: number;
+}
+
 export interface AdvanceAgeCommand {
   tick: number;
   issuer: number;
@@ -227,6 +237,7 @@ export type Command =
   | HealCommand
   | EmpowerCommand
   | ConvertCommand
+  | TownBellCommand
   | AdvanceAgeCommand
   | CheatCommand;
 

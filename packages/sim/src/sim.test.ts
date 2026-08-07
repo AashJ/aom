@@ -28,6 +28,7 @@ import {
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
   TYPE_GREEK_VILLAGER as TYPE_VILLAGER,
   TYPE_EGYPTIAN_LABORER,
+  TYPE_EGYPTIAN_HOUSE,
   TYPE_EGYPTIAN_TOWN_CENTER,
   TYPE_HOPLITE,
   TYPE_KATASKOPOS,
@@ -1124,24 +1125,25 @@ describe("buildings and walkability", () => {
 
   test("spawned buildings stamp their footprint and death restores it", () => {
     const world = flatWorld(42);
-    const id = spawnBuilding(world, 100, 100, 0, TYPE_TOWN_CENTER);
+    const houseStats = UNIT_TYPES[TYPE_HOUSE]!;
+    const id = spawnBuilding(world, 100, 100, 0, TYPE_HOUSE);
 
     // Every authored footprint tile is unwalkable; the tile just outside is untouched.
-    for (let z = 100; z < 100 + tcStats.footprint; z += 1) {
-      for (let x = 100; x < 100 + tcStats.footprint; x += 1) {
+    for (let z = 100; z < 100 + houseStats.footprint; z += 1) {
+      for (let x = 100; x < 100 + houseStats.footprint; x += 1) {
         expect(world.walkable[z * MAP_TILES + x]).toBe(0);
       }
     }
 
     expect(world.walkable[100 * MAP_TILES + 99]).toBe(1);
-    expect(world.posX[0]).toBe(102.5);
+    expect(world.posX[0]).toBe(101);
 
     killUnit(world, 0);
     tickWorld(world);
 
     // Rubble does not obstruct: every tile walkable again, id stale.
-    for (let z = 100; z < 100 + tcStats.footprint; z += 1) {
-      for (let x = 100; x < 100 + tcStats.footprint; x += 1) {
+    for (let z = 100; z < 100 + houseStats.footprint; z += 1) {
+      for (let x = 100; x < 100 + houseStats.footprint; x += 1) {
         expect(world.walkable[z * MAP_TILES + x]).toBe(1);
       }
     }
@@ -1183,10 +1185,7 @@ describe("buildings and walkability", () => {
       const tx = Math.floor(world.posX[1]!);
       const tz = Math.floor(world.posZ[1]!);
       const inFootprint =
-        tx >= 126 &&
-        tx < 126 + tcStats.footprint &&
-        tz >= 126 &&
-        tz < 126 + tcStats.footprint;
+        tx >= 126 && tx < 126 + tcStats.footprint && tz >= 126 && tz < 126 + tcStats.footprint;
 
       expect(inFootprint).toBe(false);
     }
@@ -1579,6 +1578,30 @@ describe("building placement", () => {
     expect(world.walkable[45 * MAP_TILES + 45]).toBe(0);
   });
 
+  test("successful placement immediately assigns its selected builders", () => {
+    const world = flatWorld(42);
+    const villager = spawnUnit(world, 42, 45, 0, 0, 0, TYPE_VILLAGER);
+    world.stockpiles[WOOD] = 100;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_HOUSE,
+      tileX: 45,
+      tileZ: 45,
+      builderIds: [villager],
+    });
+
+    for (let tick = 0; tick < 20; tick += 1) tickWorld(world);
+
+    const house = world.count - 1;
+    expect(world.unitType[house]).toBe(TYPE_HOUSE);
+    expect(world.mode[resolveId(world, villager)]).toBe(MODE_BUILDING);
+    expect(world.taskTarget[resolveId(world, villager)]).toBe(unitIdAt(world, house));
+    expect(world.buildProgress[house]).toBeGreaterThan(0);
+  });
+
   test("blocked or unaffordable placements are silent no-ops with no deduction", () => {
     const world = flatWorld(42);
     spawnUnits(world, 5, [0]);
@@ -1713,6 +1736,91 @@ describe("building placement", () => {
     };
 
     expect(completionTick(3)).toBeLessThan(completionTick(1));
+  });
+
+  test("additional builders use the Classic culture efficiency instead of full-rate stacking", () => {
+    const progressAfter = (
+      builderType: number,
+      buildingType: number,
+      builderCount: number,
+    ): number => {
+      const world = flatWorld(42);
+      const site = spawnBuilding(world, 100, 100, 0, buildingType, false);
+      const siteIndex = resolveId(world, site);
+      const builders: number[] = [];
+
+      for (let i = 0; i < builderCount; i += 1) {
+        builders.push(spawnUnit(world, 103, 100 + i * 0.25, 0, 0, 0, builderType));
+      }
+      enqueueCommand(world, {
+        tick: 1,
+        issuer: 0,
+        type: COMMAND_BUILD,
+        unitIds: builders,
+        targetId: site,
+      });
+      for (let tick = 0; tick < 50; tick += 1) tickWorld(world);
+      return world.buildProgress[siteIndex]!;
+    };
+
+    const greekOne = progressAfter(TYPE_VILLAGER, TYPE_HOUSE, 1);
+    const greekTwo = progressAfter(TYPE_VILLAGER, TYPE_HOUSE, 2);
+    const egyptianOne = progressAfter(TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_HOUSE, 1);
+    const egyptianTwo = progressAfter(TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_HOUSE, 2);
+
+    expect(greekTwo / greekOne).toBeCloseTo(1.3, 10);
+    expect(egyptianTwo / egyptianOne).toBeCloseTo(1.375, 10);
+  });
+
+  test("workers repair completed buildings at the Classic rate and pay half the original cost", () => {
+    const world = flatWorld(42);
+    const site = spawnBuilding(world, 100, 100, 0, TYPE_HOUSE, true);
+    const siteIndex = resolveId(world, site);
+    const villager = spawnUnit(world, 103, 100, 0, 0, 0, TYPE_VILLAGER);
+    const maxHp = UNIT_TYPES[TYPE_HOUSE]!.maxHp;
+    const startingWood = 100;
+    world.hp[siteIndex] = 1;
+    world.stockpiles[WOOD] = startingWood;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager],
+      targetId: site,
+    });
+    for (let tick = 0; tick < 1_200; tick += 1) tickWorld(world);
+
+    expect(world.hp[siteIndex]).toBe(maxHp);
+    expect(world.stockpiles[WOOD]).toBe(
+      startingWood - Math.floor(UNIT_TYPES[TYPE_HOUSE]!.costWood / 2),
+    );
+    expect(world.mode[resolveId(world, villager)]).toBe(MODE_IDLE);
+  });
+
+  test("repair stops at the next whole-resource boundary when the stockpile is empty", () => {
+    const world = flatWorld(42);
+    const site = spawnBuilding(world, 100, 100, 0, TYPE_HOUSE, true);
+    const siteIndex = resolveId(world, site);
+    const villager = spawnUnit(world, 103, 100, 0, 0, 0, TYPE_VILLAGER);
+    world.hp[siteIndex] = 100;
+    world.stockpiles[WOOD] = 0;
+
+    enqueueCommand(world, {
+      tick: 1,
+      issuer: 0,
+      type: COMMAND_BUILD,
+      unitIds: [villager],
+      targetId: site,
+    });
+    for (let tick = 0; tick < 200; tick += 1) tickWorld(world);
+
+    // A 50-wood House costs 25 wood to fully repair: the next whole wood
+    // boundary after 100 HP is 112 HP.
+    expect(world.hp[siteIndex]).toBeGreaterThan(100);
+    expect(world.hp[siteIndex]).toBeLessThan(112);
+    expect(world.stockpiles[WOOD]).toBe(0);
+    expect(world.mode[resolveId(world, villager)]).toBe(MODE_IDLE);
   });
 
   test("enemy or already-complete targets are no-ops; militia are silently skipped", () => {

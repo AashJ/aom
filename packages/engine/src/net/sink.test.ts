@@ -4,6 +4,7 @@ import {
   COMMAND_DROP_OFF_RELIC,
   COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
+  COMMAND_PLACE,
   COMMAND_TRADE,
   COMMAND_UNGARRISON,
   createWorld,
@@ -24,6 +25,26 @@ function flatWorld(seed: number): World {
 }
 
 describe("loopback command sink", () => {
+  test("placement carries the builders selected for the new blueprint", () => {
+    const world = flatWorld(42);
+    const sink = createLoopbackSink(world);
+
+    sink.submitPlace(27, 40, 41, 1, [3, 5]);
+
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PLACE,
+        buildingType: 27,
+        tileX: 40,
+        tileZ: 41,
+        rotation: 1,
+        builderIds: [3, 5],
+      },
+    ]);
+  });
+
   test("stamps relic pickup and drop-off through the delayed command seam", () => {
     const world = flatWorld(42);
     const sink = createLoopbackSink(world);

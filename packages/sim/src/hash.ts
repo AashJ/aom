@@ -93,6 +93,10 @@ export function hashWorld(world: World): number {
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
+    word = world.townBellActive[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
     word = world.pharaohRespawnRemaining[playerId]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
@@ -422,6 +426,14 @@ export function hashWorld(world: World): number {
     word = world.supportActionRemaining[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellSheltered[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellSavedMode[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
   }
 
   for (let i = 0; i < world.count; i += 1) {
@@ -455,6 +467,10 @@ export function hashWorld(world: World): number {
     word = world.taskTarget[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellSavedTarget[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
   }
 
   const tradeIntegerArrays = [world.tradeMarket, world.tradeTownCenter];
@@ -481,7 +497,12 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
-  const gatherPosArrays = [world.gatherPosX, world.gatherPosZ];
+  const gatherPosArrays = [
+    world.gatherPosX,
+    world.gatherPosZ,
+    world.townBellSavedGatherPosX,
+    world.townBellSavedGatherPosZ,
+  ];
 
   for (let arrayIndex = 0; arrayIndex < gatherPosArrays.length; arrayIndex += 1) {
     const values = gatherPosArrays[arrayIndex]!;

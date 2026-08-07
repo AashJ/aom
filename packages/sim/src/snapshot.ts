@@ -97,6 +97,7 @@ export interface RenderSnapshot {
   ageAdvanceTotal: number;
   ageAdvanceBuilding: number;
   favorRateMilliPerMinute: number;
+  townBellActive: number;
   completedBuildings: Uint8Array;
   winner: number;
 }
@@ -175,6 +176,7 @@ export function createSnapshot(
     ageAdvanceTotal: 0,
     ageAdvanceBuilding: NO_TARGET,
     favorRateMilliPerMinute: 0,
+    townBellActive: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     winner: -1,
   };
@@ -252,10 +254,12 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.ageAdvanceTotal = 0;
   out.ageAdvanceBuilding = NO_TARGET;
   out.favorRateMilliPerMinute = 0;
+  out.townBellActive = 0;
 
   if (viewerSlot >= 0) {
     out.age = world.playerAge[viewerId]!;
     out.majorGod = world.playerMajorGod[viewerId]!;
+    out.townBellActive = world.townBellActive[viewerId]!;
     const prayingVillagers = world.prayingVillagers[viewerId]!;
     const favor = world.stockpiles[viewerId * RESOURCE_COUNT + FAVOR]!;
     out.favorRateMilliPerMinute =

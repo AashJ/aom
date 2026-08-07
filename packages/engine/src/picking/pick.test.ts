@@ -141,6 +141,10 @@ function recordingSink(): CommandSink & {
       calls.push("ungarrison");
       targetIds.push(targetId);
     },
+    submitTownBell: (targetId) => {
+      calls.push("town-bell");
+      targetIds.push(targetId);
+    },
     submitTrade: (_ids, targetId) => {
       calls.push("trade");
       targetIds.push(targetId);
@@ -223,6 +227,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     ageAdvanceTotal: CLASSICAL_AGE_ADVANCE_TICKS,
     ageAdvanceBuilding: NO_TARGET,
     favorRateMilliPerMinute: 0,
+    townBellActive: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
@@ -676,6 +681,53 @@ describe("pickUnit", () => {
     // A finished building is not a Build target; the click is a plain ground order.
     expect(issued).toBe(1);
     expect(sink.calls).toEqual(["move"]);
+  });
+
+  test("right-click on a damaged completed Town Center repairs before garrisoning", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
+    const sink = recordingSink();
+
+    world.walkable.fill(1);
+    const townCenter = spawnBuilding(
+      world,
+      Math.round(camera.target[0]!) - 2,
+      Math.round(camera.target[2]!) - 2,
+      0,
+      TYPE_TOWN_CENTER,
+      true,
+    );
+    world.hp[0] = UNIT_TYPES[TYPE_TOWN_CENTER]!.maxHp / 2;
+    spawnUnit(world, camera.target[0]! - 20, camera.target[2]!, 0, 0, 0);
+    setSelected(world, 1, true);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(issued).toBe(4);
+    expect(sink.calls).toEqual(["build"]);
+    expect(sink.targetIds).toEqual([townCenter]);
   });
 
   test("right-click on an own completed Town Center routes selected Caravans to Trade", () => {

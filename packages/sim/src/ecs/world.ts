@@ -21,6 +21,7 @@ import {
   COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
+  COMMAND_TOWN_BELL,
   type Command,
 } from "../commands";
 import { TICK_HZ, TICK_S } from "../clock";
@@ -60,20 +61,19 @@ import {
 import { integrateGroundMotion } from "./ground-contact";
 import { clearAttackOrder } from "./attack-state";
 import { tickActiveBeamAttack } from "./beam-combat";
-import {
-  effectiveAttackDamageMultiplier,
-  effectiveAttackRange,
-  effectiveMaxHp,
-} from "./unit-age";
+import { effectiveAttackDamageMultiplier, effectiveAttackRange, effectiveMaxHp } from "./unit-age";
 import { hasCompletedBuilding, isTypeAvailable } from "./availability";
 import { NO_RESEARCH } from "./age-advancement";
 import { favorCapForMajorGod, tickFavor } from "./favor";
 import { countLiveOrQueuedUnitType } from "./hero-lifecycle";
 import {
+  assignGarrisonTask,
+  canEnterGarrison,
   applyGarrisonCommand,
   countGarrisonedUnits,
   isGarrisonCommand,
   releaseGarrisonedUnits,
+  releaseGarrisonedUnit,
   syncContainedUnits,
   tickGarrisonTask,
 } from "./garrison";
@@ -194,6 +194,7 @@ import {
   type MeleeAttack,
   type MeleeAttackCycle,
   type ResourceType,
+  type UnitTypeStats,
 } from "./types";
 import {
   assignGatherTask,
@@ -243,6 +244,16 @@ const GOAL_REMAP_RADIUS = 8;
 export const SEPARATION_RADIUS = 0.8;
 // Caps crowd pressure independently of authored movement speed.
 const SEPARATION_MAX_STEP = 0.12;
+// Classic's global repair work rate is shared by Greek and Egyptian workers.
+// Rectangular wall/gate pieces use the separate one-fifth wall rate.
+const BUILDING_REPAIR_WORK_RATE = 0.306;
+const WALL_REPAIR_WORK_RATE = 0.2;
+const REPAIR_COST_FACTOR = 0.5;
+// Every builder after the first contributes only this fraction of its authored
+// work rate. Egyptian culture owns the more favorable multi-builder rule even
+// when the actual builder type differs (for example a Fishing Ship on a Dock).
+const ADDITIONAL_BUILDER_EFFICIENCY = 0.3;
+const EGYPTIAN_ADDITIONAL_BUILDER_EFFICIENCY = 0.375;
 const GOLD_PLACEMENT_ATTEMPTS = 64;
 const RIVER_NILE_BERRY_PATCH_RADIUS = 4;
 const RIVER_NILE_BERRIES_PER_PATCH = 10;
@@ -369,6 +380,7 @@ export interface World {
   playerFavorProgress: Uint32Array;
   wonderVictoryProgress: Uint32Array;
   settlementVictoryProgress: Uint32Array;
+  townBellActive: Uint8Array;
   // Rebuilt from active prayer tasks every tick for Favor generation and HUD rate.
   prayingVillagers: Uint16Array;
   unitType: Uint16Array;
@@ -427,6 +439,13 @@ export interface World {
   resourceCargo: Float64Array;
   // Stable-id target shared by gathering, construction, and prayer tasks.
   taskTarget: Uint32Array;
+  // Town Bell temporarily replaces worker orders with shelter tasks and then
+  // restores these exact fields when the bell is rung again.
+  townBellSheltered: Uint8Array;
+  townBellSavedMode: Uint8Array;
+  townBellSavedTarget: Uint32Array;
+  townBellSavedGatherPosX: Float64Array;
+  townBellSavedGatherPosZ: Float64Array;
   // Stable route endpoints and fractional cargo are authoritative. Fractions
   // survive deposits so Classic's alternating whole-gold payouts are retained.
   tradeMarket: Uint32Array;
@@ -538,6 +557,7 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     playerFavorProgress: new Uint32Array(256),
     wonderVictoryProgress: new Uint32Array(256),
     settlementVictoryProgress: new Uint32Array(256),
+    townBellActive: new Uint8Array(256),
     prayingVillagers: new Uint16Array(256),
     unitType: new Uint16Array(MAX_UNITS),
     containedBy: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
@@ -579,6 +599,11 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     carriedResource: new Uint8Array(MAX_UNITS),
     resourceCargo: new Float64Array(MAX_UNITS),
     taskTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    townBellSheltered: new Uint8Array(MAX_UNITS),
+    townBellSavedMode: new Uint8Array(MAX_UNITS),
+    townBellSavedTarget: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
+    townBellSavedGatherPosX: new Float64Array(MAX_UNITS),
+    townBellSavedGatherPosZ: new Float64Array(MAX_UNITS),
     tradeMarket: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     tradeTownCenter: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     tradeCargo: new Float64Array(MAX_UNITS),
@@ -787,6 +812,11 @@ export function spawnUnit(
   world.tradeCargo[index] = 0;
   world.empowerTrainProgress[index] = 0;
   world.empowerResearchProgress[index] = 0;
+  world.townBellSheltered[index] = 0;
+  world.townBellSavedMode[index] = MODE_IDLE;
+  world.townBellSavedTarget[index] = NO_TARGET;
+  world.townBellSavedGatherPosX[index] = 0;
+  world.townBellSavedGatherPosZ[index] = 0;
   clearUnitTask(world, index);
   world.selectable[index] = 1;
   world.selected[index] = 0;
@@ -909,16 +939,9 @@ export function spawnBuilding(
 ): number {
   const stats = UNIT_TYPES[type]!;
   const footprint = rotation === 0 ? stats.footprint : (stats.footprintDepth ?? stats.footprint);
-  const footprintDepth = rotation === 0 ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
-  const id = spawnUnit(
-    world,
-    tileX + footprint / 2,
-    tileZ + footprintDepth / 2,
-    0,
-    0,
-    owner,
-    type,
-  );
+  const footprintDepth =
+    rotation === 0 ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
+  const id = spawnUnit(world, tileX + footprint / 2, tileZ + footprintDepth / 2, 0, 0, owner, type);
   const index = world.count - 1;
   if (stats.footprintDepth !== undefined) {
     world.facingX[index] = rotation;
@@ -976,10 +999,7 @@ function markUnitForDeath(
   // carrier dies before the dedicated BUnitThrowAction completes.
   const dyingId = unitIdAt(world, index);
   for (let victim = 0; victim < world.count; victim += 1) {
-    if (
-      world.terminalThrowSource[victim] === dyingId &&
-      world.containedBy[victim] === dyingId
-    ) {
+    if (world.terminalThrowSource[victim] === dyingId && world.containedBy[victim] === dyingId) {
       markUnitForDeath(world, victim, true, true);
     }
   }
@@ -1014,12 +1034,14 @@ export function transformPharaohToSonOfOsiris(world: World, id: number): boolean
   }
   if (!hasOsiris) return false;
 
-  const hpFraction = world.hp[index]! / effectiveMaxHp(UNIT_TYPES[TYPE_PHARAOH]!, world.playerAge[owner]!);
+  const hpFraction =
+    world.hp[index]! / effectiveMaxHp(UNIT_TYPES[TYPE_PHARAOH]!, world.playerAge[owner]!);
   clearAttackOrder(world, index);
   clearUnitTask(world, index);
   clearSpecialAttack(world, index);
   world.unitType[index] = TYPE_SON_OF_OSIRIS;
-  world.hp[index] = effectiveMaxHp(UNIT_TYPES[TYPE_SON_OF_OSIRIS]!, world.playerAge[owner]!) * hpFraction;
+  world.hp[index] =
+    effectiveMaxHp(UNIT_TYPES[TYPE_SON_OF_OSIRIS]!, world.playerAge[owner]!) * hpFraction;
   world.pharaohRespawnRemaining[owner] = 0;
   return true;
 }
@@ -1664,10 +1686,7 @@ function isSettlementClearOfBuildings(world: World, centerX: number, centerZ: nu
   return true;
 }
 
-function spawnSettlementSites(
-  world: World,
-  startLocations: readonly StartLocation[],
-): void {
+function spawnSettlementSites(world: World, startLocations: readonly StartLocation[]): void {
   const startFields = startLocations.map(([startX, startZ]) => {
     const inwardX = startX + (startX < SIM_MAP_SIZE * 0.5 ? 6 : -6);
     const inwardZ = startZ + (startZ < SIM_MAP_SIZE * 0.5 ? 6 : -6);
@@ -1686,7 +1705,8 @@ function spawnSettlementSites(
 
       for (let attempt = 0; attempt < SETTLEMENT_PLACEMENT_ATTEMPTS && !placed; attempt += 1) {
         const span = maxDistance * 2 + 1;
-        const dx = (settlementSampleWord(world.mapSeed, playerIndex, copy, attempt, 0) % span) - maxDistance;
+        const dx =
+          (settlementSampleWord(world.mapSeed, playerIndex, copy, attempt, 0) % span) - maxDistance;
         const dz =
           (settlementSampleWord(world.mapSeed, playerIndex, copy, attempt, 0x51ed270b) % span) -
           maxDistance;
@@ -1909,7 +1929,10 @@ function updateGates(world: World): void {
       const z = world.posZ[unit]!;
       const edgeX = Math.max(minX - x, 0, x - maxX);
       const edgeZ = Math.max(minZ - z, 0, z - maxZ);
-      if (world.owner[unit] === world.owner[gate] && edgeX * edgeX + edgeZ * edgeZ <= openRange * openRange) {
+      if (
+        world.owner[unit] === world.owner[gate] &&
+        edgeX * edgeX + edgeZ * edgeZ <= openRange * openRange
+      ) {
         friendlyNearby = true;
       }
       if (x >= minX && x < maxX && z >= minZ && z < maxZ) {
@@ -1984,6 +2007,198 @@ function tickSettlementVictory(world: World): void {
   if (progress >= SETTLEMENT_VICTORY_TICKS) world.winner = claimant;
 }
 
+function isBuilderWorkingInReach(world: World, builder: number, target: number): boolean {
+  if (
+    builder < 0 ||
+    builder >= world.count ||
+    world.mode[builder] !== MODE_BUILDING ||
+    world.taskTarget[builder] !== unitIdAt(world, target) ||
+    world.dying[builder] === 1 ||
+    world.hp[builder]! <= 0 ||
+    world.containedBy[builder] !== NO_TARGET
+  ) {
+    return false;
+  }
+
+  const builderStats = UNIT_TYPES[world.unitType[builder]!]!;
+  const targetStats = UNIT_TYPES[world.unitType[target]!]!;
+  const dx = world.posX[target]! - world.posX[builder]!;
+  const dz = world.posZ[target]! - world.posZ[builder]!;
+  const reach =
+    (builderStats.construction?.range ?? builderStats.workRange ?? 0) + targetStats.bodyRadius;
+  return dx * dx + dz * dz <= reach * reach;
+}
+
+function buildingWorkEfficiency(world: World, builder: number, target: number): number {
+  for (let earlierBuilder = 0; earlierBuilder < builder; earlierBuilder += 1) {
+    if (isBuilderWorkingInReach(world, earlierBuilder, target)) {
+      return UNIT_TYPES[world.unitType[target]!]!.culture === CULTURE_EGYPTIAN
+        ? EGYPTIAN_ADDITIONAL_BUILDER_EFFICIENCY
+        : ADDITIONAL_BUILDER_EFFICIENCY;
+    }
+  }
+  return 1;
+}
+
+function repairCostForResource(stats: UnitTypeStats, resource: number): number {
+  if (resource === FOOD) return stats.costFood;
+  if (resource === WOOD) return stats.costWood;
+  if (resource === GOLD) return stats.costGold;
+  return stats.costFavor;
+}
+
+function repairCostPaidAtHp(cost: number, hp: number, maxHp: number): number {
+  if (cost === 0 || maxHp <= 0) return 0;
+  return Math.floor((Math.max(0, Math.min(maxHp, hp)) * cost * REPAIR_COST_FACTOR) / maxHp);
+}
+
+function repairBuilding(world: World, target: number, desiredHitPoints: number): boolean {
+  const stats = UNIT_TYPES[world.unitType[target]!]!;
+  const owner = world.owner[target]!;
+  const maxHp = effectiveMaxHp(stats, world.playerAge[owner]!);
+  const beforeHp = Math.min(maxHp, world.hp[target]!);
+  let afterHp = Math.min(maxHp, beforeHp + desiredHitPoints);
+
+  // Resource counters are integral while repair cost is proportional. Let a
+  // worker advance up to (but not across) the next whole-resource boundary when
+  // the corresponding stockpile is empty; no hidden debt or rounding drift is
+  // introduced into lockstep state.
+  for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+    const cost = repairCostForResource(stats, resource);
+    if (cost === 0) continue;
+    const stockpileIndex = owner * RESOURCE_COUNT + resource;
+    const alreadyPaid = repairCostPaidAtHp(cost, beforeHp, maxHp);
+    const desiredPayment = repairCostPaidAtHp(cost, afterHp, maxHp) - alreadyPaid;
+    const available = world.stockpiles[stockpileIndex]!;
+    if (desiredPayment <= available) continue;
+
+    const maximumPaidTier = alreadyPaid + available;
+    const nextPaymentHp = ((maximumPaidTier + 1) * maxHp) / (cost * REPAIR_COST_FACTOR);
+    afterHp = Math.min(afterHp, nextPaymentHp - maxHp * 1e-12);
+  }
+
+  if (afterHp <= beforeHp) return false;
+
+  for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+    const cost = repairCostForResource(stats, resource);
+    if (cost === 0) continue;
+    const payment =
+      repairCostPaidAtHp(cost, afterHp, maxHp) - repairCostPaidAtHp(cost, beforeHp, maxHp);
+    if (payment > 0) {
+      const stockpileIndex = owner * RESOURCE_COUNT + resource;
+      world.stockpiles[stockpileIndex] = world.stockpiles[stockpileIndex]! - payment;
+    }
+  }
+
+  world.hp[target] = afterHp;
+  return true;
+}
+
+function dismissTownBell(world: World, playerId: number): void {
+  let releaseOrder = 0;
+  let stillSheltered = false;
+
+  for (let worker = 0; worker < world.count; worker += 1) {
+    if (world.owner[worker] !== playerId || world.townBellSheltered[worker] !== 1) continue;
+
+    if (world.containedBy[worker] !== NO_TARGET) {
+      if (!releaseGarrisonedUnit(world, worker, releaseOrder)) {
+        stillSheltered = true;
+        continue;
+      }
+      releaseOrder += 1;
+    }
+
+    const savedMode = world.townBellSavedMode[worker]!;
+    const savedTarget = world.townBellSavedTarget[worker]!;
+    clearUnitTask(world, worker);
+    if (savedMode !== MODE_IDLE && resolveId(world, savedTarget) >= 0) {
+      world.mode[worker] = savedMode;
+      world.taskTarget[worker] = savedTarget;
+      world.gatherPosX[worker] = world.townBellSavedGatherPosX[worker]!;
+      world.gatherPosZ[worker] = world.townBellSavedGatherPosZ[worker]!;
+    }
+    world.townBellSheltered[worker] = 0;
+    world.townBellSavedMode[worker] = MODE_IDLE;
+    world.townBellSavedTarget[worker] = NO_TARGET;
+    world.townBellSavedGatherPosX[worker] = 0;
+    world.townBellSavedGatherPosZ[worker] = 0;
+  }
+
+  world.townBellActive[playerId] = stillSheltered ? 1 : 0;
+}
+
+function ringTownBell(world: World, playerId: number): void {
+  const reservedCapacity = new Uint16Array(world.count);
+
+  for (let worker = 0; worker < world.count; worker += 1) {
+    const workerStats = UNIT_TYPES[world.unitType[worker]!]!;
+    if (
+      world.owner[worker] !== playerId ||
+      (workerStats.classes & UNIT_CLASS_WORKER) === 0 ||
+      world.dying[worker] === 1 ||
+      world.hp[worker]! <= 0 ||
+      world.containedBy[worker] !== NO_TARGET ||
+      world.townBellSheltered[worker] === 1
+    ) {
+      continue;
+    }
+
+    let nearestShelter = -1;
+    let nearestDistanceSq = Infinity;
+    for (let shelter = 0; shelter < world.count; shelter += 1) {
+      const shelterStats = UNIT_TYPES[world.unitType[shelter]!]!;
+      if (
+        shelterStats.garrison === undefined ||
+        !canEnterGarrison(world, worker, shelter, playerId) ||
+        countGarrisonedUnits(world, shelter) + reservedCapacity[shelter]! >=
+          shelterStats.garrison.capacity
+      ) {
+        continue;
+      }
+      const dx = world.posX[shelter]! - world.posX[worker]!;
+      const dz = world.posZ[shelter]! - world.posZ[worker]!;
+      const distanceSq = dx * dx + dz * dz;
+      if (
+        distanceSq < nearestDistanceSq ||
+        (distanceSq === nearestDistanceSq && shelter < nearestShelter)
+      ) {
+        nearestShelter = shelter;
+        nearestDistanceSq = distanceSq;
+      }
+    }
+
+    if (nearestShelter < 0) continue;
+    world.townBellSheltered[worker] = 1;
+    world.townBellSavedMode[worker] = world.mode[worker]!;
+    world.townBellSavedTarget[worker] = world.taskTarget[worker]!;
+    world.townBellSavedGatherPosX[worker] = world.gatherPosX[worker]!;
+    world.townBellSavedGatherPosZ[worker] = world.gatherPosZ[worker]!;
+    reservedCapacity[nearestShelter] = reservedCapacity[nearestShelter]! + 1;
+    assignGarrisonTask(world, worker, unitIdAt(world, nearestShelter));
+  }
+
+  world.townBellActive[playerId] = 1;
+}
+
+function applyTownBellCommand(world: World, playerId: number, buildingId: number): void {
+  const building = resolveId(world, buildingId);
+  if (building < 0) return;
+  const stats = UNIT_TYPES[world.unitType[building]!]!;
+  if (
+    world.owner[building] !== playerId ||
+    world.dying[building] === 1 ||
+    world.hp[building]! <= 0 ||
+    world.buildProgress[building]! < stats.buildTicks ||
+    stats.tradeSite !== "town-center"
+  ) {
+    return;
+  }
+
+  if (world.townBellActive[playerId] === 1) dismissTownBell(world, playerId);
+  else ringTownBell(world, playerId);
+}
+
 export function tickWorld(world: World): void {
   world.deathEventCount = 0;
   const terminalReplacementSpawns: Array<{
@@ -2052,7 +2267,8 @@ export function tickWorld(world: World): void {
     const attack =
       stats.closeAttack !== undefined &&
       closeRange > 0 &&
-      currentTargetDx * currentTargetDx + currentTargetDz * currentTargetDz < closeRange * closeRange
+      currentTargetDx * currentTargetDx + currentTargetDz * currentTargetDz <
+        closeRange * closeRange
         ? stats.closeAttack
         : defaultAttack;
     const special = stats.specialAttack;
@@ -2131,12 +2347,13 @@ export function tickWorld(world: World): void {
         const committed = world.specialActionImpactPending[i]! >= 2;
 
         if (!committed) {
-          const targetVisible =
-            target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
+          const targetVisible = target >= 0 && isEntityVisibleTo(world, world.owner[i]!, target);
           const dx = target >= 0 ? world.posX[target]! - world.posX[i]! : 0;
           const dz = target >= 0 ? world.posZ[target]! - world.posZ[i]! : 0;
           const reach =
-            targetStats === null ? 0 : centerDistanceForEdgeRange(special.range, stats, targetStats);
+            targetStats === null
+              ? 0
+              : centerDistanceForEdgeRange(special.range, stats, targetStats);
           if (
             targetStats === null ||
             world.dying[target] === 1 ||
@@ -2992,8 +3209,7 @@ export function tickWorld(world: World): void {
         const owner = world.owner[i]!;
         const resource = world.carriedResource[i]!;
         const deposited = world.carried[i]!;
-        const empoweredYield =
-          empowermentAt(world, depositDropsite)?.gatherYieldMultiplier ?? 1;
+        const empoweredYield = empowermentAt(world, depositDropsite)?.gatherYieldMultiplier ?? 1;
         const credited = Math.floor(deposited * empoweredYield);
 
         world.stockpiles[owner * RESOURCE_COUNT + resource] =
@@ -3097,8 +3313,10 @@ export function tickWorld(world: World): void {
       }
 
       const siteStats = UNIT_TYPES[world.unitType[target]!]!;
+      const siteMaxHp = effectiveMaxHp(siteStats, world.playerAge[world.owner[target]!]!);
+      const constructionComplete = world.buildProgress[target]! >= siteStats.buildTicks;
 
-      if (world.buildProgress[target]! >= siteStats.buildTicks) {
+      if (constructionComplete && world.hp[target]! >= siteMaxHp) {
         clearUnitTask(world, i);
         continue;
       }
@@ -3114,21 +3332,41 @@ export function tickWorld(world: World): void {
         setFacingToward(world, i, world.posX[target]!, world.posZ[target]!);
 
         if (world.attackCooldown[i] === 0) {
-          const empoweredBuildWork = empowermentAt(world, target)?.buildWorkMultiplier ?? 1;
-          const authoredConstructionRate = workerStats.construction?.targetRates?.find(
-            (rate) => rate.type === world.unitType[target],
-          )?.ratePerSecond;
-          const progress =
-            world.buildProgress[target]! +
-            BUILD_PER_STRIKE *
-              (workerStats.construction === undefined
-                ? 1
-                : (authoredConstructionRate ?? workerStats.construction.ratePerSecond)) *
-              empoweredBuildWork;
+          const workEfficiency = buildingWorkEfficiency(world, i, target);
+          if (constructionComplete) {
+            const repairWorkRate =
+              siteStats.footprintDepth === undefined
+                ? BUILDING_REPAIR_WORK_RATE
+                : WALL_REPAIR_WORK_RATE;
+            const repaired = repairBuilding(
+              world,
+              target,
+              BUILD_PER_STRIKE *
+                repairWorkRate *
+                workEfficiency *
+                (siteMaxHp / siteStats.buildTicks),
+            );
+            if (!repaired) clearUnitTask(world, i);
+          } else {
+            const empoweredBuildWork = empowermentAt(world, target)?.buildWorkMultiplier ?? 1;
+            const authoredConstructionRate = workerStats.construction?.targetRates?.find(
+              (rate) => rate.type === world.unitType[target],
+            )?.ratePerSecond;
+            const progress =
+              world.buildProgress[target]! +
+              BUILD_PER_STRIKE *
+                (workerStats.construction === undefined
+                  ? 1
+                  : (authoredConstructionRate ?? workerStats.construction.ratePerSecond)) *
+                empoweredBuildWork *
+                workEfficiency;
 
-          world.buildProgress[target] =
-            progress > siteStats.buildTicks ? siteStats.buildTicks : progress;
-          // The shared cooldown means a villager cannot hammer and chop/fight in the same breath; N builders in reach stack N strikes per cooldown window.
+            world.buildProgress[target] =
+              progress > siteStats.buildTicks ? siteStats.buildTicks : progress;
+          }
+          // The shared cooldown means a worker cannot hammer and chop/fight in
+          // the same breath. Additional builders retain Classic's culture-wide
+          // efficiency penalty instead of stacking full-rate strikes.
           world.attackCooldown[i] = GATHER_COOLDOWN_TICKS;
         }
       } else {
@@ -3211,8 +3449,7 @@ export function tickWorld(world: World): void {
     const garrisonSpeedMultiplier =
       stats.garrison === undefined
         ? 1
-        : 1 +
-          countGarrisonedUnits(world, i) * (stats.garrison.speedMultiplierPerOccupant ?? 0);
+        : 1 + countGarrisonedUnits(world, i) * (stats.garrison.speedMultiplierPerOccupant ?? 0);
     const step = stats.movementSpeed * garrisonSpeedMultiplier * snareMultiplier * TICK_S;
     const wasMoving = world.moving[i] === 1;
     let pushX = 0;
@@ -3664,9 +3901,7 @@ function applyDeaths(world: World): void {
     if (buildingReplacement !== undefined) {
       const rotated = stats.footprintDepth !== undefined && world.facingX[index] === 1;
       const footprint = rotated ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
-      const footprintDepth = rotated
-        ? stats.footprint
-        : (stats.footprintDepth ?? stats.footprint);
+      const footprintDepth = rotated ? stats.footprint : (stats.footprintDepth ?? stats.footprint);
       buildingDestructionReplacements.push({
         tileX: Math.round(world.posX[index]! - footprint / 2),
         tileZ: Math.round(world.posZ[index]! - footprintDepth / 2),
@@ -3787,6 +4022,11 @@ function applyDeaths(world: World): void {
       world.carriedResource[i] = world.carriedResource[last]!;
       world.resourceCargo[i] = world.resourceCargo[last]!;
       world.taskTarget[i] = world.taskTarget[last]!;
+      world.townBellSheltered[i] = world.townBellSheltered[last]!;
+      world.townBellSavedMode[i] = world.townBellSavedMode[last]!;
+      world.townBellSavedTarget[i] = world.townBellSavedTarget[last]!;
+      world.townBellSavedGatherPosX[i] = world.townBellSavedGatherPosX[last]!;
+      world.townBellSavedGatherPosZ[i] = world.townBellSavedGatherPosZ[last]!;
       world.tradeMarket[i] = world.tradeMarket[last]!;
       world.tradeTownCenter[i] = world.tradeTownCenter[last]!;
       world.tradeCargo[i] = world.tradeCargo[last]!;
@@ -3818,6 +4058,11 @@ function applyDeaths(world: World): void {
     world.empowerTrainProgress[last] = 0;
     world.empowerResearchProgress[last] = 0;
     world.resourceCargo[last] = 0;
+    world.townBellSheltered[last] = 0;
+    world.townBellSavedMode[last] = MODE_IDLE;
+    world.townBellSavedTarget[last] = NO_TARGET;
+    world.townBellSavedGatherPosX[last] = 0;
+    world.townBellSavedGatherPosZ[last] = 0;
     clearTargetReaction(world.targetReactions, last);
     clearProductionQueue(world, last);
     world.count -= 1;
@@ -3841,13 +4086,7 @@ function applyDeaths(world: World): void {
 
   for (const replacement of buildingDestructionReplacements) {
     if (world.count >= MAX_UNITS) break;
-    spawnBuilding(
-      world,
-      replacement.tileX,
-      replacement.tileZ,
-      NEUTRAL_OWNER,
-      replacement.unitType,
-    );
+    spawnBuilding(world, replacement.tileX, replacement.tileZ, NEUTRAL_OWNER, replacement.unitType);
   }
 
   for (const event of deathSpawns) {
@@ -3872,7 +4111,8 @@ function tickPharaohLifecycle(world: World): void {
     let hasPharaoh = false;
     let hasSon = false;
     for (let unit = 0; unit < world.count; unit += 1) {
-      if (world.owner[unit] !== playerId || world.dying[unit] === 1 || world.hp[unit]! <= 0) continue;
+      if (world.owner[unit] !== playerId || world.dying[unit] === 1 || world.hp[unit]! <= 0)
+        continue;
       hasPharaoh ||= world.unitType[unit] === TYPE_PHARAOH;
       hasSon ||= world.unitType[unit] === TYPE_SON_OF_OSIRIS;
     }
@@ -4022,8 +4262,7 @@ function applyPendingCommands(world: World): void {
           if (
             eat !== undefined &&
             eat.resourceTypes.includes(targetStats.resource) &&
-            world.hp[index]! <
-              effectiveMaxHp(gathererStats, world.playerAge[world.owner[index]!]!)
+            world.hp[index]! < effectiveMaxHp(gathererStats, world.playerAge[world.owner[index]!]!)
           ) {
             clearUnitTask(world, index);
             world.mode[index] = MODE_EATING_RESOURCE;
@@ -4053,14 +4292,17 @@ function applyPendingCommands(world: World): void {
       }
     } else if (command.type === COMMAND_BUILD) {
       const target = resolveId(world, command.targetId);
+      const targetStats = target >= 0 ? UNIT_TYPES[world.unitType[target]!]! : undefined;
 
       if (
         target >= 0 &&
+        targetStats !== undefined &&
         world.dying[target] === 0 &&
         world.hp[target]! > 0 &&
         world.owner[target] === command.issuer &&
-        UNIT_TYPES[world.unitType[target]!]!.footprint > 0 &&
-        world.buildProgress[target]! < UNIT_TYPES[world.unitType[target]!]!.buildTicks
+        targetStats.footprint > 0 &&
+        (world.buildProgress[target]! < targetStats.buildTicks ||
+          world.hp[target]! < effectiveMaxHp(targetStats, world.playerAge[command.issuer]!))
       ) {
         for (let unitIndex = 0; unitIndex < command.unitIds.length; unitIndex += 1) {
           const id = command.unitIds[unitIndex]!;
@@ -4072,9 +4314,7 @@ function applyPendingCommands(world: World): void {
           if (world.owner[index] !== command.issuer) continue;
           // Mixed selections silently skip entities the target does not list as builders.
           if (
-            !UNIT_TYPES[world.unitType[target]!]!.builtBy.some(
-              (relationship) => relationship.type === world.unitType[index],
-            )
+            !targetStats.builtBy.some((relationship) => relationship.type === world.unitType[index])
           ) {
             continue;
           }
@@ -4234,6 +4474,8 @@ function applyPendingCommands(world: World): void {
           world.visibility.fill(VIS_EXPLORED, start, start + VISIBILITY_TILES);
         }
       }
+    } else if (command.type === COMMAND_TOWN_BELL) {
+      applyTownBellCommand(world, command.issuer, command.buildingId);
     } else if (command.type === COMMAND_PLACE) {
       const buildingType = command.buildingType;
       const buildingStats = UNIT_TYPES[buildingType];
@@ -4248,11 +4490,7 @@ function applyPendingCommands(world: World): void {
       if (
         buildingStats !== undefined &&
         buildingStats.footprint > 0 &&
-        isTypeAvailableToPlayer(
-          world,
-          command.issuer,
-          buildingType,
-        ) &&
+        isTypeAvailableToPlayer(world, command.issuer, buildingType) &&
         isFootprintVisibleTo(
           world,
           command.issuer,
@@ -4281,10 +4519,11 @@ function applyPendingCommands(world: World): void {
           command.tileZ,
           buildingType,
         );
+        let siteIndex = replacementSite;
         if (replacementSite >= 0) {
           replaceBuildingSite(world, replacementSite, command.issuer, buildingType);
         } else {
-          spawnBuilding(
+          const siteId = spawnBuilding(
             world,
             command.tileX,
             command.tileZ,
@@ -4293,6 +4532,24 @@ function applyPendingCommands(world: World): void {
             false,
             command.rotation,
           );
+          siteIndex = resolveId(world, siteId);
+        }
+
+        if (siteIndex >= 0) {
+          const siteId = unitIdAt(world, siteIndex);
+          for (const builderId of command.builderIds ?? []) {
+            const builder = resolveId(world, builderId);
+            if (
+              builder < 0 ||
+              world.owner[builder] !== command.issuer ||
+              !buildingStats.builtBy.some(
+                (relationship) => relationship.type === world.unitType[builder],
+              )
+            ) {
+              continue;
+            }
+            assignWorkerTask(world, builder, MODE_BUILDING, siteId);
+          }
         }
       }
     }

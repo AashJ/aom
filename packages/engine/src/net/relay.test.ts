@@ -8,6 +8,7 @@ import {
   COMMAND_DROP_OFF_RELIC,
   COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
+  COMMAND_PLACE,
   COMMAND_PRAY,
   COMMAND_UNGARRISON,
   COMMAND_STOP,
@@ -50,6 +51,30 @@ describe("relay connection URL", () => {
 });
 
 describe("relay sink", () => {
+  test("submitPlace sends rotation and assigned builders", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitPlace(27, 40, 41, 1, [3, 5]);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [
+          {
+            type: COMMAND_PLACE,
+            buildingType: 27,
+            tileX: 40,
+            tileZ: 41,
+            rotation: 1,
+            builderIds: [3, 5],
+          },
+        ],
+      },
+    ]);
+  });
+
   test("submitMove sends one versioned, tickless commands message", () => {
     const sent: ClientMessage[] = [];
     const sink = createRelaySink((m) => sent.push(m));

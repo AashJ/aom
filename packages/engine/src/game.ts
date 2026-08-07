@@ -551,12 +551,25 @@ export async function createGame(
         if (input.state.clickPending) {
           input.state.clickPending = false;
 
-          if (placementValid) {
+          if (placementValid && placementStats) {
+            const builderIds: number[] = [];
+            for (let index = 0; index < world.count; index += 1) {
+              if (
+                world.selected[index] === 1 &&
+                world.owner[index] === selfPlayerId &&
+                placementStats.builtBy.some(
+                  (relationship) => relationship.type === world.unitType[index],
+                )
+              ) {
+                builderIds.push(unitIdAt(world, index));
+              }
+            }
             sink.submitPlace(
               placementType,
               placementTile[0]!,
               placementTile[1]!,
               placementRotation,
+              builderIds,
             );
             placementType = -1;
             placementRotation = 0;
