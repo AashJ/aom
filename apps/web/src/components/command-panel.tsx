@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   AGE_NAMES,
+  buildingCostForMajorGod,
   FAVOR,
   FOOD,
   gateTypeForLongWall,
@@ -131,6 +132,9 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
 
             const unitType = cell.option.type;
             const stats = UNIT_TYPES[unitType]!;
+            const cost = producer?.complete
+              ? ([stats.costFood, stats.costWood, stats.costGold, stats.costFavor] as const)
+              : buildingCostForMajorGod(stats, playerState?.majorGod ?? -1);
             const activeResearchReason =
               producer?.complete && producer.researchId >= 0 ? "Research in progress" : undefined;
             const unavailableReason = activeResearchReason ?? availabilityReason(cell.availability);
@@ -139,14 +143,14 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 key={unitType}
                 icon={TYPE_ICONS[unitType]}
                 label={isWallConnectorType(unitType) ? "Wall" : stats.label}
-                costFood={stats.costFood}
-                costWood={stats.costWood}
-                costGold={stats.costGold}
-                costFavor={stats.costFavor}
+                costFood={cost[FOOD]}
+                costWood={cost[WOOD]}
+                costGold={cost[GOLD]}
+                costFavor={cost[FAVOR]}
                 unavailableReason={unavailableReason}
                 disabled={
                   activeResearchReason !== undefined ||
-                  !canAffordAndUse(playerState, stats, cell.availability)
+                  !canAffordAndUse(playerState, cost, cell.availability)
                 }
                 onClick={() =>
                   producer?.complete ? game.trainSelected(unitType) : game.startPlacement(unitType)
@@ -678,20 +682,15 @@ function availabilityReason(availability: TypeAvailability | null): string | und
 
 function canAffordAndUse(
   playerState: PlayerState | null,
-  stats: {
-    readonly costFood: number;
-    readonly costWood: number;
-    readonly costGold: number;
-    readonly costFavor: number;
-  },
+  cost: readonly [food: number, wood: number, gold: number, favor: number],
   availability: TypeAvailability | null,
 ): boolean {
   return (
     availability?.available === true &&
-    (playerState?.food ?? 0) >= stats.costFood &&
-    (playerState?.wood ?? 0) >= stats.costWood &&
-    (playerState?.gold ?? 0) >= stats.costGold &&
-    (playerState?.favor ?? 0) >= stats.costFavor
+    (playerState?.food ?? 0) >= cost[FOOD] &&
+    (playerState?.wood ?? 0) >= cost[WOOD] &&
+    (playerState?.gold ?? 0) >= cost[GOLD] &&
+    (playerState?.favor ?? 0) >= cost[FAVOR]
   );
 }
 

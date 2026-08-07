@@ -1,6 +1,7 @@
 import {
   AGE_ARCHAIC,
   cultureForMajorGod,
+  effectiveBuildingPopBonus,
   FAVOR,
   FOOD,
   getTypeAvailability,
@@ -10,8 +11,6 @@ import {
   NO_GOD,
   PLAYER_RESEARCH_STRIDE,
   RESEARCH_FORTIFIED_TOWN_CENTER,
-  TYPE_EGYPTIAN_TOWN_CENTER,
-  TYPE_GREEK_TOWN_CENTER,
   RESOURCE_COUNT,
   UNIT_TYPES,
   WOOD,
@@ -149,12 +148,11 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       }
 
       if (stats.footprint > 0 && snapshot.buildProgress[index]! >= stats.buildTicks) {
-        popCap +=
-          stats.popBonus +
-          ((stats.id === TYPE_GREEK_TOWN_CENTER || stats.id === TYPE_EGYPTIAN_TOWN_CENTER) &&
-          snapshot.completedResearch[RESEARCH_FORTIFIED_TOWN_CENTER] === 1
-            ? 5
-            : 0);
+        popCap += effectiveBuildingPopBonus(
+          stats,
+          majorGod,
+          snapshot.completedResearch[RESEARCH_FORTIFIED_TOWN_CENTER] === 1,
+        );
       }
     }
 

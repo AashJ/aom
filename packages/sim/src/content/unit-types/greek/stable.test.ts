@@ -12,7 +12,7 @@ describe("Greek Stable producer pack", () => {
       lineOfSight: 9,
       armor: [0.4, 0.96, 0.05],
       costWood: 100,
-      buildTicks: 23 * 20,
+      buildTicks: 25 * 20,
       builtBy: [{ type: TYPE_GREEK_VILLAGER, commandSlot: 4 }],
     });
     expect(BUILD_OPTIONS_BY_WORKER[TYPE_GREEK_VILLAGER]).toContainEqual({

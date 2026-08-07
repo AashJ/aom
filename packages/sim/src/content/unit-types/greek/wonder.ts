@@ -19,7 +19,7 @@ export const definition = {
   maxHp: 9999,
   lineOfSight: 9,
   movementSpeed: 0,
-  armor: [0.3, 0.96, 0.05],
+  armor: [0.3, 0.95, 0.05],
   attack: null,
   deathSpawn: poseidonMilitiaDeathSpawn(10),
   isStatic: true,

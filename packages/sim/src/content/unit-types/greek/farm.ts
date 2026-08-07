@@ -1,5 +1,4 @@
 import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
-import { poseidonMilitiaDeathSpawn } from "../../death-spawns";
 import { TYPE_GREEK_FARM, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
 import {
   CULTURE_GREEK,
@@ -22,7 +21,6 @@ export const definition = {
   movementSpeed: 0,
   armor: [0.3, 0.8, 0.05],
   attack: null,
-  deathSpawn: poseidonMilitiaDeathSpawn(2),
   isStatic: true,
   resource: FOOD,
   unlimitedResourceSupply: true,

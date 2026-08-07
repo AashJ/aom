@@ -35,6 +35,8 @@ export * from "./ecs/technologies";
 export { findTechnologyResearch, tryStartTechnology } from "./ecs/research";
 export {
   attackDamageMultiplierForPlayer,
+  buildingCostForMajorGod,
+  effectiveBuildingPopBonus,
   effectiveLineOfSightForPlayer,
   effectiveMaxHpForPlayer,
   playerHasTechnology,

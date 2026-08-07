@@ -14,7 +14,8 @@ describe("Greek Fortress producer pack", () => {
       costWood: 300,
       costGold: 300,
       costFavor: 10,
-      buildTicks: 100 * 20,
+      buildTicks: 110 * 20,
+      buildLimit: 10,
       builtBy: [{ type: TYPE_GREEK_VILLAGER, commandSlot: 5 }],
     });
     expect(BUILD_OPTIONS_BY_WORKER[TYPE_GREEK_VILLAGER]).toContainEqual({

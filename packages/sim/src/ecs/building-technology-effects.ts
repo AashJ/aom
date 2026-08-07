@@ -7,6 +7,11 @@ import {
 } from "../content/unit-type-schema";
 import { cultureForMajorGod } from "../content/culture-types";
 import {
+  TYPE_EGYPTIAN_MONUMENT_TO_GODS,
+  TYPE_EGYPTIAN_MONUMENT_TO_PHARAOHS,
+  TYPE_EGYPTIAN_MONUMENT_TO_PRIESTS,
+  TYPE_EGYPTIAN_MONUMENT_TO_SOLDIERS,
+  TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS,
   TYPE_EGYPTIAN_FARM,
   TYPE_EGYPTIAN_GATE,
   TYPE_EGYPTIAN_MIGDOL_STRONGHOLD,
@@ -19,6 +24,7 @@ import {
   TYPE_GREEK_FARM,
   TYPE_GREEK_FORTRESS,
   TYPE_GREEK_GATE,
+  TYPE_GREEK_STABLE,
   TYPE_GREEK_TOWER,
   TYPE_GREEK_TOWN_CENTER,
   TYPE_GREEK_WALL_CONNECTOR,
@@ -26,7 +32,8 @@ import {
   TYPE_GREEK_WALL_MEDIUM,
   TYPE_GREEK_WALL_SHORT,
 } from "../content/unit-type-ids";
-import { GOD_HADES } from "./progression";
+import type { ResourceAmounts } from "./age-advancement";
+import { GOD_HADES, GOD_ISIS, GOD_POSEIDON, GOD_RA, GOD_SET } from "./progression";
 import {
   hasTechnology,
   RESEARCH_ARCHITECTS,
@@ -101,6 +108,37 @@ export function isFortressType(type: number): boolean {
   return type === TYPE_GREEK_FORTRESS || type === TYPE_EGYPTIAN_MIGDOL_STRONGHOLD;
 }
 
+export function isEgyptianMonumentType(type: number): boolean {
+  return (
+    type === TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS ||
+    type === TYPE_EGYPTIAN_MONUMENT_TO_SOLDIERS ||
+    type === TYPE_EGYPTIAN_MONUMENT_TO_PRIESTS ||
+    type === TYPE_EGYPTIAN_MONUMENT_TO_PHARAOHS ||
+    type === TYPE_EGYPTIAN_MONUMENT_TO_GODS
+  );
+}
+
+/** Returns the command cost after Classic major-god building bonuses. */
+export function buildingCostForMajorGod(
+  stats: UnitTypeStats,
+  majorGod: number,
+): ResourceAmounts {
+  let food = stats.costFood;
+  let wood = stats.costWood;
+  let gold = stats.costGold;
+
+  if (majorGod === GOD_POSEIDON && stats.id === TYPE_GREEK_STABLE) {
+    wood = Math.floor(wood * 0.85);
+  } else if (majorGod === GOD_RA && isEgyptianMonumentType(stats.id)) {
+    food = Math.floor(food * 0.75);
+    gold = Math.floor(gold * 0.75);
+  } else if (majorGod === GOD_SET && stats.id === TYPE_EGYPTIAN_MIGDOL_STRONGHOLD) {
+    gold = Math.floor(gold * 0.75);
+  }
+
+  return [food, wood, gold, stats.costFavor];
+}
+
 function towerTier(world: BuildingTechnologyState, playerId: number): number {
   if (playerHasTechnology(world, playerId, RESEARCH_BALLISTA_TOWER)) return 3;
   if (playerHasTechnology(world, playerId, RESEARCH_GUARD_TOWER)) return 2;
@@ -129,12 +167,17 @@ export function effectiveMaxHpForPlayer(
     else if (tier === 3) maximum *= 1_150 / 550;
   } else if (isWallOrGateType(stats.id)) {
     maximum *= [1, 2, 3, 4][wallTier(world, playerId)]!;
-    if (world.playerMajorGod?.[playerId] === GOD_HADES) maximum *= 1.25;
   } else if (
     isTownCenterType(stats.id) &&
     playerHasTechnology(world, playerId, RESEARCH_FORTIFIED_TOWN_CENTER)
   ) {
     maximum *= 3_500 / 2_400;
+  }
+
+  if (world.playerMajorGod?.[playerId] === GOD_HADES) maximum *= 1.25;
+  if (isEgyptianMonumentType(stats.id)) {
+    if (world.playerMajorGod?.[playerId] === GOD_RA) maximum *= 1.2;
+    else if (world.playerMajorGod?.[playerId] === GOD_ISIS) maximum *= 0.8;
   }
 
   let structuralBonus = 0;
@@ -167,13 +210,23 @@ export function effectivePopBonusForPlayer(
   playerId: number,
   stats: UnitTypeStats,
 ): number {
-  return (
-    stats.popBonus +
-    (isTownCenterType(stats.id) &&
-    playerHasTechnology(world, playerId, RESEARCH_FORTIFIED_TOWN_CENTER)
-      ? 5
-      : 0)
+  return effectiveBuildingPopBonus(
+    stats,
+    world.playerMajorGod?.[playerId] ?? -1,
+    playerHasTechnology(world, playerId, RESEARCH_FORTIFIED_TOWN_CENTER),
   );
+}
+
+export function effectiveBuildingPopBonus(
+  stats: UnitTypeStats,
+  majorGod: number,
+  hasFortifiedTownCenter: boolean,
+): number {
+  let bonus = stats.popBonus;
+  if (!isTownCenterType(stats.id)) return bonus;
+  if (hasFortifiedTownCenter) bonus += 5;
+  if (majorGod === GOD_ISIS) bonus += 3;
+  return bonus;
 }
 
 export function primaryAttackForPlayer(
@@ -216,6 +269,12 @@ export function attackDamageMultiplierForPlayer(
   ) {
     multiplier *= 1.5;
   }
+  if (
+    (stats.classes & UNIT_CLASS_BUILDING) !== 0 &&
+    world.playerMajorGod?.[playerId] === GOD_HADES
+  ) {
+    multiplier *= 1.2;
+  }
   return multiplier;
 }
 
@@ -240,7 +299,7 @@ export function projectileTrackRatingForPlayer(
   sourceType: number,
   authoredTrackRating: number,
 ): number {
-  return (isTowerType(sourceType) || isFortressType(sourceType)) &&
+  return (isTowerType(sourceType) || isFortressType(sourceType) || isTownCenterType(sourceType)) &&
     playerHasTechnology(world, playerId, RESEARCH_CRENELLATIONS)
     ? Math.max(10, authoredTrackRating)
     : authoredTrackRating;

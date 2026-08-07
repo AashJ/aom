@@ -1,5 +1,6 @@
 import {
   BUILD_OPTIONS_BY_WORKER,
+  buildingCostForMajorGod,
   buildSurfaceHeightmap,
   canPlaceBuilding,
   canPlaceWallLine,
@@ -552,12 +553,16 @@ export async function createGame(
           }
 
           const stockpileBase = selfPlayerId * RESOURCE_COUNT;
+          const placementCost = buildingCostForMajorGod(
+            placementStats,
+            currSnap.playerMajorGods[selfPlayerId]!,
+          );
           // Preview-validation only — the sim revalidates authoritatively at application.
           const affordable =
-            (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementStats.costFood &&
-            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementStats.costWood &&
-            (currSnap.stockpiles[stockpileBase + GOLD] ?? 0) >= placementStats.costGold &&
-            (currSnap.stockpiles[stockpileBase + FAVOR] ?? 0) >= placementStats.costFavor;
+            (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementCost[FOOD] &&
+            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementCost[WOOD] &&
+            (currSnap.stockpiles[stockpileBase + GOLD] ?? 0) >= placementCost[GOLD] &&
+            (currSnap.stockpiles[stockpileBase + FAVOR] ?? 0) >= placementCost[FAVOR];
           let footprintVisible = hitGround;
 
           if (footprintVisible) {

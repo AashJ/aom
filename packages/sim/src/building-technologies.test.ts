@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { COMMAND_RESEARCH, enqueueCommand } from "./commands";
 import {
   attackDamageMultiplierForPlayer,
+  buildingCostForMajorGod,
   closeAttackForPlayer,
   effectiveLineOfSightForPlayer,
   effectiveMaxHpForPlayer,
@@ -14,8 +15,11 @@ import {
   AGE_CLASSICAL,
   AGE_HEROIC,
   AGE_MYTHIC,
+  GOD_HADES,
   GOD_ISIS,
+  GOD_POSEIDON,
   GOD_RA,
+  GOD_SET,
   GOD_ZEUS,
 } from "./ecs/progression";
 import {
@@ -39,7 +43,11 @@ import {
   FOOD,
   GOLD,
   TYPE_EGYPTIAN_TOWER,
+  TYPE_EGYPTIAN_TOWN_CENTER,
+  TYPE_EGYPTIAN_MIGDOL_STRONGHOLD,
+  TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS,
   TYPE_GREEK_HOUSE,
+  TYPE_GREEK_STABLE,
   TYPE_GREEK_TOWER,
   TYPE_GREEK_TOWN_CENTER,
   TYPE_GREEK_WALL_MEDIUM,
@@ -165,6 +173,31 @@ describe("Greek and Egyptian building technologies", () => {
     setTechnology(world.playerResearch, 0, RESEARCH_MASONS);
     setTechnology(world.playerResearch, 0, RESEARCH_ARCHITECTS);
     expect(effectiveMaxHpForPlayer(world, 0, houseStats)).toBe(houseStats.maxHp * 1.5);
+  });
+
+  test("major gods apply their Classic building cost, HP, attack, and population bonuses", () => {
+    const stable = UNIT_TYPES[TYPE_GREEK_STABLE]!;
+    const monument = UNIT_TYPES[TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS]!;
+    const migdol = UNIT_TYPES[TYPE_EGYPTIAN_MIGDOL_STRONGHOLD]!;
+    expect(buildingCostForMajorGod(stable, GOD_POSEIDON)).toEqual([0, 85, 0, 0]);
+    expect(buildingCostForMajorGod(monument, GOD_RA)).toEqual([37, 0, 37, 0]);
+    expect(buildingCostForMajorGod(migdol, GOD_SET)).toEqual([0, 0, 300, 10]);
+
+    const hades = technologyWorld(GOD_HADES);
+    const house = UNIT_TYPES[TYPE_GREEK_HOUSE]!;
+    const tower = UNIT_TYPES[TYPE_GREEK_TOWER]!;
+    expect(effectiveMaxHpForPlayer(hades, 0, house)).toBe(house.maxHp * 1.25);
+    expect(attackDamageMultiplierForPlayer(hades, 0, tower)).toBeCloseTo(1.2);
+
+    const ra = technologyWorld(GOD_RA);
+    expect(effectiveMaxHpForPlayer(ra, 0, monument)).toBe(monument.maxHp * 1.2);
+
+    const isis = technologyWorld(GOD_ISIS);
+    const townCenter = UNIT_TYPES[TYPE_EGYPTIAN_TOWN_CENTER]!;
+    expect(effectiveMaxHpForPlayer(isis, 0, monument)).toBe(monument.maxHp * 0.8);
+    expect(effectivePopBonusForPlayer(isis, 0, townCenter)).toBe(18);
+    setTechnology(isis.playerResearch, 0, RESEARCH_FORTIFIED_TOWN_CENTER);
+    expect(effectivePopBonusForPlayer(isis, 0, townCenter)).toBe(23);
   });
 
   test("vision, crenellations, boiling oil, and fortified Town Center effects are gated", () => {

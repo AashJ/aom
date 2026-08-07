@@ -56,7 +56,7 @@ export const definition = {
   costGold: 300,
   costFavor: 10,
   buildTicks: 110 * 20,
-  buildLimit: 12,
+  buildLimit: 10,
   populationCost: 0,
   popBonus: 0,
   trainExitOffset: 6.5,

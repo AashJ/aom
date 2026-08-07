@@ -39,6 +39,7 @@ export {
   AGE_ARCHAIC,
   AGE_CLASSICAL,
   BUILD_OPTIONS_BY_WORKER,
+  buildingCostForMajorGod,
   cultureForMajorGod,
   FAVOR,
   FOOD,

@@ -14,7 +14,7 @@ export const definition = {
   label: "Gate",
   culture: CULTURE_GREEK,
   classes: UNIT_CLASS_BUILDING,
-  maxHp: 600,
+  maxHp: 500,
   lineOfSight: 5,
   movementSpeed: 0,
   armor: [0.65, 0.96, 0.05],

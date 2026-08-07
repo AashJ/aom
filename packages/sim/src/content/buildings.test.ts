@@ -7,7 +7,14 @@ import {
   COMMAND_TOWN_BELL,
   enqueueCommand,
 } from "../commands";
-import { AGE_HEROIC, GOD_RA, GOD_ZEUS } from "../ecs/progression";
+import {
+  AGE_CLASSICAL,
+  AGE_HEROIC,
+  GOD_POSEIDON,
+  GOD_RA,
+  GOD_SET,
+  GOD_ZEUS,
+} from "../ecs/progression";
 import { registerPlayer } from "../ecs/players";
 import { RESEARCH_WATCH_TOWER, setTechnology } from "../ecs/technologies";
 import {
@@ -29,13 +36,17 @@ import {
   CULTURE_EGYPTIAN,
   CULTURE_GREEK,
   FAVOR,
+  FOOD,
   GOLD,
+  TYPE_EGYPTIAN_LABORER,
+  TYPE_EGYPTIAN_MIGDOL_STRONGHOLD,
   TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS,
   TYPE_BERRY,
   TYPE_GREEK_FARM,
   TYPE_GREEK_GATE,
   TYPE_GREEK_GRANARY,
   TYPE_GREEK_STOREHOUSE,
+  TYPE_GREEK_STABLE,
   TYPE_GREEK_TOWER,
   TYPE_GREEK_TOWN_CENTER,
   TYPE_GREEK_VILLAGER,
@@ -108,6 +119,7 @@ describe("Classic Greek and Egyptian buildings", () => {
     const world = flatWorld([{ id: 0, god: GOD_ZEUS }]);
     spawnBuilding(world, 50, 50, NEUTRAL_OWNER, TYPE_SETTLEMENT);
     spawnUnit(world, 48, 52, 0, 0, 0, TYPE_GREEK_VILLAGER);
+    world.stockpiles[FOOD] = 100;
     world.stockpiles[WOOD] = 300;
     world.stockpiles[GOLD] = 300;
 
@@ -125,6 +137,7 @@ describe("Classic Greek and Egyptian buildings", () => {
     expect(world.unitType[0]).toBe(TYPE_GREEK_TOWN_CENTER);
     expect(world.owner[0]).toBe(0);
     expect(world.buildProgress[0]).toBe(0);
+    expect(world.stockpiles[FOOD]).toBe(0);
     expect(world.stockpiles[WOOD]).toBe(0);
     expect(world.stockpiles[GOLD]).toBe(0);
   });
@@ -150,6 +163,7 @@ describe("Classic Greek and Egyptian buildings", () => {
     spawnBuilding(world, 50, 50, NEUTRAL_OWNER, TYPE_SETTLEMENT);
     spawnBuilding(world, 70, 70, NEUTRAL_OWNER, TYPE_SETTLEMENT);
     spawnUnit(world, 48, 52, 0, 0, 0, TYPE_GREEK_VILLAGER);
+    world.stockpiles[FOOD] = 200;
     world.stockpiles[WOOD] = 600;
     world.stockpiles[GOLD] = 600;
 
@@ -176,6 +190,59 @@ describe("Classic Greek and Egyptian buildings", () => {
     tickWorld(world);
     expect(world.unitType[1]).toBe(TYPE_GREEK_TOWN_CENTER);
     expect(world.owner[1]).toBe(0);
+  });
+
+  test("major-god building discounts are charged by authoritative placement", () => {
+    const poseidon = flatWorld([{ id: 0, god: GOD_POSEIDON }]);
+    poseidon.playerAge[0] = AGE_CLASSICAL;
+    spawnUnit(poseidon, 18, 18, 0, 0, 0, TYPE_GREEK_VILLAGER);
+    poseidon.stockpiles[WOOD] = 85;
+    enqueueCommand(poseidon, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_GREEK_STABLE,
+      tileX: 20,
+      tileZ: 20,
+    });
+    tickWorld(poseidon);
+    expect(poseidon.unitType[1]).toBe(TYPE_GREEK_STABLE);
+    expect(poseidon.stockpiles[WOOD]).toBe(0);
+
+    const ra = flatWorld([{ id: 0, god: GOD_RA }]);
+    spawnUnit(ra, 18, 18, 0, 0, 0, TYPE_EGYPTIAN_LABORER);
+    ra.stockpiles[FOOD] = 37;
+    ra.stockpiles[GOLD] = 37;
+    enqueueCommand(ra, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS,
+      tileX: 20,
+      tileZ: 20,
+    });
+    tickWorld(ra);
+    expect(ra.unitType[1]).toBe(TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS);
+    expect(ra.stockpiles[FOOD]).toBe(0);
+    expect(ra.stockpiles[GOLD]).toBe(0);
+
+    const set = flatWorld([{ id: 0, god: GOD_SET }]);
+    set.playerAge[0] = AGE_HEROIC;
+    spawnUnit(set, 18, 18, 0, 0, 0, TYPE_EGYPTIAN_LABORER);
+    set.stockpiles[GOLD] = 300;
+    set.stockpiles[FAVOR] = 10;
+    enqueueCommand(set, {
+      tick: 0,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_EGYPTIAN_MIGDOL_STRONGHOLD,
+      tileX: 20,
+      tileZ: 20,
+    });
+    tickWorld(set);
+    expect(set.unitType[1]).toBe(TYPE_EGYPTIAN_MIGDOL_STRONGHOLD);
+    expect(set.stockpiles[GOLD]).toBe(0);
+    expect(set.stockpiles[FAVOR]).toBe(0);
   });
 
   test("farms retain combat HP while yielding unlimited food to one worker", () => {

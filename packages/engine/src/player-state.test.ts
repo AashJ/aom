@@ -5,9 +5,12 @@ import {
   CLASSICAL_AGE_ADVANCE_TICKS,
   FOOD,
   GOD_ATHENA,
+  GOD_ISIS,
   GOD_ZEUS,
   MAX_TRAIN_QUEUE,
   RESOURCE_COUNT,
+  RESEARCH_FORTIFIED_TOWN_CENTER,
+  TYPE_EGYPTIAN_TOWN_CENTER,
   TYPE_GREEK_MILITARY_ACADEMY as TYPE_BARRACKS,
   TYPE_GREEK_TEMPLE as TYPE_TEMPLE,
   TYPE_GREEK_TOWN_CENTER as TYPE_TOWN_CENTER,
@@ -89,6 +92,25 @@ describe("player state store", () => {
       buildingId: 17,
       progress: 0.75,
     });
+  });
+
+  test("projects Isis and Fortified Town Center population bonuses", () => {
+    const store = createPlayerStateStore(PLAYER_ID);
+    const snapshot = populatedSnapshot();
+    snapshot.majorGod = GOD_ISIS;
+    snapshot.unitType[1] = TYPE_EGYPTIAN_TOWN_CENTER;
+    snapshot.buildProgress[1] = UNIT_TYPES[TYPE_EGYPTIAN_TOWN_CENTER]!.buildTicks;
+    let received: PlayerState | null = null;
+
+    store.update(snapshot);
+    store.subscribe((state) => {
+      received = state;
+    });
+    expect(received!.popCap).toBe(18);
+
+    snapshot.completedResearch[RESEARCH_FORTIFIED_TOWN_CENTER] = 1;
+    store.update(snapshot);
+    expect(received!.popCap).toBe(23);
   });
 
   test("notifies subscribers only when projected gameplay state changes", () => {

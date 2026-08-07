@@ -75,6 +75,7 @@ import { tickActiveBeamAttack } from "./beam-combat";
 import {
   attackRangeForPlayer,
   attackDamageMultiplierForPlayer,
+  buildingCostForMajorGod,
   closeAttackForPlayer,
   effectiveMaxHpForPlayer,
   effectivePopBonusForPlayer,
@@ -4863,12 +4864,17 @@ function applyPendingCommands(world: World): void {
       const woodIndex = command.issuer * RESOURCE_COUNT + WOOD;
       const goldIndex = command.issuer * RESOURCE_COUNT + GOLD;
       const favorIndex = command.issuer * RESOURCE_COUNT + FAVOR;
+      const buildingCost =
+        buildingStats === undefined
+          ? undefined
+          : buildingCostForMajorGod(buildingStats, world.playerMajorGod[command.issuer]!);
 
       // The engine's ghost preview pre-validates, so failures here are stale-by-input-delay races —
       // e.g. two players placing on the same tiles in one turn: the first (playerId order) wins,
       // the second's command finds tiles occupied and dies silently. This is the desired lockstep semantics.
       if (
         buildingStats !== undefined &&
+        buildingCost !== undefined &&
         buildingStats.footprint > 0 &&
         !isGateType(buildingType) &&
         !isAutomaticWallSegmentType(buildingType) &&
@@ -4886,15 +4892,15 @@ function applyPendingCommands(world: World): void {
             : (buildingStats.footprintDepth ?? buildingStats.footprint),
         ) &&
         canPlaceBuilding(world, command.tileX, command.tileZ, buildingType, command.rotation) &&
-        world.stockpiles[foodIndex]! >= buildingStats.costFood &&
-        world.stockpiles[woodIndex]! >= buildingStats.costWood &&
-        world.stockpiles[goldIndex]! >= buildingStats.costGold &&
-        world.stockpiles[favorIndex]! >= buildingStats.costFavor
+        world.stockpiles[foodIndex]! >= buildingCost[FOOD] &&
+        world.stockpiles[woodIndex]! >= buildingCost[WOOD] &&
+        world.stockpiles[goldIndex]! >= buildingCost[GOLD] &&
+        world.stockpiles[favorIndex]! >= buildingCost[FAVOR]
       ) {
-        world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - buildingStats.costFood;
-        world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - buildingStats.costWood;
-        world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - buildingStats.costGold;
-        world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - buildingStats.costFavor;
+        world.stockpiles[foodIndex] = world.stockpiles[foodIndex]! - buildingCost[FOOD];
+        world.stockpiles[woodIndex] = world.stockpiles[woodIndex]! - buildingCost[WOOD];
+        world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - buildingCost[GOLD];
+        world.stockpiles[favorIndex] = world.stockpiles[favorIndex]! - buildingCost[FAVOR];
         const replacementSite = buildingReplacementSiteAt(
           world,
           command.tileX,

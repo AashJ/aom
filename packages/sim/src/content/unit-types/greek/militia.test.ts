@@ -8,12 +8,20 @@ import { UNIT_REFERENCE_SPECS } from "../../unit-references";
 import { validateDefinitionAgainstReference } from "../../unit-reference-schema";
 import {
   TYPE_GREEK_ARCHERY_RANGE,
+  TYPE_GREEK_ARMORY,
+  TYPE_GREEK_DOCK,
+  TYPE_GREEK_FARM,
   TYPE_GREEK_FORTRESS,
+  TYPE_GREEK_GRANARY,
   TYPE_GREEK_HOUSE,
+  TYPE_GREEK_MARKET,
   TYPE_GREEK_MILITARY_ACADEMY,
   TYPE_GREEK_STABLE,
+  TYPE_GREEK_STOREHOUSE,
   TYPE_GREEK_TEMPLE,
+  TYPE_GREEK_TOWER,
   TYPE_GREEK_TOWN_CENTER,
+  TYPE_GREEK_WONDER,
   TYPE_HOPLITE,
   TYPE_MILITIA,
 } from "../../unit-type-ids";
@@ -60,13 +68,21 @@ describe("Greek Militia unit pack", () => {
   test("pins the Classic building-specific spawn table represented by current content", () => {
     expect([
       UNIT_TYPES[TYPE_GREEK_HOUSE]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_GRANARY]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_STOREHOUSE]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_DOCK]!.deathSpawn?.count,
       UNIT_TYPES[TYPE_GREEK_STABLE]!.deathSpawn?.count,
       UNIT_TYPES[TYPE_GREEK_MILITARY_ACADEMY]!.deathSpawn?.count,
       UNIT_TYPES[TYPE_GREEK_ARCHERY_RANGE]!.deathSpawn?.count,
       UNIT_TYPES[TYPE_GREEK_TEMPLE]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_ARMORY]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_MARKET]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_TOWER]!.deathSpawn?.count,
       UNIT_TYPES[TYPE_GREEK_FORTRESS]!.deathSpawn?.count,
+      UNIT_TYPES[TYPE_GREEK_WONDER]!.deathSpawn?.count,
       UNIT_TYPES[TYPE_GREEK_TOWN_CENTER]!.deathSpawn,
-    ]).toEqual([2, 2, 3, 3, 4, 6, undefined]);
+      UNIT_TYPES[TYPE_GREEK_FARM]!.deathSpawn,
+    ]).toEqual([2, 2, 2, 2, 2, 3, 3, 4, 4, 4, 1, 6, 10, undefined, undefined]);
   });
 
   test("spawns only from Poseidon buildings destroyed by damage", () => {
