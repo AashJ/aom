@@ -42,14 +42,14 @@ export function StatsPanel({ game }: { game: GameHandle | null }) {
             owner={selected.owner}
             selectedCount={selection?.selectedCount ?? 1}
             hitPoints={selected.hitPoints}
-            maxHitPoints={stats.maxHp}
+            maxHitPoints={selected.maxHitPoints}
             buildProgress={selected.buildProgress}
             buildTicks={stats.buildTicks}
             isBuilding={stats.footprint > 0}
-            damage={stats.attack?.damage ?? null}
+            damage={selected.attackDamage}
             hackArmor={stats.armor[0]}
             pierceArmor={stats.armor[1]}
-            lineOfSight={stats.lineOfSight}
+            lineOfSight={selected.lineOfSight}
           />
         ) : (
           <div className="flex h-full items-center justify-center px-2 text-center font-serif text-base text-[#d5cfbd] italic [text-shadow:0_1px_1px_rgb(0_0_0/85%)] sm:text-sm">

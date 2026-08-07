@@ -33,7 +33,13 @@ export {
 } from "./ecs/age-advancement";
 export * from "./ecs/technologies";
 export { findTechnologyResearch, tryStartTechnology } from "./ecs/research";
-export { playerHasTechnology } from "./ecs/building-technology-effects";
+export {
+  attackDamageMultiplierForPlayer,
+  effectiveLineOfSightForPlayer,
+  effectiveMaxHpForPlayer,
+  playerHasTechnology,
+  primaryAttackForPlayer,
+} from "./ecs/building-technology-effects";
 export {
   getTypeAvailability,
   hasCompletedBuilding,

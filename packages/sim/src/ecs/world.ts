@@ -10,6 +10,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_BUILD_GATE,
   COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
@@ -32,7 +33,13 @@ import {
   townCenterTypeForCulture,
   workerTypeForCulture,
 } from "../content/culture-types";
-import { planWallLine, wallFamilyForConnector } from "../content/wall-lines";
+import {
+  gateTypeForLongWall,
+  isAutomaticWallSegmentType,
+  isGateType,
+  planWallLine,
+  wallFamilyForConnector,
+} from "../content/wall-lines";
 import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { MAP_TILES } from "../terrain";
@@ -68,7 +75,6 @@ import { tickActiveBeamAttack } from "./beam-combat";
 import {
   attackRangeForPlayer,
   attackDamageMultiplierForPlayer,
-  armorAdjustedDamage,
   closeAttackForPlayer,
   effectiveMaxHpForPlayer,
   effectivePopBonusForPlayer,
@@ -2409,6 +2415,43 @@ function applyTownBellCommand(world: World, playerId: number, buildingId: number
   else ringTownBell(world, playerId);
 }
 
+function applyBuildGateCommand(world: World, playerId: number, wallId: number): void {
+  const wall = resolveId(world, wallId);
+  if (
+    wall < 0 ||
+    world.owner[wall] !== playerId ||
+    world.dying[wall] === 1 ||
+    world.hp[wall]! <= 0 ||
+    world.researchId[wall] !== NO_RESEARCH
+  ) {
+    return;
+  }
+
+  const wallType = world.unitType[wall]!;
+  const gateType = gateTypeForLongWall(wallType);
+  if (gateType === undefined) return;
+
+  const gateStats = UNIT_TYPES[gateType]!;
+  const goldIndex = playerId * RESOURCE_COUNT + GOLD;
+  if (world.stockpiles[goldIndex]! < gateStats.costGold) return;
+
+  const wallStats = UNIT_TYPES[wallType]!;
+  const wallMaxHp = effectiveMaxHpForPlayer(world, playerId, wallStats);
+  const gateMaxHp = effectiveMaxHpForPlayer(world, playerId, gateStats);
+  const hpFraction = wallMaxHp <= 0 ? 0 : world.hp[wall]! / wallMaxHp;
+  const constructionFraction =
+    wallStats.buildTicks <= 0 ? 1 : world.buildProgress[wall]! / wallStats.buildTicks;
+
+  world.stockpiles[goldIndex] = world.stockpiles[goldIndex]! - gateStats.costGold;
+  world.unitType[wall] = gateType;
+  world.hp[wall] = Math.min(gateMaxHp, gateMaxHp * hpFraction);
+  world.buildProgress[wall] = Math.min(
+    gateStats.buildTicks,
+    gateStats.buildTicks * constructionFraction,
+  );
+  world.gateOpen[wall] = 0;
+}
+
 function applyPlaceWallCommand(
   world: World,
   playerId: number,
@@ -4108,12 +4151,7 @@ function resolvePrimaryMeleeImpact(
       NEUTRAL_OWNER,
       (state, hitTarget, damage) => {
         applyMeleeSnare(state, hitTarget);
-        dealDamage(
-          state,
-          hitTarget,
-          armorAdjustedDamage(state, hitTarget, attack, damage),
-          attacker,
-        );
+        dealDamage(state, hitTarget, damage, attacker);
       },
       attacker,
     );
@@ -4126,7 +4164,7 @@ function resolvePrimaryMeleeImpact(
       ? resolveMeleeDamage(attack, UNIT_TYPES[world.unitType[target]!]!)
       : resolveMeleeCycleDamage(attack, cycle, UNIT_TYPES[world.unitType[target]!]!);
   const scaledDamage = damage * experienceMultiplier * ageMultiplier;
-  dealDamage(world, target, armorAdjustedDamage(world, target, attack, scaledDamage), attacker);
+  dealDamage(world, target, scaledDamage, attacker);
 }
 
 function applyDeaths(world: World): void {
@@ -4805,6 +4843,8 @@ function applyPendingCommands(world: World): void {
       }
     } else if (command.type === COMMAND_TOWN_BELL) {
       applyTownBellCommand(world, command.issuer, command.buildingId);
+    } else if (command.type === COMMAND_BUILD_GATE) {
+      applyBuildGateCommand(world, command.issuer, command.wallId);
     } else if (command.type === COMMAND_PLACE_WALL) {
       applyPlaceWallCommand(
         world,
@@ -4830,6 +4870,8 @@ function applyPendingCommands(world: World): void {
       if (
         buildingStats !== undefined &&
         buildingStats.footprint > 0 &&
+        !isGateType(buildingType) &&
+        !isAutomaticWallSegmentType(buildingType) &&
         isTypeAvailableToPlayer(world, command.issuer, buildingType) &&
         isFootprintVisibleTo(
           world,

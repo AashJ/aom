@@ -8,6 +8,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_BUILD_GATE,
   COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
@@ -52,6 +53,7 @@ export interface CommandSink {
   submitUngarrison(containerId: number): void;
   submitTrade(unitIds: number[], targetId: number): void;
   submitTownBell(buildingId: number): void;
+  submitBuildGate(wallId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
   submitCancelTrain(buildingId: number, queueIndex: number): void;
@@ -203,6 +205,14 @@ export function createLoopbackSink(world: World): CommandSink {
         issuer: 0,
         type: COMMAND_TOWN_BELL,
         buildingId,
+      });
+    },
+    submitBuildGate(wallId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_BUILD_GATE,
+        wallId,
       });
     },
     submitWallLine(

@@ -27,8 +27,6 @@ import {
   TYPE_GREEK_WALL_SHORT,
 } from "../content/unit-type-ids";
 import { GOD_HADES } from "./progression";
-import { resolveDamage, resolveDamageWithArmor, type DamageSource } from "./combat";
-import { UNIT_TYPES } from "./types";
 import {
   hasTechnology,
   RESEARCH_ARCHITECTS,
@@ -55,11 +53,6 @@ interface BuildingTechnologyState {
   readonly playerAge?: Uint8Array;
   readonly playerMajorGod?: Uint8Array;
   readonly playerResearch?: Uint8Array;
-}
-
-interface BuildingDamageState extends BuildingTechnologyState {
-  readonly owner: Uint8Array;
-  readonly unitType: Uint16Array;
 }
 
 export function playerHasTechnology(
@@ -145,8 +138,8 @@ export function effectiveMaxHpForPlayer(
   }
 
   let structuralBonus = 0;
-  if (playerHasTechnology(world, playerId, RESEARCH_MASONS)) structuralBonus += 0.15;
-  if (playerHasTechnology(world, playerId, RESEARCH_ARCHITECTS)) structuralBonus += 0.15;
+  if (playerHasTechnology(world, playerId, RESEARCH_MASONS)) structuralBonus += 0.2;
+  if (playerHasTechnology(world, playerId, RESEARCH_ARCHITECTS)) structuralBonus += 0.3;
   return maximum * (1 + structuralBonus);
 }
 
@@ -181,31 +174,6 @@ export function effectivePopBonusForPlayer(
       ? 5
       : 0)
   );
-}
-
-export function armorAdjustedDamage(
-  world: BuildingDamageState,
-  target: number,
-  source: DamageSource,
-  resolvedDamage: number,
-): number {
-  const targetStats = UNIT_TYPES[world.unitType[target]!]!;
-  const playerId = world.owner[target]!;
-  if ((targetStats.classes & UNIT_CLASS_BUILDING) === 0) return resolvedDamage;
-
-  let crushArmorBonus = 0;
-  if (playerHasTechnology(world, playerId, RESEARCH_MASONS)) crushArmorBonus += 0.05;
-  if (playerHasTechnology(world, playerId, RESEARCH_ARCHITECTS)) crushArmorBonus += 0.05;
-  if (crushArmorBonus === 0) return resolvedDamage;
-
-  const baseDamage = resolveDamage(source, targetStats);
-  if (baseDamage <= 0) return resolvedDamage;
-  const adjustedDamage = resolveDamageWithArmor(source, targetStats, [
-    targetStats.armor[0],
-    targetStats.armor[1],
-    Math.min(0.99, targetStats.armor[2] + crushArmorBonus),
-  ]);
-  return resolvedDamage * (adjustedDamage / baseDamage);
 }
 
 export function primaryAttackForPlayer(
@@ -264,6 +232,18 @@ export function attackRangeForPlayer(
       ? 2
       : 0)
   );
+}
+
+export function projectileTrackRatingForPlayer(
+  world: BuildingTechnologyState,
+  playerId: number,
+  sourceType: number,
+  authoredTrackRating: number,
+): number {
+  return (isTowerType(sourceType) || isFortressType(sourceType)) &&
+    playerHasTechnology(world, playerId, RESEARCH_CRENELLATIONS)
+    ? Math.max(10, authoredTrackRating)
+    : authoredTrackRating;
 }
 
 export function buildingProjectileTargetMultiplier(

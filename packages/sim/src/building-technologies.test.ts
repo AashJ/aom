@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { COMMAND_RESEARCH, enqueueCommand } from "./commands";
 import {
-  armorAdjustedDamage,
   attackDamageMultiplierForPlayer,
   closeAttackForPlayer,
   effectiveLineOfSightForPlayer,
   effectiveMaxHpForPlayer,
   effectivePopBonusForPlayer,
   primaryAttackForPlayer,
+  projectileTrackRatingForPlayer,
 } from "./ecs/building-technology-effects";
 import { registerPlayer } from "./ecs/players";
 import {
   AGE_CLASSICAL,
+  AGE_HEROIC,
   AGE_MYTHIC,
   GOD_ISIS,
   GOD_RA,
@@ -31,6 +32,7 @@ import {
   RESEARCH_SIGNAL_FIRES,
   RESEARCH_STONE_WALL,
   RESEARCH_WATCH_TOWER,
+  getTechnology,
   setTechnology,
 } from "./ecs/technologies";
 import {
@@ -147,7 +149,7 @@ describe("Greek and Egyptian building technologies", () => {
     expect(attackDamageMultiplierForPlayer(egyptian, 0, egyptianStats)).toBeCloseTo(2.2);
   });
 
-  test("wall tiers and structural technologies preserve Classic HP and crush resistance", () => {
+  test("wall tiers and structural technologies preserve Classic HP", () => {
     const world = technologyWorld();
     const wallStats = UNIT_TYPES[TYPE_GREEK_WALL_MEDIUM]!;
     const houseStats = UNIT_TYPES[TYPE_GREEK_HOUSE]!;
@@ -160,19 +162,16 @@ describe("Greek and Egyptian building technologies", () => {
     setTechnology(world.playerResearch, 0, RESEARCH_CITADEL_WALL);
     expect(effectiveMaxHpForPlayer(world, 0, wallStats)).toBe(2_400);
 
-    const house = spawnBuilding(world, 30, 30, 0, TYPE_GREEK_HOUSE, true);
     setTechnology(world.playerResearch, 0, RESEARCH_MASONS);
     setTechnology(world.playerResearch, 0, RESEARCH_ARCHITECTS);
-    expect(effectiveMaxHpForPlayer(world, 0, houseStats)).toBe(houseStats.maxHp * 1.3);
-    expect(
-      armorAdjustedDamage(world, resolveId(world, house), { damage: [0, 0, 100], bonuses: [] }, 95),
-    ).toBeCloseTo(85);
+    expect(effectiveMaxHpForPlayer(world, 0, houseStats)).toBe(houseStats.maxHp * 1.5);
   });
 
   test("vision, crenellations, boiling oil, and fortified Town Center effects are gated", () => {
     const world = technologyWorld();
     const towerStats = UNIT_TYPES[TYPE_GREEK_TOWER]!;
     const townCenterStats = UNIT_TYPES[TYPE_GREEK_TOWN_CENTER]!;
+    expect(getTechnology(RESEARCH_FORTIFIED_TOWN_CENTER)?.requiredAge).toBe(AGE_HEROIC);
 
     expect(effectiveLineOfSightForPlayer(world, 0, towerStats)).toBe(24);
     setTechnology(world.playerResearch, 0, RESEARCH_SIGNAL_FIRES);
@@ -183,6 +182,7 @@ describe("Greek and Egyptian building technologies", () => {
     setTechnology(world.playerResearch, 0, RESEARCH_BOILING_OIL);
     expect(closeAttackForPlayer(world, 0, towerStats)).toBe(towerStats.closeAttack);
     setTechnology(world.playerResearch, 0, RESEARCH_CRENELLATIONS);
+    expect(projectileTrackRatingForPlayer(world, 0, TYPE_GREEK_TOWER, 5)).toBe(10);
 
     setTechnology(world.playerResearch, 0, RESEARCH_FORTIFIED_TOWN_CENTER);
     expect(effectiveMaxHpForPlayer(world, 0, townCenterStats)).toBe(3_500);

@@ -3,6 +3,7 @@ import {
   AGE_NAMES,
   FAVOR,
   FOOD,
+  gateTypeForLongWall,
   getAgeAdvanceAvailability,
   getAgeAdvanceProducerType,
   GOLD,
@@ -25,6 +26,7 @@ import {
   GOD_SEKHMET,
   GOD_THOTH,
   isAutomaticWallSegmentType,
+  isGateType,
   isWallConnectorType,
   NO_AGE,
   TYPE_ICONS,
@@ -94,7 +96,9 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
   const producer = selection?.producer ?? null;
   const commandOptions = producer?.complete
     ? producer.trainOptions
-    : (selection?.buildOptions ?? []).filter((option) => !isAutomaticWallSegmentType(option.type));
+    : (selection?.buildOptions ?? []).filter(
+        (option) => !isAutomaticWallSegmentType(option.type) && !isGateType(option.type),
+      );
   const commandSourceType = producer?.complete ? producer.type : (selection?.builderType ?? -1);
   const availability = (unitType: number, producerType: number): TypeAvailability | null =>
     playerState ? typeAvailabilityForPlayerState(playerState, unitType, producerType) : null;
@@ -105,8 +109,12 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     ageAdvanceRule && playerState
       ? getAgeAdvanceProducerType(ageAdvanceRule, playerState.majorGod)
       : undefined;
-  const ageAdvanceUnavailable = ageAdvanceReason(ageAdvanceAvailability);
+  const ageAdvanceUnavailable =
+    producer?.researchId !== undefined && producer.researchId >= 0
+      ? "Research in progress"
+      : ageAdvanceReason(ageAdvanceAvailability);
   const commandCells = slottedCommandCells(commandOptions, commandSourceType, availability);
+  const gateType = producer ? gateTypeForLongWall(producer.type) : undefined;
 
   return (
     <>
@@ -123,6 +131,9 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
 
             const unitType = cell.option.type;
             const stats = UNIT_TYPES[unitType]!;
+            const activeResearchReason =
+              producer?.complete && producer.researchId >= 0 ? "Research in progress" : undefined;
+            const unavailableReason = activeResearchReason ?? availabilityReason(cell.availability);
             return (
               <CommandTile
                 key={unitType}
@@ -132,14 +143,41 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 costWood={stats.costWood}
                 costGold={stats.costGold}
                 costFavor={stats.costFavor}
-                unavailableReason={availabilityReason(cell.availability)}
-                disabled={!canAffordAndUse(playerState, stats, cell.availability)}
+                unavailableReason={unavailableReason}
+                disabled={
+                  activeResearchReason !== undefined ||
+                  !canAffordAndUse(playerState, stats, cell.availability)
+                }
                 onClick={() =>
                   producer?.complete ? game.trainSelected(unitType) : game.startPlacement(unitType)
                 }
               />
             );
           })}
+
+          {producer && gateType !== undefined && (
+            <CommandTile
+              symbol="▥"
+              label="Build Gate"
+              costFood={0}
+              costWood={0}
+              costGold={UNIT_TYPES[gateType]!.costGold}
+              costFavor={0}
+              unavailableReason={
+                producer.researchId >= 0
+                  ? "Research in progress"
+                  : playerState && playerState.gold < UNIT_TYPES[gateType]!.costGold
+                    ? `Requires ${UNIT_TYPES[gateType]!.costGold} gold`
+                    : undefined
+              }
+              disabled={
+                producer.researchId >= 0 ||
+                !playerState ||
+                playerState.gold < UNIT_TYPES[gateType]!.costGold
+              }
+              onClick={() => game.buildGate(producer.id)}
+            />
+          )}
 
           {producer?.complete &&
             producer.researchOptions
@@ -229,7 +267,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         )}
       </ClassicHudPanel>
 
-      {producer && (
+      {producer && producer.researchId < 0 && (
         <ProductionQueue
           queueTypes={producer.queueTypes}
           progress={producer.progress}

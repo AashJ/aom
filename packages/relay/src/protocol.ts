@@ -12,9 +12,10 @@ import type { Command, MapId } from "@aom/sim";
 // rectangular-building placement, and v14 carries builders assigned by a
 // placement gesture, v15 adds reversible Town Bell shelter orders, and v16
 // adds fixed-point arbitrary-angle wall-line gestures, and v17 adds general
-// building technology research orders. Older clients would
+// building technology research orders, and v18 adds in-place long-wall to gate
+// conversion orders. Older clients would
 // otherwise construct a different world and immediately desync.
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

@@ -1,8 +1,10 @@
 import {
+  TYPE_EGYPTIAN_GATE,
   TYPE_EGYPTIAN_WALL_CONNECTOR,
   TYPE_EGYPTIAN_WALL_LONG,
   TYPE_EGYPTIAN_WALL_MEDIUM,
   TYPE_EGYPTIAN_WALL_SHORT,
+  TYPE_GREEK_GATE,
   TYPE_GREEK_WALL_CONNECTOR,
   TYPE_GREEK_WALL_LONG,
   TYPE_GREEK_WALL_MEDIUM,
@@ -60,6 +62,16 @@ export function isAutomaticWallSegmentType(type: number): boolean {
     type === TYPE_EGYPTIAN_WALL_MEDIUM ||
     type === TYPE_EGYPTIAN_WALL_LONG
   );
+}
+
+export function isGateType(type: number): boolean {
+  return type === TYPE_GREEK_GATE || type === TYPE_EGYPTIAN_GATE;
+}
+
+export function gateTypeForLongWall(type: number): number | undefined {
+  if (type === TYPE_GREEK_WALL_LONG) return TYPE_GREEK_GATE;
+  if (type === TYPE_EGYPTIAN_WALL_LONG) return TYPE_EGYPTIAN_GATE;
+  return undefined;
 }
 
 export function quantizeWallCoordinate(value: number): number {

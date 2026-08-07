@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   COMMAND_CANCEL_TRAIN,
+  COMMAND_BUILD_GATE,
   COMMAND_DROP_OFF_RELIC,
   COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
@@ -142,6 +143,20 @@ describe("loopback command sink", () => {
         issuer: 0,
         type: COMMAND_TOWN_BELL,
         buildingId: 17,
+      },
+    ]);
+  });
+
+  test("stamps wall-to-gate conversion through the delayed command seam", () => {
+    const world = flatWorld(43);
+    const sink = createLoopbackSink(world);
+    sink.submitBuildGate(17);
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_BUILD_GATE,
+        wallId: 17,
       },
     ]);
   });

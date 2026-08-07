@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  COMMAND_BUILD_GATE,
   COMMAND_GATHER,
   COMMAND_PLACE,
   COMMAND_PLACE_WALL,
@@ -8,6 +9,7 @@ import {
 } from "../commands";
 import { AGE_HEROIC, GOD_RA, GOD_ZEUS } from "../ecs/progression";
 import { registerPlayer } from "../ecs/players";
+import { RESEARCH_WATCH_TOWER, setTechnology } from "../ecs/technologies";
 import {
   createWorld,
   killUnit,
@@ -15,6 +17,7 @@ import {
   MODE_IDLE,
   NEUTRAL_OWNER,
   NO_TARGET,
+  resolveId,
   SETTLEMENT_VICTORY_TICKS,
   spawnBuilding,
   spawnUnit,
@@ -362,26 +365,84 @@ describe("Classic Greek and Egyptian buildings", () => {
     expect(world.walkable[50 * MAP_TILES + 52]).toBe(0);
   });
 
-  test("rectangular wall pieces place and obstruct in either rotation", () => {
+  test("a long wall converts in place to a gate for 15 gold", () => {
     const world = flatWorld([{ id: 0, god: GOD_ZEUS }]);
-    spawnUnit(world, 22, 28, 0, 0, 0, TYPE_GREEK_VILLAGER);
-    world.stockpiles[GOLD] = UNIT_TYPES[TYPE_GREEK_WALL_LONG]!.costGold;
+    const wallId = spawnBuilding(world, 20, 30, 0, TYPE_GREEK_WALL_LONG, false, 1);
+    const wall = resolveId(world, wallId);
+    const wallStats = UNIT_TYPES[TYPE_GREEK_WALL_LONG]!;
+    const gateStats = UNIT_TYPES[TYPE_GREEK_GATE]!;
+    world.wallGroup[wall] = 77;
+    world.buildProgress[wall] = wallStats.buildTicks / 2;
+    world.hp[wall] = wallStats.maxHp / 2;
+    world.stockpiles[GOLD] = gateStats.costGold;
+    const cells = world.buildingCells[wall];
+    const facingX = world.facingX[wall];
+    const facingZ = world.facingZ[wall];
 
     enqueueCommand(world, {
-      tick: 0,
+      tick: world.tick,
       issuer: 0,
-      type: COMMAND_PLACE,
-      buildingType: TYPE_GREEK_WALL_LONG,
-      tileX: 20,
-      tileZ: 30,
-      rotation: 1,
+      type: COMMAND_BUILD_GATE,
+      wallId,
     });
     tickWorld(world);
 
-    expect(world.count).toBe(2);
-    expect(world.posX[1]).toBe(20.5);
-    expect(world.posZ[1]).toBe(32.5);
-    expect(world.facingX[1]).toBe(1);
+    expect(world.unitType[wall]).toBe(TYPE_GREEK_GATE);
+    expect(world.stockpiles[GOLD]).toBe(0);
+    expect(world.hp[wall]).toBe(gateStats.maxHp / 2);
+    expect(world.buildProgress[wall]).toBe(gateStats.buildTicks / 2);
+    expect(world.buildingCells[wall]).toBe(cells);
+    expect(world.facingX[wall]).toBe(facingX);
+    expect(world.facingZ[wall]).toBe(facingZ);
+    expect(world.wallGroup[wall]).toBe(77);
+    expect(resolveId(world, wallId)).toBe(wall);
+  });
+
+  test("gate conversion rejects forged targets and direct wall-piece placement", () => {
+    const world = flatWorld([
+      { id: 0, god: GOD_ZEUS },
+      { id: 1, god: GOD_RA },
+    ]);
+    const enemyWall = spawnBuilding(world, 20, 30, 1, TYPE_GREEK_WALL_LONG);
+    world.stockpiles[GOLD] = 100;
+
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_BUILD_GATE,
+      wallId: enemyWall,
+    });
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_GREEK_GATE,
+      tileX: 40,
+      tileZ: 40,
+    });
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_PLACE,
+      buildingType: TYPE_GREEK_WALL_LONG,
+      tileX: 50,
+      tileZ: 50,
+    });
+    tickWorld(world);
+
+    expect(world.unitType[resolveId(world, enemyWall)]).toBe(TYPE_GREEK_WALL_LONG);
+    expect(world.count).toBe(1);
+    expect(world.stockpiles[GOLD]).toBe(100);
+  });
+
+  test("rectangular wall pieces obstruct in either rotation", () => {
+    const world = flatWorld([{ id: 0, god: GOD_ZEUS }]);
+    spawnBuilding(world, 20, 30, 0, TYPE_GREEK_WALL_LONG, true, 1);
+
+    expect(world.count).toBe(1);
+    expect(world.posX[0]).toBe(20.5);
+    expect(world.posZ[0]).toBe(32.5);
+    expect(world.facingX[0]).toBe(1);
     for (let z = 30; z < 35; z += 1) {
       expect(world.walkable[z * MAP_TILES + 20]).toBe(0);
     }
@@ -456,16 +517,20 @@ describe("Classic Greek and Egyptian buildings", () => {
     for (const cell of survivingCells) expect(world.walkable[cell]).toBe(0);
   });
 
-  test("static defensive buildings acquire targets without moving", () => {
+  test("a Sentry Tower stays inert until Watch Tower then acquires targets", () => {
     const world = flatWorld([
       { id: 0, god: GOD_ZEUS },
       { id: 1, god: GOD_RA },
     ]);
     spawnBuilding(world, 50, 50, 0, TYPE_GREEK_TOWER);
-    spawnUnit(world, 60, 50, 0, 0, 1, TYPE_GREEK_VILLAGER);
+    spawnBuilding(world, 60, 50, 1, TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS);
     world.contested = true;
     const initialHp = world.hp[1]!;
 
+    for (let tick = 0; tick < 80; tick += 1) tickWorld(world);
+    expect(world.hp[1]).toBe(initialHp);
+
+    setTechnology(world.playerResearch, 0, RESEARCH_WATCH_TOWER);
     for (let tick = 0; tick < 80; tick += 1) tickWorld(world);
     expect(world.hp[1]).toBeLessThan(initialHp);
     expect(world.posX[0]).toBe(50.5);

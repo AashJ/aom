@@ -275,7 +275,7 @@ export async function createStaticSpriteRenderer(
         const stats = UNIT_TYPES[type]!;
         const buildFrac =
           stats.buildTicks > 0 ? Math.min(1, curr.buildProgress[i]! / stats.buildTicks) : 1;
-        const hpFrac = curr.hp[i]! / stats.maxHp;
+        const hpFrac = curr.hp[i]! / curr.maxHp[i]!;
         const resolved = resolveStaticSpritePresentation(
           presentation,
           curr.ids[i]!,

@@ -12,19 +12,26 @@ import {
   countGarrisonedUnits,
   createPlayableWorld,
   createSnapshot,
+  attackDamageMultiplierForPlayer,
+  effectiveLineOfSightForPlayer,
+  effectiveMaxHpForPlayer,
   FAVOR,
   FOOD,
+  gateTypeForLongWall,
   GOLD,
   getTechnology,
   GOD_RA,
   GOD_ZEUS,
   hashWorld,
+  isAutomaticWallSegmentType,
+  isGateType,
   MAP_TILES,
   MAP_AEGEAN_COAST,
   MAX_TRAIN_QUEUE,
   MAX_UNITS,
   MODE_PRAYING,
   quantizeWallCoordinate,
+  primaryAttackForPlayer,
   RESOURCE_COUNT,
   resolveId,
   tickWorld,
@@ -106,6 +113,9 @@ export interface SelectionSummary {
     type: number;
     owner: number;
     hitPoints: number;
+    maxHitPoints: number;
+    attackDamage: readonly [number, number, number] | null;
+    lineOfSight: number;
     buildProgress: number;
   } | null;
   selectedCount: number;
@@ -143,6 +153,7 @@ export interface GameHandle {
   cancelTraining(buildingId: number, queueIndex: number): void;
   ungarrison(containerId: number): void;
   toggleTownBell(buildingId: number): void;
+  buildGate(wallId: number): void;
   advanceAge(buildingId: number, minorGod: number): void;
   researchSelected(researchId: number): void;
   submitCheat(code: string): boolean;
@@ -795,13 +806,27 @@ export async function createGame(
       const unitStats = UNIT_TYPES[unitType]!;
 
       selectedCount += 1;
-      primary ??= {
-        id: unitIdAt(world, i),
-        type: unitType,
-        owner: world.owner[i]!,
-        hitPoints: world.hp[i]!,
-        buildProgress: world.buildProgress[i]!,
-      };
+      if (primary === null) {
+        const owner = world.owner[i]!;
+        const attack = primaryAttackForPlayer(world, owner, unitStats);
+        const attackMultiplier = attackDamageMultiplierForPlayer(world, owner, unitStats);
+        primary = {
+          id: unitIdAt(world, i),
+          type: unitType,
+          owner,
+          hitPoints: world.hp[i]!,
+          maxHitPoints: effectiveMaxHpForPlayer(world, owner, unitStats),
+          attackDamage: attack
+            ? [
+                attack.damage[0] * attackMultiplier,
+                attack.damage[1] * attackMultiplier,
+                attack.damage[2] * attackMultiplier,
+              ]
+            : null,
+          lineOfSight: effectiveLineOfSightForPlayer(world, owner, unitStats),
+          buildProgress: world.buildProgress[i]!,
+        };
+      }
 
       if (world.owner[i] !== selfPlayerId) {
         continue;
@@ -868,6 +893,11 @@ export async function createGame(
       primary?.type !== lastPrimary?.type ||
       primary?.owner !== lastPrimary?.owner ||
       primary?.hitPoints !== lastPrimary?.hitPoints ||
+      primary?.maxHitPoints !== lastPrimary?.maxHitPoints ||
+      primary?.attackDamage?.[0] !== lastPrimary?.attackDamage?.[0] ||
+      primary?.attackDamage?.[1] !== lastPrimary?.attackDamage?.[1] ||
+      primary?.attackDamage?.[2] !== lastPrimary?.attackDamage?.[2] ||
+      primary?.lineOfSight !== lastPrimary?.lineOfSight ||
       primary?.buildProgress !== lastPrimary?.buildProgress ||
       selectedCount !== lastSelection.selectedCount ||
       villagers !== lastSelection.villagers ||
@@ -1078,7 +1108,11 @@ export async function createGame(
     onPlayerState: playerState.subscribe,
     startPlacement(buildingType: number): void {
       // UI-driven modal — the React build bar calls this.
-      if (!isViewerTypeAvailable(buildingType, selfWorkerType)) {
+      if (
+        isGateType(buildingType) ||
+        isAutomaticWallSegmentType(buildingType) ||
+        !isViewerTypeAvailable(buildingType, selfWorkerType)
+      ) {
         return;
       }
 
@@ -1157,6 +1191,22 @@ export async function createGame(
         return;
       }
       sink.submitTownBell(buildingId);
+      audio.uiClick();
+    },
+    buildGate(wallId: number): void {
+      const wall = resolveId(world, wallId);
+      if (
+        wall < 0 ||
+        world.selected[wall] !== 1 ||
+        world.owner[wall] !== selfPlayerId ||
+        world.dying[wall] === 1 ||
+        world.hp[wall]! <= 0 ||
+        gateTypeForLongWall(world.unitType[wall]!) === undefined ||
+        getTechnology(world.researchId[wall]!) !== undefined
+      ) {
+        return;
+      }
+      sink.submitBuildGate(wallId);
       audio.uiClick();
     },
     advanceAge(buildingId: number, minorGod: number): void {

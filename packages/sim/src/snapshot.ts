@@ -7,6 +7,7 @@ import {
 } from "./content/unit-type-schema";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
+import { effectiveMaxHpForPlayer } from "./ecs/building-technology-effects";
 import {
   egyptianMonumentRateMilliPerMinute,
   favorCapForMajorGod,
@@ -80,6 +81,7 @@ export interface RenderSnapshot {
   deathCarried: Uint16Array;
   deathVisible: Uint8Array;
   hp: Float32Array;
+  maxHp: Float32Array;
   buildProgress: Uint16Array;
   lifespanRemaining: Uint16Array;
   trainRemaining: Uint16Array;
@@ -160,6 +162,7 @@ export function createSnapshot(
     deathCarried: new Uint16Array(capacity),
     deathVisible: new Uint8Array(capacity),
     hp: new Float32Array(capacity),
+    maxHp: new Float32Array(capacity),
     buildProgress: new Uint16Array(capacity),
     lifespanRemaining: new Uint16Array(capacity),
     trainRemaining: new Uint16Array(capacity),
@@ -353,6 +356,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.actionCooldown[i] = world.attackCooldown[i]!;
     const actionTarget = resolveId(world, world.attackTarget[i]!);
     const stats = UNIT_TYPES[world.unitType[i]!]!;
+    out.maxHp[i] = effectiveMaxHpForPlayer(world, world.owner[i]!, stats);
     const secondaryCycles = stats.buildingAttack?.cycleVariants;
     out.secondaryAttack[i] =
       stats.buildingAttack !== undefined &&

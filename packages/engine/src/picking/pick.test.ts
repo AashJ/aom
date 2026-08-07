@@ -151,6 +151,10 @@ function recordingSink(): CommandSink & {
       calls.push("town-bell");
       targetIds.push(targetId);
     },
+    submitBuildGate: (targetId) => {
+      calls.push("build-gate");
+      targetIds.push(targetId);
+    },
     submitTrade: (_ids, targetId) => {
       calls.push("trade");
       targetIds.push(targetId);
@@ -199,6 +203,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     selected: new Uint8Array(xs.length),
     owner: new Uint8Array(xs.length),
     hp: new Float32Array(xs.length),
+    maxHp: new Float32Array(xs.length).fill(UNIT_TYPES[TYPE_VILLAGER]!.maxHp),
     unitType: new Uint16Array(xs.length).fill(TYPE_VILLAGER),
     carriedRelicCount: new Uint8Array(xs.length),
     projectileCount: 0,

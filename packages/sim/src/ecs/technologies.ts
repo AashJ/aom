@@ -175,7 +175,7 @@ export const TECHNOLOGIES: readonly TechnologyDefinition[] = [
     id: RESEARCH_FORTIFIED_TOWN_CENTER,
     key: "fortified-town-center",
     label: "Fortified Town Center",
-    requiredAge: AGE_MYTHIC,
+    requiredAge: AGE_HEROIC,
     cultures: BOTH_CULTURES,
     producerTypes: TOWN_CENTERS,
     cost: [0, 400, 400, 0],

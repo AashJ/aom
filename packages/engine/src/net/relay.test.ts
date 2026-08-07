@@ -4,6 +4,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_CHEAT,
   COMMAND_CANCEL_TRAIN,
+  COMMAND_BUILD_GATE,
   COMMAND_MOVE,
   COMMAND_DROP_OFF_RELIC,
   COMMAND_GARRISON,
@@ -225,6 +226,19 @@ describe("relay sink", () => {
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_TOWN_BELL, buildingId: 17 }],
+      },
+    ]);
+  });
+
+  test("submits tickless wall-to-gate conversion", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+    sink.submitBuildGate(17);
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_BUILD_GATE, wallId: 17 }],
       },
     ]);
   });

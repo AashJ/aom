@@ -1,11 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import {
+  TYPE_EGYPTIAN_GATE,
   TYPE_EGYPTIAN_WALL_CONNECTOR,
+  TYPE_EGYPTIAN_WALL_LONG,
+  TYPE_GREEK_GATE,
   TYPE_GREEK_WALL_CONNECTOR,
   TYPE_GREEK_WALL_LONG,
   TYPE_GREEK_WALL_MEDIUM,
 } from "./unit-type-ids";
-import { planWallLine, quantizeWallCoordinate, wallFamilyForConnector } from "./wall-lines";
+import {
+  gateTypeForLongWall,
+  isGateType,
+  planWallLine,
+  quantizeWallCoordinate,
+  wallFamilyForConnector,
+} from "./wall-lines";
 
 describe("Classic wall-line composition", () => {
   test("recognizes only the two playable connector families", () => {
@@ -16,6 +25,15 @@ describe("Classic wall-line composition", () => {
       TYPE_EGYPTIAN_WALL_CONNECTOR,
     );
     expect(wallFamilyForConnector(TYPE_GREEK_WALL_LONG)).toBeUndefined();
+  });
+
+  test("maps only long wall sections to their culture's gate", () => {
+    expect(gateTypeForLongWall(TYPE_GREEK_WALL_LONG)).toBe(TYPE_GREEK_GATE);
+    expect(gateTypeForLongWall(TYPE_EGYPTIAN_WALL_LONG)).toBe(TYPE_EGYPTIAN_GATE);
+    expect(gateTypeForLongWall(TYPE_GREEK_WALL_MEDIUM)).toBeUndefined();
+    expect(isGateType(TYPE_GREEK_GATE)).toBe(true);
+    expect(isGateType(TYPE_EGYPTIAN_GATE)).toBe(true);
+    expect(isGateType(TYPE_GREEK_WALL_LONG)).toBe(false);
   });
 
   test("fills a straight gesture with authored long pieces and connectors", () => {
