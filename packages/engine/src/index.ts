@@ -53,6 +53,8 @@ export {
   GOD_RA,
   GOD_ZEUS,
   MATCH_DRAW,
+  isAutomaticWallSegmentType,
+  isWallConnectorType,
   NO_AGE,
   TYPE_EGYPTIAN_BARRACKS,
   TYPE_EGYPTIAN_HOUSE,

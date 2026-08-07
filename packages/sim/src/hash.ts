@@ -58,6 +58,10 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
+  word = world.nextWallGroupId >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
   // Visibility is authoritative gameplay state: it gates targeting, placement, and
   // automatic acquisition, so a disagreement must be caught at the revealing tick.
   word = world.playerCount >>> 0;
@@ -434,6 +438,22 @@ export function hashWorld(world: World): number {
     word = world.townBellSavedMode[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.wallGroup[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    const buildingCells = world.buildingCells[i];
+    word = buildingCells?.length ?? 0;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+    if (buildingCells) {
+      for (const cell of buildingCells) {
+        word = cell;
+        h ^= word;
+        h = Math.imul(h, FNV_PRIME);
+      }
+    }
   }
 
   for (let i = 0; i < world.count; i += 1) {

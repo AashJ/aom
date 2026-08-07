@@ -21,6 +21,7 @@ import {
   COMMAND_DROP_OFF_RELIC,
   COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
@@ -189,6 +190,30 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_TOWN_BELL, buildingId }],
+      });
+    },
+    submitWallLine(
+      connectorType: number,
+      startXFixed: number,
+      startZFixed: number,
+      endXFixed: number,
+      endZFixed: number,
+      builderIds?: number[],
+    ): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [
+          {
+            type: COMMAND_PLACE_WALL,
+            connectorType,
+            startXFixed,
+            startZFixed,
+            endXFixed,
+            endZFixed,
+            builderIds,
+          },
+        ],
       });
     },
 

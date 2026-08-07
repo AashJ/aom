@@ -18,6 +18,7 @@ import {
   COMMAND_CONVERT,
   COMMAND_MOVE,
   COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
@@ -30,6 +31,7 @@ import {
   townCenterTypeForCulture,
   workerTypeForCulture,
 } from "../content/culture-types";
+import { planWallLine, wallFamilyForConnector } from "../content/wall-lines";
 import { buildFlowField, cellOf, sampleFlowDirection, type FlowField } from "../flow";
 import { createPcg32, nextFloat, type Pcg32 } from "../math/prng";
 import { MAP_TILES } from "../terrain";
@@ -48,6 +50,7 @@ import {
   isFootprintVisibleTo,
   updateVisibility,
   VIS_EXPLORED,
+  VIS_VISIBLE,
   VISIBILITY_TILES,
 } from "../visibility";
 import { resolveStableId, stableIdAt } from "./id";
@@ -390,6 +393,12 @@ export interface World {
   // Armor can produce fractional damage, so authoritative hit points remain f64.
   hp: Float64Array;
   buildProgress: Float64Array;
+  // Exact terrain cells stamped by each building. Wall-line segments may be
+  // arbitrarily rotated, so their obstruction cannot be reconstructed from an
+  // axis-aligned footprint when they die or open as a gate.
+  buildingCells: (Uint16Array | null)[];
+  wallGroup: Uint32Array;
+  nextWallGroupId: number;
   gateOpen: Uint8Array;
   lifespanRemaining: Uint16Array;
   // Credited hostile kills used by Classic experience-driven unit mechanics.
@@ -563,6 +572,10 @@ export function createWorld(seed: number, mapId: MapId = DEFAULT_MAP_ID, playerC
     containedBy: new Uint32Array(MAX_UNITS).fill(NO_TARGET),
     hp: new Float64Array(MAX_UNITS),
     buildProgress: new Float64Array(MAX_UNITS),
+    // oxlint-disable-next-line unicorn/no-new-array
+    buildingCells: new Array(MAX_UNITS).fill(null),
+    wallGroup: new Uint32Array(MAX_UNITS),
+    nextWallGroupId: 1,
     gateOpen: new Uint8Array(MAX_UNITS),
     lifespanRemaining: new Uint16Array(MAX_UNITS),
     combatExperienceKills: new Uint8Array(MAX_UNITS),
@@ -787,6 +800,8 @@ export function spawnUnit(
   world.containedBy[index] = NO_TARGET;
   world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
   world.buildProgress[index] = 0;
+  world.buildingCells[index] = null;
+  world.wallGroup[index] = 0;
   world.gateOpen[index] = 0;
   world.lifespanRemaining[index] = UNIT_TYPES[type]!.lifespanTicks ?? 0;
   world.combatExperienceKills[index] = 0;
@@ -888,6 +903,120 @@ export function canPlaceBuilding(
   return true;
 }
 
+interface InspectedWallLine {
+  readonly pieces: ReturnType<typeof planWallLine>;
+  readonly cellsByPiece: readonly Uint16Array[];
+  readonly costs: readonly [food: number, wood: number, gold: number, favor: number];
+}
+
+function inspectWallLine(
+  world: World,
+  playerId: number,
+  connectorType: number,
+  startXFixed: number,
+  startZFixed: number,
+  endXFixed: number,
+  endZFixed: number,
+): InspectedWallLine | null {
+  const family = wallFamilyForConnector(connectorType);
+  if (!family) return null;
+  const pieces = planWallLine(connectorType, startXFixed, startZFixed, endXFixed, endZFixed);
+  if (pieces.length === 0 || world.count + pieces.length > MAX_UNITS) return null;
+  const playerSlot = world.playerSlotById[playerId]!;
+  if (playerSlot < 0) return null;
+
+  const rawCellsByPiece: number[][] = [];
+  const costs: [number, number, number, number] = [0, 0, 0, 0];
+  for (const piece of pieces) {
+    const stats = UNIT_TYPES[piece.type];
+    if (!stats || !isTypeAvailableToPlayer(world, playerId, piece.type)) return null;
+    const depth = stats.footprintDepth ?? stats.footprint;
+    const extentX =
+      Math.abs(piece.facingZ) * (stats.footprint / 2) + Math.abs(piece.facingX) * (depth / 2);
+    const extentZ =
+      Math.abs(piece.facingX) * (stats.footprint / 2) + Math.abs(piece.facingZ) * (depth / 2);
+    if (
+      piece.centerX - extentX < 0 ||
+      piece.centerX + extentX > MAP_TILES ||
+      piece.centerZ - extentZ < 0 ||
+      piece.centerZ + extentZ > MAP_TILES
+    ) {
+      return null;
+    }
+    rawCellsByPiece.push(
+      orientedFootprintCells(
+        piece.centerX,
+        piece.centerZ,
+        stats.footprint,
+        depth,
+        piece.facingX,
+        piece.facingZ,
+      ),
+    );
+    costs[FOOD] += stats.costFood;
+    costs[WOOD] += stats.costWood;
+    costs[GOLD] += stats.costGold;
+    costs[FAVOR] += stats.costFavor;
+  }
+
+  const claimed = new Uint8Array(MAP_TILES * MAP_TILES);
+  const assigned: number[][] = Array.from({ length: pieces.length }, () => []);
+  // Connectors own their local collision cells before the adjoining long mesh.
+  // This gives every destructible wall proto a stable breach footprint while
+  // keeping the union continuous on arbitrary-angle lines.
+  for (const connectorPass of [true, false]) {
+    for (let pieceIndex = 0; pieceIndex < pieces.length; pieceIndex += 1) {
+      const piece = pieces[pieceIndex]!;
+      if ((piece.type === family.connectorType) !== connectorPass) continue;
+      for (const cell of rawCellsByPiece[pieceIndex]!) {
+        if (claimed[cell] === 1) continue;
+        if (
+          world.walkable[cell] !== 1 ||
+          world.visibility[playerSlot * VISIBILITY_TILES + cell] !== VIS_VISIBLE
+        ) {
+          return null;
+        }
+        claimed[cell] = 1;
+        assigned[pieceIndex]!.push(cell);
+      }
+    }
+  }
+
+  if (assigned.some((cells) => cells.length === 0)) return null;
+  const stockpileStart = playerId * RESOURCE_COUNT;
+  for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+    if (world.stockpiles[stockpileStart + resource]! < costs[resource]!) return null;
+  }
+
+  return {
+    pieces,
+    cellsByPiece: assigned.map((cells) => Uint16Array.from(cells)),
+    costs,
+  };
+}
+
+export function canPlaceWallLine(
+  world: World,
+  playerId: number,
+  connectorType: number,
+  startXFixed: number,
+  startZFixed: number,
+  endXFixed: number,
+  endZFixed: number,
+): boolean {
+  return (
+    inspectWallLine(
+      world,
+      playerId,
+      connectorType,
+      startXFixed,
+      startZFixed,
+      endXFixed,
+      endZFixed,
+    ) !== null
+  );
+}
+
 function buildingReplacementSiteAt(
   world: World,
   tileX: number,
@@ -924,6 +1053,7 @@ function replaceBuildingSite(world: World, index: number, owner: number, type: n
   world.unitType[index] = type;
   world.hp[index] = effectiveMaxHp(UNIT_TYPES[type]!, world.playerAge[owner]!);
   world.buildProgress[index] = 0;
+  world.wallGroup[index] = 0;
   world.attackCooldown[index] = 0;
   world.selectable[index] = 1;
 }
@@ -941,29 +1071,99 @@ export function spawnBuilding(
   const footprint = rotation === 0 ? stats.footprint : (stats.footprintDepth ?? stats.footprint);
   const footprintDepth =
     rotation === 0 ? (stats.footprintDepth ?? stats.footprint) : stats.footprint;
-  const id = spawnUnit(world, tileX + footprint / 2, tileZ + footprintDepth / 2, 0, 0, owner, type);
-  const index = world.count - 1;
-  if (stats.footprintDepth !== undefined) {
-    world.facingX[index] = rotation;
-    world.facingZ[index] = rotation === 0 ? 1 : 0;
+  const cells = new Uint16Array(footprint * footprintDepth);
+  let cellOffset = 0;
+  for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
+    for (let x = tileX; x < tileX + footprint; x += 1) {
+      cells[cellOffset] = z * MAP_TILES + x;
+      cellOffset += 1;
+    }
   }
+  const id = spawnBuildingWithCells(
+    world,
+    tileX + footprint / 2,
+    tileZ + footprintDepth / 2,
+    owner,
+    type,
+    complete,
+    rotation,
+    rotation === 0 ? 1 : 0,
+    cells,
+  );
+
+  flushFlowFields(world);
+
+  return id;
+}
+
+function spawnBuildingWithCells(
+  world: World,
+  centerX: number,
+  centerZ: number,
+  owner: number,
+  type: number,
+  complete: boolean,
+  facingX: number,
+  facingZ: number,
+  cells: Uint16Array,
+): number {
+  const id = spawnUnit(world, centerX, centerZ, 0, 0, owner, type);
+  const index = world.count - 1;
+  world.facingX[index] = facingX;
+  world.facingZ[index] = facingZ;
+  world.buildingCells[index] = cells;
 
   // An incomplete building is a blueprint — present, footprint stamped, attackable,
   // but functionally inert until construction finishes in M6-5.
   world.buildProgress[index] = complete ? UNIT_TYPES[type]!.buildTicks : 0;
   // Units standing inside a just-stamped footprint are accepted as-is for M6 — the existing
   // same-tile movement allowance means they can always walk out.
-  for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
-    for (let x = tileX; x < tileX + footprint; x += 1) {
-      const cell = z * MAP_TILES + x;
-      world.walkable[cell] = 0;
-      world.waterWalkable[cell] = 0;
+  for (const cell of cells) {
+    world.walkable[cell] = 0;
+    world.waterWalkable[cell] = 0;
+  }
+
+  return id;
+}
+
+function orientedFootprintCells(
+  centerX: number,
+  centerZ: number,
+  width: number,
+  depth: number,
+  facingX: number,
+  facingZ: number,
+): number[] {
+  const lengthX = facingZ;
+  const lengthZ = -facingX;
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const extentX = Math.abs(lengthX) * halfWidth + Math.abs(facingX) * halfDepth;
+  const extentZ = Math.abs(lengthZ) * halfWidth + Math.abs(facingZ) * halfDepth;
+  const minX = Math.max(0, Math.floor(centerX - extentX - 0.5));
+  const maxX = Math.min(MAP_TILES - 1, Math.ceil(centerX + extentX + 0.5));
+  const minZ = Math.max(0, Math.floor(centerZ - extentZ - 0.5));
+  const maxZ = Math.min(MAP_TILES - 1, Math.ceil(centerZ + extentZ + 0.5));
+  const cellRadiusLength = 0.5 * (Math.abs(lengthX) + Math.abs(lengthZ));
+  const cellRadiusDepth = 0.5 * (Math.abs(facingX) + Math.abs(facingZ));
+  const epsilon = 1e-9;
+  const cells: number[] = [];
+
+  for (let z = minZ; z <= maxZ; z += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const dx = x + 0.5 - centerX;
+      const dz = z + 0.5 - centerZ;
+      const along = dx * lengthX + dz * lengthZ;
+      const across = dx * facingX + dz * facingZ;
+      if (Math.abs(along) >= halfWidth + cellRadiusLength - epsilon) continue;
+      if (Math.abs(across) >= halfDepth + cellRadiusDepth - epsilon) continue;
+      if (Math.abs(dx) >= extentX + 0.5 - epsilon) continue;
+      if (Math.abs(dz) >= extentZ + 0.5 - epsilon) continue;
+      cells.push(z * MAP_TILES + x);
     }
   }
 
-  flushFlowFields(world);
-
-  return id;
+  return cells;
 }
 
 export function resolveId(world: World, id: number): number {
@@ -1944,19 +2144,14 @@ function updateGates(world: World): void {
     if (shouldOpen === (world.gateOpen[gate] === 1)) continue;
     world.gateOpen[gate] = shouldOpen ? 1 : 0;
 
-    const tileX = Math.round(minX);
-    const tileZ = Math.round(minZ);
-    for (let z = tileZ; z < tileZ + depth; z += 1) {
-      for (let x = tileX; x < tileX + width; x += 1) {
-        const cell = z * MAP_TILES + x;
-        if (shouldOpen) {
-          world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
-          world.waterWalkable[cell] =
-            (world.terrainDomains[cell]! & TERRAIN_DOMAIN_WATER) !== 0 ? 1 : 0;
-        } else {
-          world.walkable[cell] = 0;
-          world.waterWalkable[cell] = 0;
-        }
+    for (const cell of world.buildingCells[gate] ?? []) {
+      if (shouldOpen) {
+        world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
+        world.waterWalkable[cell] =
+          (world.terrainDomains[cell]! & TERRAIN_DOMAIN_WATER) !== 0 ? 1 : 0;
+      } else {
+        world.walkable[cell] = 0;
+        world.waterWalkable[cell] = 0;
       }
     }
     navigationChanged = true;
@@ -2197,6 +2392,115 @@ function applyTownBellCommand(world: World, playerId: number, buildingId: number
 
   if (world.townBellActive[playerId] === 1) dismissTownBell(world, playerId);
   else ringTownBell(world, playerId);
+}
+
+function applyPlaceWallCommand(
+  world: World,
+  playerId: number,
+  connectorType: number,
+  startXFixed: number,
+  startZFixed: number,
+  endXFixed: number,
+  endZFixed: number,
+  builderIds: readonly number[],
+): void {
+  const inspected = inspectWallLine(
+    world,
+    playerId,
+    connectorType,
+    startXFixed,
+    startZFixed,
+    endXFixed,
+    endZFixed,
+  );
+  if (!inspected) return;
+
+  const stockpileStart = playerId * RESOURCE_COUNT;
+  for (let resource = 0; resource < RESOURCE_COUNT; resource += 1) {
+    world.stockpiles[stockpileStart + resource] =
+      world.stockpiles[stockpileStart + resource]! - inspected.costs[resource]!;
+  }
+
+  const wallGroup = world.nextWallGroupId;
+  world.nextWallGroupId = wallGroup === 0xffffffff ? 1 : wallGroup + 1;
+  let firstSiteId = NO_TARGET;
+  for (let pieceIndex = 0; pieceIndex < inspected.pieces.length; pieceIndex += 1) {
+    const piece = inspected.pieces[pieceIndex]!;
+    const siteId = spawnBuildingWithCells(
+      world,
+      piece.centerX,
+      piece.centerZ,
+      playerId,
+      piece.type,
+      false,
+      piece.facingX,
+      piece.facingZ,
+      inspected.cellsByPiece[pieceIndex]!,
+    );
+    const site = resolveId(world, siteId);
+    world.wallGroup[site] = wallGroup;
+    if (firstSiteId === NO_TARGET) firstSiteId = siteId;
+  }
+  flushFlowFields(world);
+
+  const connectorStats = UNIT_TYPES[connectorType]!;
+  for (const builderId of builderIds) {
+    const builder = resolveId(world, builderId);
+    if (
+      builder < 0 ||
+      world.owner[builder] !== playerId ||
+      !connectorStats.builtBy.some((relationship) => relationship.type === world.unitType[builder])
+    ) {
+      continue;
+    }
+    const movementDomain = movementDomainForType(world.unitType[builder]!);
+    const navigationGrid = navigationGridForDomain(world, movementDomain);
+    if (navigationGrid[cellOf(world.posX[builder]!, world.posZ[builder]!)] !== 1) {
+      const escapeCell = navigableCellNear(
+        world,
+        world.posX[builder]!,
+        world.posZ[builder]!,
+        movementDomain,
+      );
+      if (navigationGrid[escapeCell] === 1) {
+        world.posX[builder] = (escapeCell % MAP_TILES) + 0.5;
+        world.posZ[builder] = Math.floor(escapeCell / MAP_TILES) + 0.5;
+      }
+    }
+    assignWorkerTask(world, builder, MODE_BUILDING, firstSiteId);
+  }
+}
+
+function assignNextWallBlueprint(world: World, builder: number, completedSite: number): boolean {
+  const wallGroup = world.wallGroup[completedSite]!;
+  if (wallGroup === 0) return false;
+  let nearestSite = -1;
+  let nearestDistanceSq = Number.POSITIVE_INFINITY;
+  for (let site = 0; site < world.count; site += 1) {
+    if (
+      site === completedSite ||
+      world.wallGroup[site] !== wallGroup ||
+      world.owner[site] !== world.owner[builder] ||
+      world.dying[site] === 1 ||
+      world.hp[site]! <= 0 ||
+      world.buildProgress[site]! >= UNIT_TYPES[world.unitType[site]!]!.buildTicks
+    ) {
+      continue;
+    }
+    const dx = world.posX[site]! - world.posX[builder]!;
+    const dz = world.posZ[site]! - world.posZ[builder]!;
+    const distanceSq = dx * dx + dz * dz;
+    if (
+      distanceSq < nearestDistanceSq ||
+      (distanceSq === nearestDistanceSq && site < nearestSite)
+    ) {
+      nearestSite = site;
+      nearestDistanceSq = distanceSq;
+    }
+  }
+  if (nearestSite < 0) return false;
+  assignWorkerTask(world, builder, MODE_BUILDING, unitIdAt(world, nearestSite));
+  return true;
 }
 
 export function tickWorld(world: World): void {
@@ -3317,7 +3621,7 @@ export function tickWorld(world: World): void {
       const constructionComplete = world.buildProgress[target]! >= siteStats.buildTicks;
 
       if (constructionComplete && world.hp[target]! >= siteMaxHp) {
-        clearUnitTask(world, i);
+        if (!assignNextWallBlueprint(world, i, target)) clearUnitTask(world, i);
         continue;
       }
 
@@ -3918,14 +4222,6 @@ function applyDeaths(world: World): void {
     const i = world.pendingDeaths[deathOffset]!;
     const last = world.count - 1;
     const handle = world.handleOf[i]!;
-    const deadStats = UNIT_TYPES[world.unitType[i]!]!;
-    const rotated = deadStats.footprintDepth !== undefined && world.facingX[i] === 1;
-    const footprint = rotated
-      ? (deadStats.footprintDepth ?? deadStats.footprint)
-      : deadStats.footprint;
-    const footprintDepth = rotated
-      ? deadStats.footprint
-      : (deadStats.footprintDepth ?? deadStats.footprint);
     const eventIndex = world.deathEventCount;
 
     // Heroes drop carried relics and destroyed Temples release deposited relics
@@ -3947,22 +4243,29 @@ function applyDeaths(world: World): void {
     world.deathEventCarried[eventIndex] = world.carried[i]!;
     world.deathEventCount = eventIndex + 1;
 
+    if (world.wallGroup[i] !== 0) {
+      const destroyedSiteId = unitIdAt(world, i);
+      for (let builder = 0; builder < world.count; builder += 1) {
+        if (
+          world.mode[builder] === MODE_BUILDING &&
+          world.taskTarget[builder] === destroyedSiteId &&
+          !assignNextWallBlueprint(world, builder, i)
+        ) {
+          clearUnitTask(world, builder);
+        }
+      }
+    }
+
     // Building-owned research is canceled before the producer's components disappear.
     cancelBuildingResearch(world, i);
 
-    if (footprint > 0) {
-      // Exact because building centers are constructed from integer origin tiles.
-      const tileX = Math.round(world.posX[i]! - footprint / 2);
-      const tileZ = Math.round(world.posZ[i]! - footprintDepth / 2);
-
+    const occupiedCells = world.buildingCells[i];
+    if (occupiedCells && world.gateOpen[i] === 0) {
       // Rubble does not obstruct: destroyed buildings unblock immediately.
-      for (let z = tileZ; z < tileZ + footprintDepth; z += 1) {
-        for (let x = tileX; x < tileX + footprint; x += 1) {
-          const cell = z * MAP_TILES + x;
-          world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
-          world.waterWalkable[cell] =
-            (world.terrainDomains[cell]! & TERRAIN_DOMAIN_WATER) !== 0 ? 1 : 0;
-        }
+      for (const cell of occupiedCells) {
+        world.walkable[cell] = (world.terrainDomains[cell]! & TERRAIN_DOMAIN_LAND) !== 0 ? 1 : 0;
+        world.waterWalkable[cell] =
+          (world.terrainDomains[cell]! & TERRAIN_DOMAIN_WATER) !== 0 ? 1 : 0;
       }
 
       restoredFootprint = true;
@@ -3990,6 +4293,8 @@ function applyDeaths(world: World): void {
       world.containedBy[i] = world.containedBy[last]!;
       world.hp[i] = world.hp[last]!;
       world.buildProgress[i] = world.buildProgress[last]!;
+      world.buildingCells[i] = world.buildingCells[last] ?? null;
+      world.wallGroup[i] = world.wallGroup[last]!;
       world.gateOpen[i] = world.gateOpen[last]!;
       world.lifespanRemaining[i] = world.lifespanRemaining[last]!;
       world.combatExperienceKills[i] = world.combatExperienceKills[last]!;
@@ -4046,6 +4351,8 @@ function applyDeaths(world: World): void {
     }
 
     world.unitField[last] = null;
+    world.buildingCells[last] = null;
+    world.wallGroup[last] = 0;
     world.lifespanRemaining[last] = 0;
     world.combatExperienceKills[last] = 0;
     world.unitConditions[last] = 0;
@@ -4476,6 +4783,17 @@ function applyPendingCommands(world: World): void {
       }
     } else if (command.type === COMMAND_TOWN_BELL) {
       applyTownBellCommand(world, command.issuer, command.buildingId);
+    } else if (command.type === COMMAND_PLACE_WALL) {
+      applyPlaceWallCommand(
+        world,
+        command.issuer,
+        command.connectorType,
+        command.startXFixed,
+        command.startZFixed,
+        command.endXFixed,
+        command.endZFixed,
+        command.builderIds ?? [],
+      );
     } else if (command.type === COMMAND_PLACE) {
       const buildingType = command.buildingType;
       const buildingStats = UNIT_TYPES[buildingType];

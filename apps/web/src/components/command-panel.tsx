@@ -10,6 +10,8 @@ import {
   GOD_BAST,
   GOD_HERMES,
   GOD_PTAH,
+  isAutomaticWallSegmentType,
+  isWallConnectorType,
   NO_AGE,
   TYPE_ICONS,
   typeAvailabilityForPlayerState,
@@ -76,7 +78,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
   const producer = selection?.producer ?? null;
   const commandOptions = producer?.complete
     ? producer.trainOptions
-    : (selection?.buildOptions ?? []);
+    : (selection?.buildOptions ?? []).filter((option) => !isAutomaticWallSegmentType(option.type));
   const commandSourceType = producer?.complete ? producer.type : (selection?.builderType ?? -1);
   const availability = (unitType: number, producerType: number): TypeAvailability | null =>
     playerState ? typeAvailabilityForPlayerState(playerState, unitType, producerType) : null;
@@ -109,7 +111,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
               <CommandTile
                 key={unitType}
                 icon={TYPE_ICONS[unitType]}
-                label={stats.label}
+                label={isWallConnectorType(unitType) ? "Wall" : stats.label}
                 costFood={stats.costFood}
                 costWood={stats.costWood}
                 costGold={stats.costGold}
@@ -141,6 +143,19 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 onClick={() => setChoosingMinorGod(true)}
               />
             )}
+
+          {producer?.complete && UNIT_TYPES[producer.type]!.tradeSite === "town-center" && (
+            <CommandTile
+              symbol="♢"
+              label={playerState?.townBellActive ? "Return Villagers to Work" : "Ring Town Bell"}
+              costFood={0}
+              costWood={0}
+              costGold={0}
+              costFavor={0}
+              disabled={false}
+              onClick={() => game.toggleTownBell(producer.id)}
+            />
+          )}
 
           {selection?.garrison && selection.garrison.count > 0 && (
             <CommandTile

@@ -40,6 +40,11 @@ export interface InputState {
   corruptPending: boolean;
   escapePending: boolean;
   rotatePlacementPending: boolean;
+  primaryDragActive: boolean;
+  primaryDragStartX: number;
+  primaryDragStartY: number;
+  primaryDragEndX: number;
+  primaryDragEndY: number;
   marqueePending: boolean;
   marqueeMinX: number;
   marqueeMinY: number;
@@ -80,6 +85,11 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     corruptPending: false,
     escapePending: false,
     rotatePlacementPending: false,
+    primaryDragActive: false,
+    primaryDragStartX: 0,
+    primaryDragStartY: 0,
+    primaryDragEndX: 0,
+    primaryDragEndY: 0,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -149,6 +159,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
     rightDown = false;
     dragButtonMask = 0;
     marqueeActive = false;
+    state.primaryDragActive = false;
     marquee.style.display = "none";
     state.dragging = false;
     state.hasDragAnchor = false;
@@ -428,10 +439,15 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
 
       if (!marqueeActive && Math.abs(dx) + Math.abs(dy) >= 4) {
         marqueeActive = true;
+        state.primaryDragActive = true;
+        state.primaryDragStartX = leftDownX;
+        state.primaryDragStartY = leftDownY;
         marquee.style.display = "block";
       }
 
       if (marqueeActive) {
+        state.primaryDragEndX = pointerX;
+        state.primaryDragEndY = pointerY;
         const minX = Math.min(leftDownX, pointerX);
         const minY = Math.min(leftDownY, pointerY);
         const maxX = Math.max(leftDownX, pointerX);
@@ -470,6 +486,10 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       leftDown = true;
       leftDownX = pointerX;
       leftDownY = pointerY;
+      state.primaryDragStartX = pointerX;
+      state.primaryDragStartY = pointerY;
+      state.primaryDragEndX = pointerX;
+      state.primaryDragEndY = pointerY;
       setPointerCaptureUnlessLocked(event);
       return;
     }
@@ -515,6 +535,11 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
         state.marqueeMinY = Math.min(leftDownY, pointerY);
         state.marqueeMaxX = Math.max(leftDownX, pointerX);
         state.marqueeMaxY = Math.max(leftDownY, pointerY);
+        state.primaryDragStartX = leftDownX;
+        state.primaryDragStartY = leftDownY;
+        state.primaryDragEndX = pointerX;
+        state.primaryDragEndY = pointerY;
+        state.primaryDragActive = false;
         state.marqueePending = true;
         marqueeActive = false;
         marquee.style.display = "none";
@@ -525,6 +550,7 @@ export function attachInput(canvas: HTMLCanvasElement): { state: InputState; det
       }
 
       leftDown = false;
+      state.primaryDragActive = false;
       return;
     }
 

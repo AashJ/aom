@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { COMMAND_GATHER, COMMAND_PLACE, enqueueCommand } from "../commands";
+import {
+  COMMAND_GATHER,
+  COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
+  COMMAND_TOWN_BELL,
+  enqueueCommand,
+} from "../commands";
 import { AGE_HEROIC, GOD_RA, GOD_ZEUS } from "../ecs/progression";
 import { registerPlayer } from "../ecs/players";
 import {
@@ -8,6 +14,7 @@ import {
   MODE_GATHERING,
   MODE_IDLE,
   NEUTRAL_OWNER,
+  NO_TARGET,
   SETTLEMENT_VICTORY_TICKS,
   spawnBuilding,
   spawnUnit,
@@ -21,6 +28,7 @@ import {
   FAVOR,
   GOLD,
   TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS,
+  TYPE_BERRY,
   TYPE_GREEK_FARM,
   TYPE_GREEK_GATE,
   TYPE_GREEK_GRANARY,
@@ -28,6 +36,7 @@ import {
   TYPE_GREEK_TOWER,
   TYPE_GREEK_TOWN_CENTER,
   TYPE_GREEK_VILLAGER,
+  TYPE_GREEK_WALL_CONNECTOR,
   TYPE_GREEK_WALL_LONG,
   TYPE_GREEK_WONDER,
   TYPE_SETTLEMENT,
@@ -43,6 +52,7 @@ import {
   EGYPTIAN_BUILDING_ROSTER,
   GREEK_BUILDING_ROSTER,
 } from "./building-roster";
+import { planWallLine, quantizeWallCoordinate } from "./wall-lines";
 
 function flatWorld(players: readonly { readonly id: number; readonly god: number }[]): World {
   const world = createWorld(2026, undefined, Math.max(2, players.length));
@@ -188,6 +198,99 @@ describe("Classic Greek and Egyptian buildings", () => {
     expect(world.hp[1]).toBe(farmHp);
   });
 
+  test("Town Bell shelters workers by nearest capacity and restores prior work", () => {
+    const world = flatWorld([{ id: 0, god: GOD_ZEUS }]);
+    const townCenter = spawnBuilding(world, 20, 20, 0, TYPE_GREEK_TOWN_CENTER);
+    const tower = spawnBuilding(world, 50, 50, 0, TYPE_GREEK_TOWER);
+    const berries = spawnUnit(world, 13, 20, 0, 0, NEUTRAL_OWNER, TYPE_BERRY);
+    const gatheringWorker = spawnUnit(world, 14, 20, 0, 0, 0, TYPE_GREEK_VILLAGER);
+    const towerWorkers = Array.from({ length: 7 }, (_, offset) =>
+      spawnUnit(
+        world,
+        48 + (offset % 2),
+        48 + Math.floor(offset / 2),
+        0,
+        0,
+        0,
+        TYPE_GREEK_VILLAGER,
+      ),
+    );
+
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_GATHER,
+      unitIds: [gatheringWorker],
+      targetId: berries,
+    });
+    tickWorld(world);
+    expect(world.mode[gatheringWorker]).toBe(MODE_GATHERING);
+
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_TOWN_BELL,
+      buildingId: townCenter,
+    });
+    tickWorld(world);
+
+    expect(world.townBellActive[0]).toBe(1);
+    expect(world.townBellSheltered[gatheringWorker]).toBe(1);
+    expect(world.containedBy[gatheringWorker]).toBe(townCenter);
+    expect(
+      towerWorkers.filter(
+        (worker) => world.taskTarget[worker] === tower || world.containedBy[worker] === tower,
+      ),
+    ).toHaveLength(UNIT_TYPES[TYPE_GREEK_TOWER]!.garrison!.capacity);
+    expect(
+      towerWorkers.filter(
+        (worker) =>
+          world.taskTarget[worker] === townCenter || world.containedBy[worker] === townCenter,
+      ),
+    ).toHaveLength(2);
+
+    for (let tick = 0; tick < 300; tick += 1) tickWorld(world);
+    expect(world.containedBy[gatheringWorker]).toBe(townCenter);
+    expect(towerWorkers.filter((worker) => world.containedBy[worker] === tower)).toHaveLength(
+      UNIT_TYPES[TYPE_GREEK_TOWER]!.garrison!.capacity,
+    );
+
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_TOWN_BELL,
+      buildingId: townCenter,
+    });
+    tickWorld(world);
+
+    expect(world.townBellActive[0]).toBe(0);
+    expect(world.containedBy[gatheringWorker]).toBe(NO_TARGET);
+    expect(world.mode[gatheringWorker]).toBe(MODE_GATHERING);
+    expect(world.taskTarget[gatheringWorker]).toBe(berries);
+  });
+
+  test("Town Bell rejects enemy, incomplete, and non-Town-Center issuers", () => {
+    const world = flatWorld([
+      { id: 0, god: GOD_ZEUS },
+      { id: 1, god: GOD_RA },
+    ]);
+    const enemyTownCenter = spawnBuilding(world, 20, 20, 1, TYPE_GREEK_TOWN_CENTER);
+    const tower = spawnBuilding(world, 40, 40, 0, TYPE_GREEK_TOWER);
+    const incompleteTownCenter = spawnBuilding(world, 60, 60, 0, TYPE_GREEK_TOWN_CENTER, false);
+    spawnUnit(world, 42, 40, 0, 0, 0, TYPE_GREEK_VILLAGER);
+
+    for (const buildingId of [enemyTownCenter, tower, incompleteTownCenter]) {
+      enqueueCommand(world, {
+        tick: world.tick,
+        issuer: 0,
+        type: COMMAND_TOWN_BELL,
+        buildingId,
+      });
+      tickWorld(world);
+      expect(world.townBellActive[0]).toBe(0);
+    }
+  });
+
   test("completed Egyptian monuments generate their exact passive Favor rate", () => {
     const world = flatWorld([{ id: 0, god: GOD_RA }]);
     spawnBuilding(world, 40, 40, 0, TYPE_EGYPTIAN_MONUMENT_TO_VILLAGERS);
@@ -283,6 +386,74 @@ describe("Classic Greek and Egyptian buildings", () => {
       expect(world.walkable[z * MAP_TILES + 20]).toBe(0);
     }
     expect(world.walkable[30 * MAP_TILES + 21]).toBe(1);
+  });
+
+  test("a wall gesture composes an arbitrary-angle line and its builder completes the group", () => {
+    const world = flatWorld([{ id: 0, god: GOD_ZEUS }]);
+    // The gesture may cross its selected builder; placement pushes that worker
+    // to the nearest clear cell before beginning the chain.
+    const builder = spawnUnit(world, 35, 36, 0, 0, 0, TYPE_GREEK_VILLAGER);
+    const startXFixed = quantizeWallCoordinate(30.5);
+    const startZFixed = quantizeWallCoordinate(30.5);
+    const endXFixed = quantizeWallCoordinate(39.5);
+    const endZFixed = quantizeWallCoordinate(42.5);
+    const plan = planWallLine(
+      TYPE_GREEK_WALL_CONNECTOR,
+      startXFixed,
+      startZFixed,
+      endXFixed,
+      endZFixed,
+    );
+    const totalGold = plan.reduce((sum, piece) => sum + UNIT_TYPES[piece.type]!.costGold, 0);
+    world.stockpiles[GOLD] = totalGold;
+
+    enqueueCommand(world, {
+      tick: world.tick,
+      issuer: 0,
+      type: COMMAND_PLACE_WALL,
+      connectorType: TYPE_GREEK_WALL_CONNECTOR,
+      startXFixed,
+      startZFixed,
+      endXFixed,
+      endZFixed,
+      builderIds: [builder],
+    });
+    tickWorld(world);
+
+    expect(world.count).toBe(1 + plan.length);
+    expect(world.stockpiles[GOLD]).toBe(0);
+    const group = world.wallGroup[1]!;
+    expect(group).not.toBe(0);
+    const claimedCells = new Set<number>();
+    let assignedCellCount = 0;
+    for (let site = 1; site < world.count; site += 1) {
+      expect(world.wallGroup[site]).toBe(group);
+      expect(world.facingX[site]).toBeCloseTo(-0.8);
+      expect(world.facingZ[site]).toBeCloseTo(0.6);
+      const cells = world.buildingCells[site]!;
+      assignedCellCount += cells.length;
+      for (const cell of cells) {
+        claimedCells.add(cell);
+        expect(world.walkable[cell]).toBe(0);
+      }
+    }
+    expect(claimedCells.size).toBe(assignedCellCount);
+
+    for (let tick = 0; tick < 2_500; tick += 1) tickWorld(world);
+    for (let site = 1; site < world.count; site += 1) {
+      expect(world.buildProgress[site]).toBe(UNIT_TYPES[world.unitType[site]!]!.buildTicks);
+    }
+    expect(world.mode[builder]).toBe(MODE_IDLE);
+
+    const destroyedCells = [...world.buildingCells[2]!];
+    const survivingCells = new Set<number>();
+    for (let site = 1; site < world.count; site += 1) {
+      if (site !== 2) for (const cell of world.buildingCells[site]!) survivingCells.add(cell);
+    }
+    killUnit(world, 2);
+    tickWorld(world);
+    for (const cell of destroyedCells) expect(world.walkable[cell]).toBe(1);
+    for (const cell of survivingCells) expect(world.walkable[cell]).toBe(0);
   });
 
   test("static defensive buildings acquire targets without moving", () => {

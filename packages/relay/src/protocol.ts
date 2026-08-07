@@ -10,9 +10,10 @@ import type { Command, MapId } from "@aom/sim";
 // garrison/ungarrison orders, v11 adds caravan trade routes, and v12 adds
 // Egyptian heal, empower, and animal-conversion orders, v13 adds rotated
 // rectangular-building placement, and v14 carries builders assigned by a
-// placement gesture, and v15 adds reversible Town Bell shelter orders. Older clients would
+// placement gesture, v15 adds reversible Town Bell shelter orders, and v16
+// adds fixed-point arbitrary-angle wall-line gestures. Older clients would
 // otherwise construct a different world and immediately desync.
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 
 // Omit does not distribute over unions by itself -- this is the standard idiom.
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

@@ -19,6 +19,7 @@ import {
   COMMAND_DROP_OFF_RELIC,
   COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
   COMMAND_STOP,
   COMMAND_TRAIN,
@@ -60,6 +61,14 @@ export interface CommandSink {
     tileX: number,
     tileZ: number,
     rotation?: 0 | 1,
+    builderIds?: number[],
+  ): void;
+  submitWallLine(
+    connectorType: number,
+    startXFixed: number,
+    startZFixed: number,
+    endXFixed: number,
+    endZFixed: number,
     builderIds?: number[],
   ): void;
 }
@@ -192,6 +201,26 @@ export function createLoopbackSink(world: World): CommandSink {
         issuer: 0,
         type: COMMAND_TOWN_BELL,
         buildingId,
+      });
+    },
+    submitWallLine(
+      connectorType: number,
+      startXFixed: number,
+      startZFixed: number,
+      endXFixed: number,
+      endZFixed: number,
+      builderIds?: number[],
+    ): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PLACE_WALL,
+        connectorType,
+        startXFixed,
+        startZFixed,
+        endXFixed,
+        endZFixed,
+        builderIds,
       });
     },
     submitBuild(unitIds: number[], targetId: number): void {

@@ -9,10 +9,12 @@ import {
   COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
   COMMAND_UNGARRISON,
   COMMAND_STOP,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   GOD_HERMES,
 } from "@aom/sim";
 import { PROTOCOL_VERSION, type ClientMessage } from "@aom/relay";
@@ -68,6 +70,31 @@ describe("relay sink", () => {
             tileX: 40,
             tileZ: 41,
             rotation: 1,
+            builderIds: [3, 5],
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("submitWallLine sends deterministic fixed-point endpoints", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitWallLine(201, 160, 320, 352, 320, [3, 5]);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [
+          {
+            type: COMMAND_PLACE_WALL,
+            connectorType: 201,
+            startXFixed: 160,
+            startZFixed: 320,
+            endXFixed: 352,
+            endZFixed: 320,
             builderIds: [3, 5],
           },
         ],
@@ -185,6 +212,19 @@ describe("relay sink", () => {
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_UNGARRISON, containerId: 17 }],
+      },
+    ]);
+  });
+
+  test("submits a tickless reversible Town Bell order", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+    sink.submitTownBell(17);
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TOWN_BELL, buildingId: 17 }],
       },
     ]);
   });

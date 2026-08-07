@@ -2,6 +2,7 @@ import {
   BUILD_OPTIONS_BY_WORKER,
   buildSurfaceHeightmap,
   canPlaceBuilding,
+  canPlaceWallLine,
   CHEAT_ADD_FOOD,
   CHEAT_ADD_GOLD,
   CHEAT_ADD_WOOD,
@@ -22,6 +23,7 @@ import {
   MAX_TRAIN_QUEUE,
   MAX_UNITS,
   MODE_PRAYING,
+  quantizeWallCoordinate,
   RESOURCE_COUNT,
   resolveId,
   tickWorld,
@@ -33,6 +35,7 @@ import {
   UNIT_CLASS_WORKER,
   updateVisibility,
   VIS_VISIBLE,
+  wallFamilyForConnector,
   WOOD,
   workerTypeForCulture,
   writeSnapshot,
@@ -72,6 +75,8 @@ import { createPlayerStateStore, type PlayerStateCallback } from "./player-state
 const placementRayOrigin = vec3.create();
 const placementRayDir = vec3.create();
 const placementHit = vec3.create();
+const wallStartHit = vec3.create();
+const wallEndHit = vec3.create();
 
 function cheatFromChat(code: string): CheatId | null {
   switch (code) {
@@ -131,6 +136,7 @@ export interface GameHandle {
   trainSelected(unitType: number): void;
   cancelTraining(buildingId: number, queueIndex: number): void;
   ungarrison(containerId: number): void;
+  toggleTownBell(buildingId: number): void;
   advanceAge(buildingId: number, minorGod: number): void;
   submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
@@ -302,7 +308,10 @@ export async function createGame(
   let placementType = -1;
   let placementRotation: 0 | 1 = 0;
   const placementTile = new Int32Array(2);
+  const wallStartFixed = new Int32Array(2);
+  const wallEndFixed = new Int32Array(2);
   let placementValid = false;
+  let wallGestureReady = false;
   let lastSelection: SelectionSummary = {
     primary: null,
     selectedCount: 0,
@@ -321,6 +330,21 @@ export async function createGame(
 
   function isViewerTypeAvailable(unitType: number, producerType?: number): boolean {
     return playerState.availability(unitType, producerType).available;
+  }
+
+  function selectedBuilderIds(placementStats: (typeof UNIT_TYPES)[number]): number[] {
+    const builderIds: number[] = [];
+    if (!placementStats) return builderIds;
+    for (let index = 0; index < world.count; index += 1) {
+      if (
+        world.selected[index] === 1 &&
+        world.owner[index] === selfPlayerId &&
+        placementStats.builtBy.some((relationship) => relationship.type === world.unitType[index])
+      ) {
+        builderIds.push(unitIdAt(world, index));
+      }
+    }
+    return builderIds;
   }
 
   let [terrain, water, units] = await Promise.all([
@@ -459,6 +483,8 @@ export async function createGame(
     if (!matchEnded) {
       if (placementType >= 0) {
         const placementStats = UNIT_TYPES[placementType];
+        const wallFamily = wallFamilyForConnector(placementType);
+        wallGestureReady = false;
 
         if (placementStats && isViewerTypeAvailable(placementType)) {
           if (input.state.rotatePlacementPending) {
@@ -533,16 +559,65 @@ export async function createGame(
             }
           }
 
-          placementValid =
-            footprintVisible &&
-            canPlaceBuilding(
-              world,
-              placementTile[0]!,
-              placementTile[1]!,
-              placementType,
-              placementRotation,
-            ) &&
-            affordable;
+          if (
+            wallFamily !== undefined &&
+            (input.state.primaryDragActive || input.state.marqueePending)
+          ) {
+            const startNdcX = (input.state.primaryDragStartX / canvas.clientWidth) * 2 - 1;
+            const startNdcY = 1 - (input.state.primaryDragStartY / canvas.clientHeight) * 2;
+            const endScreenX = input.state.primaryDragActive
+              ? input.state.pointerX
+              : input.state.primaryDragEndX;
+            const endScreenY = input.state.primaryDragActive
+              ? input.state.pointerY
+              : input.state.primaryDragEndY;
+            const endNdcX = (endScreenX / canvas.clientWidth) * 2 - 1;
+            const endNdcY = 1 - (endScreenY / canvas.clientHeight) * 2;
+
+            screenRay(camera, startNdcX, startNdcY, placementRayOrigin, placementRayDir);
+            const hitStart = raycastHeightfield(
+              surfaceHeights,
+              placementRayOrigin,
+              placementRayDir,
+              wallStartHit,
+            );
+            screenRay(camera, endNdcX, endNdcY, placementRayOrigin, placementRayDir);
+            const hitEnd = raycastHeightfield(
+              surfaceHeights,
+              placementRayOrigin,
+              placementRayDir,
+              wallEndHit,
+            );
+            wallGestureReady = hitStart && hitEnd;
+            if (wallGestureReady) {
+              wallStartFixed[0] = quantizeWallCoordinate(wallStartHit[0]!);
+              wallStartFixed[1] = quantizeWallCoordinate(wallStartHit[2]!);
+              wallEndFixed[0] = quantizeWallCoordinate(wallEndHit[0]!);
+              wallEndFixed[1] = quantizeWallCoordinate(wallEndHit[2]!);
+            }
+            placementValid =
+              wallGestureReady &&
+              canPlaceWallLine(
+                world,
+                selfPlayerId,
+                placementType,
+                wallStartFixed[0]!,
+                wallStartFixed[1]!,
+                wallEndFixed[0]!,
+                wallEndFixed[1]!,
+              );
+          } else {
+            placementValid =
+              footprintVisible &&
+              canPlaceBuilding(
+                world,
+                placementTile[0]!,
+                placementTile[1]!,
+                placementType,
+                placementRotation,
+              ) &&
+              affordable;
+          }
         } else {
           placementValid = false;
         }
@@ -552,18 +627,7 @@ export async function createGame(
           input.state.clickPending = false;
 
           if (placementValid && placementStats) {
-            const builderIds: number[] = [];
-            for (let index = 0; index < world.count; index += 1) {
-              if (
-                world.selected[index] === 1 &&
-                world.owner[index] === selfPlayerId &&
-                placementStats.builtBy.some(
-                  (relationship) => relationship.type === world.unitType[index],
-                )
-              ) {
-                builderIds.push(unitIdAt(world, index));
-              }
-            }
+            const builderIds = selectedBuilderIds(placementStats);
             sink.submitPlace(
               placementType,
               placementTile[0]!,
@@ -574,6 +638,24 @@ export async function createGame(
             placementType = -1;
             placementRotation = 0;
             placementValid = false;
+          }
+        }
+
+        if (input.state.marqueePending) {
+          input.state.marqueePending = false;
+          if (wallFamily !== undefined && wallGestureReady && placementValid && placementStats) {
+            sink.submitWallLine(
+              placementType,
+              wallStartFixed[0]!,
+              wallStartFixed[1]!,
+              wallEndFixed[0]!,
+              wallEndFixed[1]!,
+              selectedBuilderIds(placementStats),
+            );
+            placementType = -1;
+            placementRotation = 0;
+            placementValid = false;
+            wallGestureReady = false;
           }
         }
 
@@ -1029,6 +1111,20 @@ export async function createGame(
         return;
       }
       sink.submitUngarrison(containerId);
+      audio.uiClick();
+    },
+    toggleTownBell(buildingId: number): void {
+      const building = resolveId(world, buildingId);
+      if (
+        building < 0 ||
+        world.selected[building] !== 1 ||
+        world.owner[building] !== selfPlayerId ||
+        UNIT_TYPES[world.unitType[building]!]!.tradeSite !== "town-center" ||
+        world.buildProgress[building]! < UNIT_TYPES[world.unitType[building]!]!.buildTicks
+      ) {
+        return;
+      }
+      sink.submitTownBell(buildingId);
       audio.uiClick();
     },
     advanceAge(buildingId: number, minorGod: number): void {

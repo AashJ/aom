@@ -161,6 +161,39 @@ test("R emits a one-shot placement rotation intent", () => {
   expect(state.rotatePlacementPending).toBe(true);
 });
 
+test("a primary drag preserves its directed endpoints for wall placement", () => {
+  const state = attachTestInput();
+
+  dispatch(canvas, "pointerdown", {
+    button: 0,
+    buttons: 1,
+    offsetX: 300,
+    offsetY: 500,
+    pointerId: 12,
+  });
+  dispatch(canvas, "pointermove", {
+    buttons: 1,
+    offsetX: 520,
+    offsetY: 240,
+    pointerId: 12,
+  });
+  expect(state.primaryDragActive).toBe(true);
+  expect([state.primaryDragStartX, state.primaryDragStartY]).toEqual([300, 500]);
+  expect([state.primaryDragEndX, state.primaryDragEndY]).toEqual([520, 240]);
+
+  dispatch(canvas, "pointerup", {
+    button: 0,
+    buttons: 0,
+    offsetX: 520,
+    offsetY: 240,
+    pointerId: 12,
+  });
+  expect(state.primaryDragActive).toBe(false);
+  expect(state.marqueePending).toBe(true);
+  expect([state.primaryDragStartX, state.primaryDragStartY]).toEqual([300, 500]);
+  expect([state.primaryDragEndX, state.primaryDragEndY]).toEqual([520, 240]);
+});
+
 test("pointer cancellation clears stale hover and drag state", () => {
   const state = attachTestInput();
 

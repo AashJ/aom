@@ -88,7 +88,8 @@ export function canEnterGarrison(
     world.hp[unitIndex]! <= 0 ||
     world.dying[containerIndex] === 1 ||
     world.hp[containerIndex]! <= 0 ||
-    world.buildProgress[containerIndex]! < UNIT_TYPES[world.unitType[containerIndex]!]!.buildTicks ||
+    world.buildProgress[containerIndex]! <
+      UNIT_TYPES[world.unitType[containerIndex]!]!.buildTicks ||
     world.containedBy[unitIndex] !== NO_TARGET ||
     world.containedBy[containerIndex] !== NO_TARGET
   ) {

@@ -107,6 +107,7 @@ export {
 } from "./ecs/target-reactions";
 export * from "./content/culture-types";
 export * from "./content/building-roster";
+export * from "./content/wall-lines";
 export * from "./content/unit-roster";
 export * from "./ecs/world";
 export {

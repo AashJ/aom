@@ -23,6 +23,7 @@ export const COMMAND_HEAL = 16;
 export const COMMAND_EMPOWER = 17;
 export const COMMAND_CONVERT = 18;
 export const COMMAND_TOWN_BELL = 19;
+export const COMMAND_PLACE_WALL = 20;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -104,6 +105,20 @@ export interface PlaceCommand {
   tileZ: number;
   // Quarter-turn around the vertical axis. Omitted is the authored orientation.
   rotation?: 0 | 1;
+  builderIds?: number[];
+}
+
+export interface PlaceWallCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_PLACE_WALL;
+  connectorType: number;
+  // Fixed-point endpoints keep arbitrary-angle wall gestures byte-for-byte
+  // deterministic through JSON and across lockstep clients.
+  startXFixed: number;
+  startZFixed: number;
+  endXFixed: number;
+  endZFixed: number;
   builderIds?: number[];
 }
 
@@ -226,6 +241,7 @@ export type Command =
   | GatherCommand
   | PrayCommand
   | PlaceCommand
+  | PlaceWallCommand
   | BuildCommand
   | TrainCommand
   | CancelTrainCommand
