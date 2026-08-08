@@ -4,14 +4,18 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_CHEAT,
   COMMAND_CANCEL_TRAIN,
+  COMMAND_BUILD_GATE,
   COMMAND_MOVE,
   COMMAND_DROP_OFF_RELIC,
   COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
+  COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
   COMMAND_UNGARRISON,
   COMMAND_STOP,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   GOD_HERMES,
 } from "@aom/sim";
 import { PROTOCOL_VERSION, type ClientMessage } from "@aom/relay";
@@ -50,6 +54,55 @@ describe("relay connection URL", () => {
 });
 
 describe("relay sink", () => {
+  test("submitPlace sends rotation and assigned builders", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitPlace(27, 40, 41, 1, [3, 5]);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [
+          {
+            type: COMMAND_PLACE,
+            buildingType: 27,
+            tileX: 40,
+            tileZ: 41,
+            rotation: 1,
+            builderIds: [3, 5],
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("submitWallLine sends deterministic fixed-point endpoints", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+
+    sink.submitWallLine(201, 160, 320, 352, 320, [3, 5]);
+
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [
+          {
+            type: COMMAND_PLACE_WALL,
+            connectorType: 201,
+            startXFixed: 160,
+            startZFixed: 320,
+            endXFixed: 352,
+            endZFixed: 320,
+            builderIds: [3, 5],
+          },
+        ],
+      },
+    ]);
+  });
+
   test("submitMove sends one versioned, tickless commands message", () => {
     const sent: ClientMessage[] = [];
     const sink = createRelaySink((m) => sent.push(m));
@@ -160,6 +213,32 @@ describe("relay sink", () => {
         v: PROTOCOL_VERSION,
         kind: "commands",
         commands: [{ type: COMMAND_UNGARRISON, containerId: 17 }],
+      },
+    ]);
+  });
+
+  test("submits a tickless reversible Town Bell order", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+    sink.submitTownBell(17);
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TOWN_BELL, buildingId: 17 }],
+      },
+    ]);
+  });
+
+  test("submits tickless wall-to-gate conversion", () => {
+    const sent: ClientMessage[] = [];
+    const sink = createRelaySink((message) => sent.push(message));
+    sink.submitBuildGate(17);
+    expect(sent).toEqual([
+      {
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_BUILD_GATE, wallId: 17 }],
       },
     ]);
   });

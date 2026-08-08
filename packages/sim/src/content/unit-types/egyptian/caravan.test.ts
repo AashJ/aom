@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { COMMAND_TRADE, enqueueCommand } from "../../../commands";
 import { registerPlayer } from "../../../ecs/players";
+import { AGE_HEROIC } from "../../../ecs/progression";
 import { createWorld, resolveId, spawnUnit, tickWorld } from "../../../ecs/world";
+import { UNIT_TYPES } from "../../generated/unit-types";
 import { unitReferenceEntry } from "../../unit-references";
 import { validateDefinitionAgainstReference } from "../../unit-reference-schema";
 import { UNIT_CLASS_CARAVAN } from "../../unit-type-schema";
@@ -42,8 +44,8 @@ describe("Egyptian Camel Caravan unit pack", () => {
       maxHp: 1200,
       armor: [0.3, 0.96, 0.05],
       costWood: 0,
-      buildTicks: 1067,
-      requiredAge: 1,
+      buildTicks: 40 * 20,
+      requiredAge: AGE_HEROIC,
       tradeSite: "market",
       builtBy: [{ commandSlot: 6 }],
     });
@@ -58,7 +60,7 @@ describe("Egyptian Camel Caravan unit pack", () => {
     const caravan = spawnUnit(world, 120, 120, 0, 0, 0, TYPE_EGYPTIAN_CARAVAN);
     world.buildProgress[resolveId(world, market)] = marketDefinition.buildTicks;
     world.buildProgress[resolveId(world, townCenter)] =
-      world.unitType[resolveId(world, townCenter)] === TYPE_EGYPTIAN_TOWN_CENTER ? 300 : 0;
+      UNIT_TYPES[TYPE_EGYPTIAN_TOWN_CENTER]!.buildTicks;
 
     enqueueCommand(world, {
       tick: 0,
@@ -84,7 +86,8 @@ describe("Egyptian Camel Caravan unit pack", () => {
     const townCenter = spawnUnit(world, 21, 20, 0, 0, 0, TYPE_EGYPTIAN_TOWN_CENTER);
     const caravan = spawnUnit(world, 21, 20, 0, 0, 0, TYPE_EGYPTIAN_CARAVAN);
     world.buildProgress[resolveId(world, market)] = marketDefinition.buildTicks;
-    world.buildProgress[resolveId(world, townCenter)] = 300;
+    world.buildProgress[resolveId(world, townCenter)] =
+      UNIT_TYPES[TYPE_EGYPTIAN_TOWN_CENTER]!.buildTicks;
 
     enqueueCommand(world, {
       tick: 0,

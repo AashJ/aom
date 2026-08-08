@@ -9,6 +9,7 @@ import type { World } from "./ecs/world";
 import { AGE_COUNT } from "./ecs/progression";
 import { VISIBILITY_TILES } from "./visibility";
 import { MAP_RIVER_NILE } from "./maps";
+import { PLAYER_RESEARCH_STRIDE } from "./ecs/technologies";
 
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -58,6 +59,10 @@ export function hashWorld(world: World): number {
   h ^= word;
   h = Math.imul(h, FNV_PRIME);
 
+  word = world.nextWallGroupId >>> 0;
+  h ^= word;
+  h = Math.imul(h, FNV_PRIME);
+
   // Visibility is authoritative gameplay state: it gates targeting, placement, and
   // automatic acquisition, so a disagreement must be caught at the revealing tick.
   word = world.playerCount >>> 0;
@@ -85,6 +90,18 @@ export function hashWorld(world: World): number {
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
 
+    word = world.wonderVictoryProgress[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.settlementVictoryProgress[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellActive[playerId]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
     word = world.pharaohRespawnRemaining[playerId]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
@@ -93,6 +110,13 @@ export function hashWorld(world: World): number {
 
     for (let age = 0; age < AGE_COUNT; age += 1) {
       word = world.playerMinorGods[minorGodStart + age]!;
+      h ^= word;
+      h = Math.imul(h, FNV_PRIME);
+    }
+
+    const researchStart = playerId * PLAYER_RESEARCH_STRIDE;
+    for (let researchId = 0; researchId < PLAYER_RESEARCH_STRIDE; researchId += 1) {
+      word = world.playerResearch[researchStart + researchId]!;
       h ^= word;
       h = Math.imul(h, FNV_PRIME);
     }
@@ -165,6 +189,12 @@ export function hashWorld(world: World): number {
 
   for (let i = 0; i < world.count; i += 1) {
     word = world.moving[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+  }
+
+  for (let i = 0; i < world.count; i += 1) {
+    word = world.gateOpen[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
   }
@@ -408,6 +438,30 @@ export function hashWorld(world: World): number {
     word = world.supportActionRemaining[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellSheltered[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellSavedMode[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    word = world.wallGroup[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+
+    const buildingCells = world.buildingCells[i];
+    word = buildingCells?.length ?? 0;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
+    if (buildingCells) {
+      for (const cell of buildingCells) {
+        word = cell;
+        h ^= word;
+        h = Math.imul(h, FNV_PRIME);
+      }
+    }
   }
 
   for (let i = 0; i < world.count; i += 1) {
@@ -441,6 +495,10 @@ export function hashWorld(world: World): number {
     word = world.taskTarget[i]!;
     h ^= word;
     h = Math.imul(h, FNV_PRIME);
+
+    word = world.townBellSavedTarget[i]!;
+    h ^= word;
+    h = Math.imul(h, FNV_PRIME);
   }
 
   const tradeIntegerArrays = [world.tradeMarket, world.tradeTownCenter];
@@ -467,7 +525,12 @@ export function hashWorld(world: World): number {
     h = Math.imul(h, FNV_PRIME);
   }
 
-  const gatherPosArrays = [world.gatherPosX, world.gatherPosZ];
+  const gatherPosArrays = [
+    world.gatherPosX,
+    world.gatherPosZ,
+    world.townBellSavedGatherPosX,
+    world.townBellSavedGatherPosZ,
+  ];
 
   for (let arrayIndex = 0; arrayIndex < gatherPosArrays.length; arrayIndex += 1) {
     const values = gatherPosArrays[arrayIndex]!;

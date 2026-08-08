@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
   COMMAND_CANCEL_TRAIN,
+  COMMAND_BUILD_GATE,
   COMMAND_DROP_OFF_RELIC,
   COMMAND_GARRISON,
   COMMAND_PICK_UP_RELIC,
+  COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   COMMAND_UNGARRISON,
   createWorld,
   hashWorld,
@@ -24,6 +28,47 @@ function flatWorld(seed: number): World {
 }
 
 describe("loopback command sink", () => {
+  test("placement carries the builders selected for the new blueprint", () => {
+    const world = flatWorld(42);
+    const sink = createLoopbackSink(world);
+
+    sink.submitPlace(27, 40, 41, 1, [3, 5]);
+
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PLACE,
+        buildingType: 27,
+        tileX: 40,
+        tileZ: 41,
+        rotation: 1,
+        builderIds: [3, 5],
+      },
+    ]);
+  });
+
+  test("wall-line placement carries fixed-point endpoints and builders", () => {
+    const world = flatWorld(42);
+    const sink = createLoopbackSink(world);
+
+    sink.submitWallLine(201, 160, 320, 352, 320, [3, 5]);
+
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PLACE_WALL,
+        connectorType: 201,
+        startXFixed: 160,
+        startZFixed: 320,
+        endXFixed: 352,
+        endZFixed: 320,
+        builderIds: [3, 5],
+      },
+    ]);
+  });
+
   test("stamps relic pickup and drop-off through the delayed command seam", () => {
     const world = flatWorld(42);
     const sink = createLoopbackSink(world);
@@ -84,6 +129,34 @@ describe("loopback command sink", () => {
         issuer: 0,
         type: COMMAND_UNGARRISON,
         containerId: 17,
+      },
+    ]);
+  });
+
+  test("stamps Town Bell through the delayed command seam", () => {
+    const world = flatWorld(43);
+    const sink = createLoopbackSink(world);
+    sink.submitTownBell(17);
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_TOWN_BELL,
+        buildingId: 17,
+      },
+    ]);
+  });
+
+  test("stamps wall-to-gate conversion through the delayed command seam", () => {
+    const world = flatWorld(43);
+    const sink = createLoopbackSink(world);
+    sink.submitBuildGate(17);
+    expect(world.commands).toEqual([
+      {
+        tick: INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_BUILD_GATE,
+        wallId: 17,
       },
     ]);
   });

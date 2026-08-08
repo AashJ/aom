@@ -10,6 +10,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_BUILD_GATE,
   COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
@@ -21,10 +22,13 @@ import {
   COMMAND_DROP_OFF_RELIC,
   COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
+  COMMAND_RESEARCH,
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   COMMAND_UNGARRISON,
   MAP_AEGEAN_COAST,
   type CheatId,
@@ -183,6 +187,44 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
         commands: [{ type: COMMAND_TRADE, unitIds, targetId }],
       });
     },
+    submitTownBell(buildingId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_TOWN_BELL, buildingId }],
+      });
+    },
+    submitBuildGate(wallId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_BUILD_GATE, wallId }],
+      });
+    },
+    submitWallLine(
+      connectorType: number,
+      startXFixed: number,
+      startZFixed: number,
+      endXFixed: number,
+      endZFixed: number,
+      builderIds?: number[],
+    ): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [
+          {
+            type: COMMAND_PLACE_WALL,
+            connectorType,
+            startXFixed,
+            startZFixed,
+            endXFixed,
+            endZFixed,
+            builderIds,
+          },
+        ],
+      });
+    },
 
     submitBuild(unitIds: number[], targetId: number): void {
       // No tick stamping here: the sequencer's turn assignment IS the execution time, unlike the loopback sink.
@@ -218,6 +260,14 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
       });
     },
 
+    submitResearch(buildingId: number, researchId: number): void {
+      send({
+        v: PROTOCOL_VERSION,
+        kind: "commands",
+        commands: [{ type: COMMAND_RESEARCH, buildingId, researchId }],
+      });
+    },
+
     submitCheat(cheat: CheatId): void {
       send({
         v: PROTOCOL_VERSION,
@@ -226,12 +276,27 @@ export function createRelaySink(send: (message: ClientMessage) => void): Command
       });
     },
 
-    submitPlace(buildingType: number, tileX: number, tileZ: number): void {
+    submitPlace(
+      buildingType: number,
+      tileX: number,
+      tileZ: number,
+      rotation: 0 | 1 = 0,
+      builderIds: number[] = [],
+    ): void {
       // No tick stamping here: the sequencer's turn assignment IS the execution time, unlike the loopback sink.
       send({
         v: PROTOCOL_VERSION,
         kind: "commands",
-        commands: [{ type: COMMAND_PLACE, buildingType, tileX, tileZ }],
+        commands: [
+          {
+            type: COMMAND_PLACE,
+            buildingType,
+            tileX,
+            tileZ,
+            rotation,
+            ...(builderIds.length > 0 ? { builderIds } : {}),
+          },
+        ],
       });
     },
   };

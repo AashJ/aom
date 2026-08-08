@@ -101,6 +101,37 @@ import { definition as egyptianTitan } from "../unit-types/egyptian/titan";
 import { definition as egyptianMercenaryCavalry } from "../unit-types/egyptian/mercenary-cavalry";
 import { definition as egyptianMinion } from "../unit-types/egyptian/minion";
 import { definition as egyptianPhoenixEgg } from "../unit-types/egyptian/phoenix-egg";
+import { definition as greekGranary } from "../unit-types/greek/granary";
+import { definition as greekStorehouse } from "../unit-types/greek/storehouse";
+import { definition as greekFarm } from "../unit-types/greek/farm";
+import { definition as greekArmory } from "../unit-types/greek/armory";
+import { definition as greekTower } from "../unit-types/greek/tower";
+import { definition as greekWallConnector } from "../unit-types/greek/wall-connector";
+import { definition as greekWallShort } from "../unit-types/greek/wall-short";
+import { definition as greekWallMedium } from "../unit-types/greek/wall-medium";
+import { definition as greekWallLong } from "../unit-types/greek/wall-long";
+import { definition as greekGate } from "../unit-types/greek/gate";
+import { definition as greekWonder } from "../unit-types/greek/wonder";
+import { definition as egyptianGranary } from "../unit-types/egyptian/granary";
+import { definition as egyptianLumberCamp } from "../unit-types/egyptian/lumber-camp";
+import { definition as egyptianMiningCamp } from "../unit-types/egyptian/mining-camp";
+import { definition as egyptianFarm } from "../unit-types/egyptian/farm";
+import { definition as egyptianArmory } from "../unit-types/egyptian/armory";
+import { definition as egyptianTower } from "../unit-types/egyptian/tower";
+import { definition as egyptianOutpost } from "../unit-types/egyptian/outpost";
+import { definition as egyptianMonumentToVillagers } from "../unit-types/egyptian/monument-to-villagers";
+import { definition as egyptianMonumentToSoldiers } from "../unit-types/egyptian/monument-to-soldiers";
+import { definition as egyptianMonumentToPriests } from "../unit-types/egyptian/monument-to-priests";
+import { definition as egyptianMonumentToPharaohs } from "../unit-types/egyptian/monument-to-pharaohs";
+import { definition as egyptianMonumentToGods } from "../unit-types/egyptian/monument-to-gods";
+import { definition as egyptianLighthouse } from "../unit-types/egyptian/lighthouse";
+import { definition as egyptianWallConnector } from "../unit-types/egyptian/wall-connector";
+import { definition as egyptianWallShort } from "../unit-types/egyptian/wall-short";
+import { definition as egyptianWallMedium } from "../unit-types/egyptian/wall-medium";
+import { definition as egyptianWallLong } from "../unit-types/egyptian/wall-long";
+import { definition as egyptianGate } from "../unit-types/egyptian/gate";
+import { definition as egyptianWonder } from "../unit-types/egyptian/wonder";
+import { definition as neutralSettlement } from "../unit-types/neutral/settlement";
 import type { TypeCommandRelationship, UnitTypeStats } from "../unit-type-schema";
 
 export const UNIT_TYPE_DEFINITIONS = [
@@ -206,6 +237,37 @@ export const UNIT_TYPE_DEFINITIONS = [
   egyptianMercenaryCavalry,
   egyptianMinion,
   egyptianPhoenixEgg,
+  greekGranary,
+  greekStorehouse,
+  greekFarm,
+  greekArmory,
+  greekTower,
+  greekWallConnector,
+  greekWallShort,
+  greekWallMedium,
+  greekWallLong,
+  greekGate,
+  greekWonder,
+  egyptianGranary,
+  egyptianLumberCamp,
+  egyptianMiningCamp,
+  egyptianFarm,
+  egyptianArmory,
+  egyptianTower,
+  egyptianOutpost,
+  egyptianMonumentToVillagers,
+  egyptianMonumentToSoldiers,
+  egyptianMonumentToPriests,
+  egyptianMonumentToPharaohs,
+  egyptianMonumentToGods,
+  egyptianLighthouse,
+  egyptianWallConnector,
+  egyptianWallShort,
+  egyptianWallMedium,
+  egyptianWallLong,
+  egyptianGate,
+  egyptianWonder,
+  neutralSettlement,
 ] as const satisfies readonly UnitTypeStats[];
 
 const unitTypes: UnitTypeStats[] = [];

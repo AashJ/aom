@@ -1,6 +1,6 @@
 import { UNIT_TYPES } from "./ecs/types";
 import type { World } from "./ecs/world";
-import { effectiveLineOfSight } from "./ecs/unit-age";
+import { effectiveLineOfSightForPlayer } from "./ecs/building-technology-effects";
 import { MAP_TILES } from "./terrain";
 
 export const VIS_UNSEEN = 0;
@@ -28,12 +28,9 @@ export function updateVisibility(world: World): void {
     if (slot < 0) continue;
 
     const stats = UNIT_TYPES[world.unitType[i]!]!;
-    const lineOfSight = effectiveLineOfSight(stats, world.playerAge[world.owner[i]!]!);
+    const lineOfSight = effectiveLineOfSightForPlayer(world, world.owner[i]!, stats);
 
-    if (
-      lineOfSight <= 0 ||
-      (stats.footprint > 0 && world.buildProgress[i]! < stats.buildTicks)
-    ) {
+    if (lineOfSight <= 0 || (stats.footprint > 0 && world.buildProgress[i]! < stats.buildTicks)) {
       continue;
     }
 
@@ -67,6 +64,7 @@ export function isFootprintVisibleTo(
   tileX: number,
   tileZ: number,
   size: number,
+  depth = size,
 ): boolean {
   const slot = world.playerSlotById[playerId]!;
 
@@ -74,7 +72,7 @@ export function isFootprintVisibleTo(
 
   const base = slot * VISIBILITY_TILES;
 
-  for (let z = tileZ; z < tileZ + size; z += 1) {
+  for (let z = tileZ; z < tileZ + depth; z += 1) {
     for (let x = tileX; x < tileX + size; x += 1) {
       if (
         x < 0 ||

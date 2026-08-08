@@ -1,4 +1,4 @@
-import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
+import { AGE_HEROIC, NO_GOD } from "../../../ecs/progression";
 import { TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_MARKET } from "../../unit-type-ids";
 import {
   CULTURE_EGYPTIAN,
@@ -29,12 +29,12 @@ export const definition = {
   costWood: 0,
   costGold: 0,
   costFavor: 0,
-  buildTicks: 1067,
+  buildTicks: 40 * 20,
   populationCost: 0,
   popBonus: 0,
   trainExitOffset: 6.5,
   isDropsite: false,
-  requiredAge: AGE_CLASSICAL,
+  requiredAge: AGE_HEROIC,
   requiredGod: NO_GOD,
   prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   trainedAt: NO_TYPE_RELATIONSHIPS,

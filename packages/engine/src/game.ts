@@ -1,7 +1,9 @@
 import {
   BUILD_OPTIONS_BY_WORKER,
+  buildingCostForMajorGod,
   buildSurfaceHeightmap,
   canPlaceBuilding,
+  canPlaceWallLine,
   CHEAT_ADD_FOOD,
   CHEAT_ADD_GOLD,
   CHEAT_ADD_WOOD,
@@ -11,21 +13,31 @@ import {
   countGarrisonedUnits,
   createPlayableWorld,
   createSnapshot,
+  attackDamageMultiplierForPlayer,
+  effectiveLineOfSightForPlayer,
+  effectiveMaxHpForPlayer,
   FAVOR,
   FOOD,
+  gateTypeForLongWall,
   GOLD,
+  getTechnology,
   GOD_RA,
   GOD_ZEUS,
   hashWorld,
+  isAutomaticWallSegmentType,
+  isGateType,
   MAP_TILES,
   MAP_AEGEAN_COAST,
   MAX_TRAIN_QUEUE,
   MAX_UNITS,
   MODE_PRAYING,
+  quantizeWallCoordinate,
+  primaryAttackForPlayer,
   RESOURCE_COUNT,
   resolveId,
   tickWorld,
   townCenterTypeForCulture,
+  technologyOptionsForProducer,
   TRAIN_OPTIONS_BY_PRODUCER,
   unitIdAt,
   UNIT_TYPES,
@@ -33,12 +45,14 @@ import {
   UNIT_CLASS_WORKER,
   updateVisibility,
   VIS_VISIBLE,
+  wallFamilyForConnector,
   WOOD,
   workerTypeForCulture,
   writeSnapshot,
   type CheatId,
   type MapId,
   type TypeCommandRelationship,
+  type TechnologyDefinition,
 } from "@aom/sim";
 import { createGameAudio } from "./audio/audio";
 import {
@@ -72,6 +86,8 @@ import { createPlayerStateStore, type PlayerStateCallback } from "./player-state
 const placementRayOrigin = vec3.create();
 const placementRayDir = vec3.create();
 const placementHit = vec3.create();
+const wallStartHit = vec3.create();
+const wallEndHit = vec3.create();
 
 function cheatFromChat(code: string): CheatId | null {
   switch (code) {
@@ -98,6 +114,9 @@ export interface SelectionSummary {
     type: number;
     owner: number;
     hitPoints: number;
+    maxHitPoints: number;
+    attackDamage: readonly [number, number, number] | null;
+    lineOfSight: number;
     buildProgress: number;
   } | null;
   selectedCount: number;
@@ -112,6 +131,9 @@ export interface SelectionSummary {
     type: number;
     complete: boolean;
     trainOptions: readonly TypeCommandRelationship[];
+    researchOptions: readonly TechnologyDefinition[];
+    researchId: number;
+    researchProgress: number;
     queueTypes: readonly number[];
     progress: number;
   } | null;
@@ -131,7 +153,10 @@ export interface GameHandle {
   trainSelected(unitType: number): void;
   cancelTraining(buildingId: number, queueIndex: number): void;
   ungarrison(containerId: number): void;
+  toggleTownBell(buildingId: number): void;
+  buildGate(wallId: number): void;
   advanceAge(buildingId: number, minorGod: number): void;
+  researchSelected(researchId: number): void;
   submitCheat(code: string): boolean;
   onPlayerState(cb: PlayerStateCallback): () => void;
   onSelection(cb: (sel: SelectionSummary) => void): () => void;
@@ -172,6 +197,17 @@ function optionListsEqual(
     ) {
       return false;
     }
+  }
+  return true;
+}
+
+function technologyListsEqual(
+  left: readonly TechnologyDefinition[],
+  right: readonly TechnologyDefinition[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index]!.id !== right[index]!.id) return false;
   }
   return true;
 }
@@ -300,8 +336,12 @@ export async function createGame(
   let markerAgeMs = Number.POSITIVE_INFINITY;
   let markerKind = 1;
   let placementType = -1;
+  let placementRotation: 0 | 1 = 0;
   const placementTile = new Int32Array(2);
+  const wallStartFixed = new Int32Array(2);
+  const wallEndFixed = new Int32Array(2);
   let placementValid = false;
+  let wallGestureReady = false;
   let lastSelection: SelectionSummary = {
     primary: null,
     selectedCount: 0,
@@ -320,6 +360,21 @@ export async function createGame(
 
   function isViewerTypeAvailable(unitType: number, producerType?: number): boolean {
     return playerState.availability(unitType, producerType).available;
+  }
+
+  function selectedBuilderIds(placementStats: (typeof UNIT_TYPES)[number]): number[] {
+    const builderIds: number[] = [];
+    if (!placementStats) return builderIds;
+    for (let index = 0; index < world.count; index += 1) {
+      if (
+        world.selected[index] === 1 &&
+        world.owner[index] === selfPlayerId &&
+        placementStats.builtBy.some((relationship) => relationship.type === world.unitType[index])
+      ) {
+        builderIds.push(unitIdAt(world, index));
+      }
+    }
+    return builderIds;
   }
 
   let [terrain, water, units] = await Promise.all([
@@ -458,8 +513,19 @@ export async function createGame(
     if (!matchEnded) {
       if (placementType >= 0) {
         const placementStats = UNIT_TYPES[placementType];
+        const wallFamily = wallFamilyForConnector(placementType);
+        wallGestureReady = false;
 
         if (placementStats && isViewerTypeAvailable(placementType)) {
+          if (input.state.rotatePlacementPending) {
+            input.state.rotatePlacementPending = false;
+            if (
+              placementStats.footprintDepth !== undefined &&
+              placementStats.footprintDepth !== placementStats.footprint
+            ) {
+              placementRotation = placementRotation === 0 ? 1 : 0;
+            }
+          }
           const ndcX = (input.state.pointerX / canvas.clientWidth) * 2 - 1;
           const ndcY = 1 - (input.state.pointerY / canvas.clientHeight) * 2;
           let hitGround = false;
@@ -473,25 +539,43 @@ export async function createGame(
           );
 
           if (hitGround) {
-            const footprint = placementStats.footprint;
+            const footprint =
+              placementRotation === 0
+                ? placementStats.footprint
+                : (placementStats.footprintDepth ?? placementStats.footprint);
+            const footprintDepth =
+              placementRotation === 0
+                ? (placementStats.footprintDepth ?? placementStats.footprint)
+                : placementStats.footprint;
 
             placementTile[0] = Math.round(placementHit[0]! - footprint / 2);
-            placementTile[1] = Math.round(placementHit[2]! - footprint / 2);
+            placementTile[1] = Math.round(placementHit[2]! - footprintDepth / 2);
           }
 
           const stockpileBase = selfPlayerId * RESOURCE_COUNT;
+          const placementCost = buildingCostForMajorGod(
+            placementStats,
+            currSnap.playerMajorGods[selfPlayerId]!,
+          );
           // Preview-validation only — the sim revalidates authoritatively at application.
           const affordable =
-            (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementStats.costFood &&
-            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementStats.costWood &&
-            (currSnap.stockpiles[stockpileBase + GOLD] ?? 0) >= placementStats.costGold &&
-            (currSnap.stockpiles[stockpileBase + FAVOR] ?? 0) >= placementStats.costFavor;
+            (currSnap.stockpiles[stockpileBase + FOOD] ?? 0) >= placementCost[FOOD] &&
+            (currSnap.stockpiles[stockpileBase + WOOD] ?? 0) >= placementCost[WOOD] &&
+            (currSnap.stockpiles[stockpileBase + GOLD] ?? 0) >= placementCost[GOLD] &&
+            (currSnap.stockpiles[stockpileBase + FAVOR] ?? 0) >= placementCost[FAVOR];
           let footprintVisible = hitGround;
 
           if (footprintVisible) {
-            const footprint = placementStats.footprint;
+            const footprint =
+              placementRotation === 0
+                ? placementStats.footprint
+                : (placementStats.footprintDepth ?? placementStats.footprint);
+            const footprintDepth =
+              placementRotation === 0
+                ? (placementStats.footprintDepth ?? placementStats.footprint)
+                : placementStats.footprint;
 
-            for (let z = placementTile[1]!; z < placementTile[1]! + footprint; z += 1) {
+            for (let z = placementTile[1]!; z < placementTile[1]! + footprintDepth; z += 1) {
               for (let x = placementTile[0]!; x < placementTile[0]! + footprint; x += 1) {
                 if (
                   x < 0 ||
@@ -509,10 +593,65 @@ export async function createGame(
             }
           }
 
-          placementValid =
-            footprintVisible &&
-            canPlaceBuilding(world, placementTile[0]!, placementTile[1]!, placementType) &&
-            affordable;
+          if (
+            wallFamily !== undefined &&
+            (input.state.primaryDragActive || input.state.marqueePending)
+          ) {
+            const startNdcX = (input.state.primaryDragStartX / canvas.clientWidth) * 2 - 1;
+            const startNdcY = 1 - (input.state.primaryDragStartY / canvas.clientHeight) * 2;
+            const endScreenX = input.state.primaryDragActive
+              ? input.state.pointerX
+              : input.state.primaryDragEndX;
+            const endScreenY = input.state.primaryDragActive
+              ? input.state.pointerY
+              : input.state.primaryDragEndY;
+            const endNdcX = (endScreenX / canvas.clientWidth) * 2 - 1;
+            const endNdcY = 1 - (endScreenY / canvas.clientHeight) * 2;
+
+            screenRay(camera, startNdcX, startNdcY, placementRayOrigin, placementRayDir);
+            const hitStart = raycastHeightfield(
+              surfaceHeights,
+              placementRayOrigin,
+              placementRayDir,
+              wallStartHit,
+            );
+            screenRay(camera, endNdcX, endNdcY, placementRayOrigin, placementRayDir);
+            const hitEnd = raycastHeightfield(
+              surfaceHeights,
+              placementRayOrigin,
+              placementRayDir,
+              wallEndHit,
+            );
+            wallGestureReady = hitStart && hitEnd;
+            if (wallGestureReady) {
+              wallStartFixed[0] = quantizeWallCoordinate(wallStartHit[0]!);
+              wallStartFixed[1] = quantizeWallCoordinate(wallStartHit[2]!);
+              wallEndFixed[0] = quantizeWallCoordinate(wallEndHit[0]!);
+              wallEndFixed[1] = quantizeWallCoordinate(wallEndHit[2]!);
+            }
+            placementValid =
+              wallGestureReady &&
+              canPlaceWallLine(
+                world,
+                selfPlayerId,
+                placementType,
+                wallStartFixed[0]!,
+                wallStartFixed[1]!,
+                wallEndFixed[0]!,
+                wallEndFixed[1]!,
+              );
+          } else {
+            placementValid =
+              footprintVisible &&
+              canPlaceBuilding(
+                world,
+                placementTile[0]!,
+                placementTile[1]!,
+                placementType,
+                placementRotation,
+              ) &&
+              affordable;
+          }
         } else {
           placementValid = false;
         }
@@ -521,10 +660,36 @@ export async function createGame(
         if (input.state.clickPending) {
           input.state.clickPending = false;
 
-          if (placementValid) {
-            sink.submitPlace(placementType, placementTile[0]!, placementTile[1]!);
+          if (placementValid && placementStats) {
+            const builderIds = selectedBuilderIds(placementStats);
+            sink.submitPlace(
+              placementType,
+              placementTile[0]!,
+              placementTile[1]!,
+              placementRotation,
+              builderIds,
+            );
             placementType = -1;
+            placementRotation = 0;
             placementValid = false;
+          }
+        }
+
+        if (input.state.marqueePending) {
+          input.state.marqueePending = false;
+          if (wallFamily !== undefined && wallGestureReady && placementValid && placementStats) {
+            sink.submitWallLine(
+              placementType,
+              wallStartFixed[0]!,
+              wallStartFixed[1]!,
+              wallEndFixed[0]!,
+              wallEndFixed[1]!,
+              selectedBuilderIds(placementStats),
+            );
+            placementType = -1;
+            placementRotation = 0;
+            placementValid = false;
+            wallGestureReady = false;
           }
         }
 
@@ -532,11 +697,13 @@ export async function createGame(
           input.state.commandPending = false;
           input.state.escapePending = false;
           placementType = -1;
+          placementRotation = 0;
           placementValid = false;
         }
 
         input.state.marqueePending = false;
       } else {
+        input.state.rotatePlacementPending = false;
         consumeSelectionInput(
           input.state,
           world,
@@ -644,13 +811,27 @@ export async function createGame(
       const unitStats = UNIT_TYPES[unitType]!;
 
       selectedCount += 1;
-      primary ??= {
-        id: unitIdAt(world, i),
-        type: unitType,
-        owner: world.owner[i]!,
-        hitPoints: world.hp[i]!,
-        buildProgress: world.buildProgress[i]!,
-      };
+      if (primary === null) {
+        const owner = world.owner[i]!;
+        const attack = primaryAttackForPlayer(world, owner, unitStats);
+        const attackMultiplier = attackDamageMultiplierForPlayer(world, owner, unitStats);
+        primary = {
+          id: unitIdAt(world, i),
+          type: unitType,
+          owner,
+          hitPoints: world.hp[i]!,
+          maxHitPoints: effectiveMaxHpForPlayer(world, owner, unitStats),
+          attackDamage: attack
+            ? [
+                attack.damage[0] * attackMultiplier,
+                attack.damage[1] * attackMultiplier,
+                attack.damage[2] * attackMultiplier,
+              ]
+            : null,
+          lineOfSight: effectiveLineOfSightForPlayer(world, owner, unitStats),
+          buildProgress: world.buildProgress[i]!,
+        };
+      }
 
       if (world.owner[i] !== selfPlayerId) {
         continue;
@@ -677,18 +858,29 @@ export async function createGame(
         };
       }
 
-      if (producer === null && TRAIN_OPTIONS_BY_PRODUCER[unitType] !== undefined) {
+      const researchOptions = technologyOptionsForProducer(unitType, selfCulture);
+      if (
+        producer === null &&
+        (TRAIN_OPTIONS_BY_PRODUCER[unitType] !== undefined || researchOptions.length > 0)
+      ) {
         const remaining = world.trainRemaining[i]!;
         const queueStart = i * MAX_TRAIN_QUEUE;
         const queueTypes = Array.from(
           world.trainQueueTypes.subarray(queueStart, queueStart + world.trainQueueLength[i]!),
         );
 
+        const activeTechnology = getTechnology(world.researchId[i]!);
         producer = {
           id: unitIdAt(world, i),
           type: unitType,
           complete: world.buildProgress[i]! >= unitStats.buildTicks,
-          trainOptions: TRAIN_OPTIONS_BY_PRODUCER[unitType]!,
+          trainOptions: TRAIN_OPTIONS_BY_PRODUCER[unitType] ?? NO_OPTIONS,
+          researchOptions,
+          researchId: activeTechnology?.id ?? -1,
+          researchProgress:
+            activeTechnology === undefined
+              ? 0
+              : 1 - world.researchRemaining[i]! / activeTechnology.durationTicks,
           queueTypes,
           progress:
             remaining > 0 && queueTypes.length > 0
@@ -706,6 +898,11 @@ export async function createGame(
       primary?.type !== lastPrimary?.type ||
       primary?.owner !== lastPrimary?.owner ||
       primary?.hitPoints !== lastPrimary?.hitPoints ||
+      primary?.maxHitPoints !== lastPrimary?.maxHitPoints ||
+      primary?.attackDamage?.[0] !== lastPrimary?.attackDamage?.[0] ||
+      primary?.attackDamage?.[1] !== lastPrimary?.attackDamage?.[1] ||
+      primary?.attackDamage?.[2] !== lastPrimary?.attackDamage?.[2] ||
+      primary?.lineOfSight !== lastPrimary?.lineOfSight ||
       primary?.buildProgress !== lastPrimary?.buildProgress ||
       selectedCount !== lastSelection.selectedCount ||
       villagers !== lastSelection.villagers ||
@@ -719,6 +916,9 @@ export async function createGame(
         producer?.trainOptions ?? NO_OPTIONS,
         lastProducer?.trainOptions ?? NO_OPTIONS,
       ) ||
+      !technologyListsEqual(producer?.researchOptions ?? [], lastProducer?.researchOptions ?? []) ||
+      producer?.researchId !== lastProducer?.researchId ||
+      producer?.researchProgress !== lastProducer?.researchProgress ||
       !typeListsEqual(producer?.queueTypes ?? NO_TYPES, lastProducer?.queueTypes ?? NO_TYPES) ||
       producer?.progress !== lastProducer?.progress ||
       garrison?.id !== lastGarrison?.id ||
@@ -764,8 +964,18 @@ export async function createGame(
     );
     const placementStats = UNIT_TYPES[placementType];
     const ghostType = placementStats ? placementType : -1;
-    const ghostX = placementStats ? placementTile[0]! + placementStats.footprint / 2 : 0;
-    const ghostZ = placementStats ? placementTile[1]! + placementStats.footprint / 2 : 0;
+    const ghostFootprint = placementStats
+      ? placementRotation === 0
+        ? placementStats.footprint
+        : (placementStats.footprintDepth ?? placementStats.footprint)
+      : 0;
+    const ghostFootprintDepth = placementStats
+      ? placementRotation === 0
+        ? (placementStats.footprintDepth ?? placementStats.footprint)
+        : placementStats.footprint
+      : 0;
+    const ghostX = placementStats ? placementTile[0]! + ghostFootprint / 2 : 0;
+    const ghostZ = placementStats ? placementTile[1]! + ghostFootprintDepth / 2 : 0;
     const unitStatistics = units.draw(
       pass,
       gpu.device.queue,
@@ -778,6 +988,7 @@ export async function createGame(
       ghostType,
       ghostX,
       ghostZ,
+      placementRotation,
       placementValid,
     );
     minimap.draw(
@@ -902,16 +1113,22 @@ export async function createGame(
     onPlayerState: playerState.subscribe,
     startPlacement(buildingType: number): void {
       // UI-driven modal — the React build bar calls this.
-      if (!isViewerTypeAvailable(buildingType, selfWorkerType)) {
+      if (
+        isGateType(buildingType) ||
+        isAutomaticWallSegmentType(buildingType) ||
+        !isViewerTypeAvailable(buildingType, selfWorkerType)
+      ) {
         return;
       }
 
       audio.uiClick();
       placementType = buildingType;
+      placementRotation = 0;
       placementValid = false;
     },
     cancelPlacement(): void {
       placementType = -1;
+      placementRotation = 0;
       placementValid = false;
     },
     trainSelected(unitType: number): void {
@@ -967,6 +1184,36 @@ export async function createGame(
       sink.submitUngarrison(containerId);
       audio.uiClick();
     },
+    toggleTownBell(buildingId: number): void {
+      const building = resolveId(world, buildingId);
+      if (
+        building < 0 ||
+        world.selected[building] !== 1 ||
+        world.owner[building] !== selfPlayerId ||
+        UNIT_TYPES[world.unitType[building]!]!.tradeSite !== "town-center" ||
+        world.buildProgress[building]! < UNIT_TYPES[world.unitType[building]!]!.buildTicks
+      ) {
+        return;
+      }
+      sink.submitTownBell(buildingId);
+      audio.uiClick();
+    },
+    buildGate(wallId: number): void {
+      const wall = resolveId(world, wallId);
+      if (
+        wall < 0 ||
+        world.selected[wall] !== 1 ||
+        world.owner[wall] !== selfPlayerId ||
+        world.dying[wall] === 1 ||
+        world.hp[wall]! <= 0 ||
+        gateTypeForLongWall(world.unitType[wall]!) === undefined ||
+        getTechnology(world.researchId[wall]!) !== undefined
+      ) {
+        return;
+      }
+      sink.submitBuildGate(wallId);
+      audio.uiClick();
+    },
     advanceAge(buildingId: number, minorGod: number): void {
       const building = resolveId(world, buildingId);
 
@@ -984,6 +1231,30 @@ export async function createGame(
       // revalidated by the deterministic sim when the command lands.
       sink.submitAdvanceAge(buildingId, minorGod);
       audio.uiClick();
+    },
+    researchSelected(researchId: number): void {
+      for (let building = 0; building < world.count; building += 1) {
+        if (
+          world.selected[building] !== 1 ||
+          world.owner[building] !== selfPlayerId ||
+          world.dying[building] === 1 ||
+          world.hp[building]! <= 0
+        ) {
+          continue;
+        }
+        const stats = UNIT_TYPES[world.unitType[building]!]!;
+        if (
+          world.buildProgress[building]! < stats.buildTicks ||
+          !technologyOptionsForProducer(stats.id, selfCulture).some(
+            (technology) => technology.id === researchId,
+          )
+        ) {
+          continue;
+        }
+        sink.submitResearch(unitIdAt(world, building), researchId);
+        audio.uiClick();
+        return;
+      }
     },
     submitCheat(code: string): boolean {
       const cheat = cheatFromChat(code);

@@ -129,7 +129,7 @@ function classifyTargetCommand(
     snapshot.owner[hit] === selfPlayerId &&
     stats.healable !== false &&
     (stats.classes & UNIT_CLASS_BUILDING) === 0 &&
-    snapshot.hp[hit]! < stats.maxHp
+    snapshot.hp[hit]! < snapshot.maxHp[hit]!
   ) {
     return "heal";
   }
@@ -178,16 +178,16 @@ function classifyTargetCommand(
     return "drop-off-relic";
   }
 
-  if (snapshot.owner[hit] === selfPlayerId && stats.garrison !== undefined) {
-    return "garrison";
-  }
-
   if (
     snapshot.owner[hit] === selfPlayerId &&
     stats.footprint > 0 &&
-    snapshot.buildProgress[hit]! < stats.buildTicks
+    (snapshot.buildProgress[hit]! < stats.buildTicks || snapshot.hp[hit]! < snapshot.maxHp[hit]!)
   ) {
     return "build";
+  }
+
+  if (snapshot.owner[hit] === selfPlayerId && stats.garrison !== undefined) {
+    return "garrison";
   }
 
   if (

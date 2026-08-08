@@ -45,7 +45,7 @@ export const definition = {
   costWood: 0,
   costGold: 50,
   costFavor: 0,
-  buildTicks: 40 * 20,
+  buildTicks: 30 * 20,
   populationCost: 0,
   popBonus: 0,
   trainExitOffset: 4.5,

@@ -42,6 +42,7 @@
     "unit:lanes": "bun scripts/unit-lane.ts list",
     "unit:lane": "bun scripts/unit-lane.ts",
     "verify:unit-sources": "bun scripts/verify-unit-sources.ts",
+    "verify:building-sources": "bun scripts/verify-building-sources.ts",
     "check": "bun run check:unit-catalogs && bun run check:unit-roster-manifest && oxlint && oxfmt --write",
     "test": "turbo run test"
   },

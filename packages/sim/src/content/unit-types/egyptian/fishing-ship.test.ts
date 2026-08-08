@@ -51,7 +51,7 @@ describe("Egyptian Fishing Ship unit pack", () => {
       armor: [0.3, 0.96, 0.2],
       costWood: 0,
       costGold: 50,
-      buildTicks: 800,
+      buildTicks: 30 * 20,
       placementTerrain: "shoreline",
       resourceDropsiteDomain: MOVEMENT_DOMAIN_WATER,
       garrison: { capacity: 10 },
@@ -78,7 +78,7 @@ describe("Egyptian Fishing Ship unit pack", () => {
     expect(world.hp[resolveId(world, fish)]).toBeCloseTo(999.46, 12);
   });
 
-  test("constructs its authored Dock at range four and 0.28/0.99 Laborer speed", () => {
+  test("constructs its authored Dock at range four and its 0.28 rate", () => {
     const world = waterWorld(481);
     const dock = spawnBuilding(world, 20, 20, 0, TYPE_EGYPTIAN_DOCK, false);
     const ship = spawnUnit(world, 28, 22, 0, 0, 0, TYPE_EGYPTIAN_FISHING_SHIP);
@@ -92,12 +92,12 @@ describe("Egyptian Fishing Ship unit pack", () => {
 
     tickWorld(world);
     const dockIndex = resolveId(world, dock);
-    expect(world.buildProgress[dockIndex]).toBeCloseTo((10 * 0.28) / 0.99, 12);
+    expect(world.buildProgress[dockIndex]).toBeCloseTo(10 * 0.28, 12);
     expect(world.moving[resolveId(world, ship)]).toBe(0);
 
     const before = world.stockpiles[FOOD]!;
     for (let tick = 1; tick < 10; tick += 1) tickWorld(world);
-    expect(world.buildProgress[dockIndex]).toBeCloseTo((10 * 0.28) / 0.99, 12);
+    expect(world.buildProgress[dockIndex]).toBeCloseTo(10 * 0.28, 12);
     expect(world.stockpiles[FOOD]).toBe(before);
   });
 });

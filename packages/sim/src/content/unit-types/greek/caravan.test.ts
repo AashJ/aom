@@ -4,6 +4,7 @@ import { hashWorld } from "../../../hash";
 import { registerPlayer } from "../../../ecs/players";
 import { createWorld, killUnit, resolveId, spawnUnit, tickWorld } from "../../../ecs/world";
 import { MODE_TRADING_TO_MARKET, MODE_TRADING_TO_TOWN_CENTER } from "../../../ecs/unit-tasks";
+import { UNIT_TYPES } from "../../generated/unit-types";
 import { GOLD, UNIT_CLASS_CARAVAN } from "../../unit-type-schema";
 import { unitReferenceEntry } from "../../unit-references";
 import { validateDefinitionAgainstReference } from "../../unit-reference-schema";
@@ -24,9 +25,7 @@ function setup(seed = 493) {
 
 function complete(world: ReturnType<typeof setup>, id: number): number {
   const index = resolveId(world, id);
-  const stats = world.unitType[index]!;
-  world.buildProgress[index] =
-    stats === TYPE_GREEK_MARKET ? 800 : stats === TYPE_GREEK_TOWN_CENTER ? 300 : 0;
+  world.buildProgress[index] = UNIT_TYPES[world.unitType[index]!]!.buildTicks;
   return index;
 }
 

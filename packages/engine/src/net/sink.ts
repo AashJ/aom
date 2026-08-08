@@ -8,6 +8,7 @@ import {
   COMMAND_ADVANCE_AGE,
   COMMAND_ATTACK,
   COMMAND_BUILD,
+  COMMAND_BUILD_GATE,
   COMMAND_CANCEL_TRAIN,
   COMMAND_CHEAT,
   COMMAND_GATHER,
@@ -19,10 +20,13 @@ import {
   COMMAND_DROP_OFF_RELIC,
   COMMAND_PICK_UP_RELIC,
   COMMAND_PLACE,
+  COMMAND_PLACE_WALL,
   COMMAND_PRAY,
+  COMMAND_RESEARCH,
   COMMAND_STOP,
   COMMAND_TRAIN,
   COMMAND_TRADE,
+  COMMAND_TOWN_BELL,
   COMMAND_UNGARRISON,
   enqueueCommand,
   type CheatId,
@@ -48,12 +52,29 @@ export interface CommandSink {
   submitGarrison(unitIds: number[], targetId: number): void;
   submitUngarrison(containerId: number): void;
   submitTrade(unitIds: number[], targetId: number): void;
+  submitTownBell(buildingId: number): void;
+  submitBuildGate(wallId: number): void;
   submitBuild(unitIds: number[], targetId: number): void;
   submitTrain(buildingId: number, unitType: number): void;
   submitCancelTrain(buildingId: number, queueIndex: number): void;
   submitAdvanceAge(buildingId: number, minorGod: number): void;
+  submitResearch(buildingId: number, researchId: number): void;
   submitCheat(cheat: CheatId): void;
-  submitPlace(buildingType: number, tileX: number, tileZ: number): void;
+  submitPlace(
+    buildingType: number,
+    tileX: number,
+    tileZ: number,
+    rotation?: 0 | 1,
+    builderIds?: number[],
+  ): void;
+  submitWallLine(
+    connectorType: number,
+    startXFixed: number,
+    startZFixed: number,
+    endXFixed: number,
+    endZFixed: number,
+    builderIds?: number[],
+  ): void;
 }
 
 export function createLoopbackSink(world: World): CommandSink {
@@ -178,6 +199,42 @@ export function createLoopbackSink(world: World): CommandSink {
         targetId,
       });
     },
+    submitTownBell(buildingId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_TOWN_BELL,
+        buildingId,
+      });
+    },
+    submitBuildGate(wallId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_BUILD_GATE,
+        wallId,
+      });
+    },
+    submitWallLine(
+      connectorType: number,
+      startXFixed: number,
+      startZFixed: number,
+      endXFixed: number,
+      endZFixed: number,
+      builderIds?: number[],
+    ): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_PLACE_WALL,
+        connectorType,
+        startXFixed,
+        startZFixed,
+        endXFixed,
+        endZFixed,
+        builderIds,
+      });
+    },
     submitBuild(unitIds: number[], targetId: number): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
@@ -216,6 +273,15 @@ export function createLoopbackSink(world: World): CommandSink {
         minorGod,
       });
     },
+    submitResearch(buildingId: number, researchId: number): void {
+      enqueueCommand(world, {
+        tick: world.tick + INPUT_DELAY_TICKS,
+        issuer: 0,
+        type: COMMAND_RESEARCH,
+        buildingId,
+        researchId,
+      });
+    },
     submitCheat(cheat: CheatId): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
@@ -224,7 +290,13 @@ export function createLoopbackSink(world: World): CommandSink {
         cheat,
       });
     },
-    submitPlace(buildingType: number, tileX: number, tileZ: number): void {
+    submitPlace(
+      buildingType: number,
+      tileX: number,
+      tileZ: number,
+      rotation: 0 | 1 = 0,
+      builderIds: number[] = [],
+    ): void {
       enqueueCommand(world, {
         tick: world.tick + INPUT_DELAY_TICKS,
         // Single-player is player 0 and owns everything spawned by default.
@@ -233,6 +305,8 @@ export function createLoopbackSink(world: World): CommandSink {
         buildingType,
         tileX,
         tileZ,
+        rotation,
+        ...(builderIds.length > 0 ? { builderIds } : {}),
       });
     },
   };

@@ -1,0 +1,42 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_SETTLEMENT } from "../../unit-type-ids";
+import {
+  CULTURE_SHARED,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_SETTLEMENT,
+  key: "settlement",
+  label: "Settlement",
+  culture: CULTURE_SHARED,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 2800,
+  lineOfSight: 20,
+  movementSpeed: 0,
+  armor: [0.55, 0.96, 0.1],
+  attack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 5,
+  collidesWithProjectiles: true,
+  footprint: 5,
+  isPlacementSocket: true,
+  costFood: 0,
+  costWood: 0,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 30 * 20,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: NO_TYPE_RELATIONSHIPS,
+} as const satisfies UnitTypeStats;

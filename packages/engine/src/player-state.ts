@@ -1,6 +1,7 @@
 import {
   AGE_ARCHAIC,
   cultureForMajorGod,
+  effectiveBuildingPopBonus,
   FAVOR,
   FOOD,
   getTypeAvailability,
@@ -8,6 +9,8 @@ import {
   MAX_TRAIN_QUEUE,
   NO_AGE,
   NO_GOD,
+  PLAYER_RESEARCH_STRIDE,
+  RESEARCH_FORTIFIED_TOWN_CENTER,
   RESOURCE_COUNT,
   UNIT_TYPES,
   WOOD,
@@ -24,9 +27,11 @@ export interface PlayerState {
   gold: number;
   favor: number;
   favorPerMinute: number;
+  townBellActive: boolean;
   pop: number;
   popCap: number;
   completedBuildings: Uint8Array;
+  completedResearch: Uint8Array;
   ownedOrQueuedUnitCounts: Uint32Array;
   ageAdvancement: AgeAdvancementState | null;
 }
@@ -88,9 +93,11 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     gold: 0,
     favor: 0,
     favorPerMinute: 0,
+    townBellActive: false,
     pop: 0,
     popCap: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    completedResearch: new Uint8Array(PLAYER_RESEARCH_STRIDE),
     ownedOrQueuedUnitCounts: new Uint32Array(UNIT_TYPES.length),
     ageAdvancement: null,
   };
@@ -106,6 +113,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
     const gold = snapshot.stockpiles[stockpileBase + GOLD] ?? 0;
     const favor = snapshot.stockpiles[stockpileBase + FAVOR] ?? 0;
     const favorPerMinute = snapshot.favorRateMilliPerMinute / 1_000;
+    const townBellActive = snapshot.townBellActive === 1;
     let pop = 0;
     let popCap = 0;
     const ownedOrQueuedUnitCounts = new Uint32Array(UNIT_TYPES.length);
@@ -140,7 +148,11 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       }
 
       if (stats.footprint > 0 && snapshot.buildProgress[index]! >= stats.buildTicks) {
-        popCap += stats.popBonus;
+        popCap += effectiveBuildingPopBonus(
+          stats,
+          majorGod,
+          snapshot.completedResearch[RESEARCH_FORTIFIED_TOWN_CENTER] === 1,
+        );
       }
     }
 
@@ -153,6 +165,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       gold === state.gold &&
       favor === state.favor &&
       favorPerMinute === state.favorPerMinute &&
+      townBellActive === state.townBellActive &&
       pop === state.pop &&
       popCap === state.popCap &&
       ageAdvancement?.targetAge === state.ageAdvancement?.targetAge &&
@@ -161,6 +174,7 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       ageAdvancement?.totalTicks === state.ageAdvancement?.totalTicks &&
       ageAdvancement?.buildingId === state.ageAdvancement?.buildingId &&
       arraysEqual(state.completedBuildings, snapshot.completedBuildings) &&
+      arraysEqual(state.completedResearch, snapshot.completedResearch) &&
       arraysEqual(state.ownedOrQueuedUnitCounts, ownedOrQueuedUnitCounts)
     ) {
       return;
@@ -175,9 +189,11 @@ export function createPlayerStateStore(playerId: number): PlayerStateStore {
       gold,
       favor,
       favorPerMinute,
+      townBellActive,
       pop,
       popCap,
       completedBuildings: snapshot.completedBuildings.slice(),
+      completedResearch: snapshot.completedResearch.slice(),
       ownedOrQueuedUnitCounts,
       ageAdvancement,
     };

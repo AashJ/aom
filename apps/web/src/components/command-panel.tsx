@@ -1,17 +1,37 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   AGE_NAMES,
+  buildingCostForMajorGod,
   FAVOR,
   FOOD,
+  gateTypeForLongWall,
   getAgeAdvanceAvailability,
   getAgeAdvanceProducerType,
   GOLD,
   GOD_ATHENA,
+  GOD_ANUBIS,
+  GOD_APHRODITE,
+  GOD_APOLLO,
+  GOD_ARES,
+  GOD_ARTEMIS,
   GOD_BAST,
+  GOD_DIONYSUS,
+  GOD_HATHOR,
+  GOD_HEPHAESTUS,
+  GOD_HERA,
   GOD_HERMES,
+  GOD_HORUS,
+  GOD_NEPHTHYS,
+  GOD_OSIRIS,
   GOD_PTAH,
+  GOD_SEKHMET,
+  GOD_THOTH,
+  isAutomaticWallSegmentType,
+  isGateType,
+  isWallConnectorType,
   NO_AGE,
   TYPE_ICONS,
+  technologyCost,
   typeAvailabilityForPlayerState,
   UNIT_TYPES,
   WOOD,
@@ -22,6 +42,7 @@ import {
   type SelectionSummary,
   type TypeCommandRelationship,
   type TypeAvailability,
+  type TechnologyDefinition,
 } from "@aom/engine";
 import favorIconUrl from "@/assets/resource-favor.png";
 import foodIconUrl from "@/assets/resource-food.png";
@@ -76,7 +97,9 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
   const producer = selection?.producer ?? null;
   const commandOptions = producer?.complete
     ? producer.trainOptions
-    : (selection?.buildOptions ?? []);
+    : (selection?.buildOptions ?? []).filter(
+        (option) => !isAutomaticWallSegmentType(option.type) && !isGateType(option.type),
+      );
   const commandSourceType = producer?.complete ? producer.type : (selection?.builderType ?? -1);
   const availability = (unitType: number, producerType: number): TypeAvailability | null =>
     playerState ? typeAvailabilityForPlayerState(playerState, unitType, producerType) : null;
@@ -87,8 +110,12 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
     ageAdvanceRule && playerState
       ? getAgeAdvanceProducerType(ageAdvanceRule, playerState.majorGod)
       : undefined;
-  const ageAdvanceUnavailable = ageAdvanceReason(ageAdvanceAvailability);
+  const ageAdvanceUnavailable =
+    producer?.researchId !== undefined && producer.researchId >= 0
+      ? "Research in progress"
+      : ageAdvanceReason(ageAdvanceAvailability);
   const commandCells = slottedCommandCells(commandOptions, commandSourceType, availability);
+  const gateType = producer ? gateTypeForLongWall(producer.type) : undefined;
 
   return (
     <>
@@ -97,7 +124,7 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         ariaLabel="Commands"
         className="fixed bottom-0 left-32 z-10 h-[9.625rem] w-48 select-none sm:left-36 sm:h-[8.375rem] sm:w-60"
       >
-        <div className="relative grid grid-cols-3 content-start gap-1 px-3 pt-3 sm:grid-cols-5 sm:pt-2.5">
+        <div className="relative grid h-full grid-cols-3 content-start gap-1 overflow-y-auto px-3 pt-3 pb-3 sm:grid-cols-5 sm:pt-2.5">
           {commandCells.map((cell, commandSlot) => {
             if (cell === null) {
               return <div key={`empty-${commandSlot}`} aria-hidden="true" />;
@@ -105,23 +132,82 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
 
             const unitType = cell.option.type;
             const stats = UNIT_TYPES[unitType]!;
+            const cost = producer?.complete
+              ? ([stats.costFood, stats.costWood, stats.costGold, stats.costFavor] as const)
+              : buildingCostForMajorGod(stats, playerState?.majorGod ?? -1);
+            const activeResearchReason =
+              producer?.complete && producer.researchId >= 0 ? "Research in progress" : undefined;
+            const unavailableReason = activeResearchReason ?? availabilityReason(cell.availability);
             return (
               <CommandTile
                 key={unitType}
                 icon={TYPE_ICONS[unitType]}
-                label={stats.label}
-                costFood={stats.costFood}
-                costWood={stats.costWood}
-                costGold={stats.costGold}
-                costFavor={stats.costFavor}
-                unavailableReason={availabilityReason(cell.availability)}
-                disabled={!canAffordAndUse(playerState, stats, cell.availability)}
+                label={isWallConnectorType(unitType) ? "Wall" : stats.label}
+                costFood={cost[FOOD]}
+                costWood={cost[WOOD]}
+                costGold={cost[GOLD]}
+                costFavor={cost[FAVOR]}
+                unavailableReason={unavailableReason}
+                disabled={
+                  activeResearchReason !== undefined ||
+                  !canAffordAndUse(playerState, cost, cell.availability)
+                }
                 onClick={() =>
                   producer?.complete ? game.trainSelected(unitType) : game.startPlacement(unitType)
                 }
               />
             );
           })}
+
+          {producer && gateType !== undefined && (
+            <CommandTile
+              symbol="▥"
+              label="Build Gate"
+              costFood={0}
+              costWood={0}
+              costGold={UNIT_TYPES[gateType]!.costGold}
+              costFavor={0}
+              unavailableReason={
+                producer.researchId >= 0
+                  ? "Research in progress"
+                  : playerState && playerState.gold < UNIT_TYPES[gateType]!.costGold
+                    ? `Requires ${UNIT_TYPES[gateType]!.costGold} gold`
+                    : undefined
+              }
+              disabled={
+                producer.researchId >= 0 ||
+                !playerState ||
+                playerState.gold < UNIT_TYPES[gateType]!.costGold
+              }
+              onClick={() => game.buildGate(producer.id)}
+            />
+          )}
+
+          {producer?.complete &&
+            producer.researchOptions
+              .filter((technology) => playerState?.completedResearch[technology.id] !== 1)
+              .map((technology) => {
+                const cost = technologyCost(technology, playerState?.majorGod ?? -1);
+                const unavailableReason = researchUnavailableReason(
+                  technology,
+                  producer.researchId,
+                  playerState,
+                );
+                return (
+                  <CommandTile
+                    key={`research-${technology.id}`}
+                    symbol="◆"
+                    label={technology.label}
+                    costFood={cost[FOOD]}
+                    costWood={cost[WOOD]}
+                    costGold={cost[GOLD]}
+                    costFavor={cost[FAVOR]}
+                    unavailableReason={unavailableReason}
+                    disabled={unavailableReason !== undefined}
+                    onClick={() => game.researchSelected(technology.id)}
+                  />
+                );
+              })}
 
           {producer &&
             producer.complete &&
@@ -141,6 +227,19 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
                 onClick={() => setChoosingMinorGod(true)}
               />
             )}
+
+          {producer?.complete && UNIT_TYPES[producer.type]!.tradeSite === "town-center" && (
+            <CommandTile
+              symbol="♢"
+              label={playerState?.townBellActive ? "Return Villagers to Work" : "Ring Town Bell"}
+              costFood={0}
+              costWood={0}
+              costGold={0}
+              costFavor={0}
+              disabled={false}
+              onClick={() => game.toggleTownBell(producer.id)}
+            />
+          )}
 
           {selection?.garrison && selection.garrison.count > 0 && (
             <CommandTile
@@ -172,12 +271,25 @@ export function CommandPanel({ game }: { game: GameHandle | null }) {
         )}
       </ClassicHudPanel>
 
-      {producer && (
+      {producer && producer.researchId < 0 && (
         <ProductionQueue
           queueTypes={producer.queueTypes}
           progress={producer.progress}
           onCancel={(queueIndex) => game.cancelTraining(producer.id, queueIndex)}
         />
+      )}
+
+      {producer && producer.researchId >= 0 && (
+        <ClassicHudPanel
+          as="section"
+          ariaLabel="Research progress"
+          className="fixed bottom-[9.625rem] left-0 z-10 h-12 w-full select-none px-4 py-2 font-serif text-sm text-[#eee9d7] sm:bottom-[8.375rem] lg:bottom-0 lg:left-[35rem] lg:w-[min(32rem,calc(100vw-51rem))]"
+        >
+          Researching{" "}
+          {producer.researchOptions.find((option) => option.id === producer.researchId)?.label ??
+            "technology"}{" "}
+          · {Math.round(producer.researchProgress * 100)}%
+        </ClassicHudPanel>
       )}
 
       {choosingMinorGod &&
@@ -352,9 +464,60 @@ function minorGodPresentation(minorGod: number): { name: string; detail: string 
       return { name: "Bast", detail: "Eclipse · Sphinx" };
     case GOD_PTAH:
       return { name: "Ptah", detail: "Shifting Sands · Wadjet" };
+    case GOD_ARES:
+      return { name: "Ares", detail: "Pestilence · Cyclops" };
+    case GOD_APOLLO:
+      return { name: "Apollo", detail: "Underworld Passage · Manticore" };
+    case GOD_DIONYSUS:
+      return { name: "Dionysus", detail: "Bronze · Hydra" };
+    case GOD_APHRODITE:
+      return { name: "Aphrodite", detail: "Curse · Nemean Lion" };
+    case GOD_HERA:
+      return { name: "Hera", detail: "Lightning Storm · Medusa" };
+    case GOD_HEPHAESTUS:
+      return { name: "Hephaestus", detail: "Plenty · Colossus" };
+    case GOD_ARTEMIS:
+      return { name: "Artemis", detail: "Earthquake · Chimera" };
+    case GOD_ANUBIS:
+      return { name: "Anubis", detail: "Plague of Serpents · Anubite" };
+    case GOD_HATHOR:
+      return { name: "Hathor", detail: "Locust Swarm · Petsuchos" };
+    case GOD_SEKHMET:
+      return { name: "Sekhmet", detail: "Citadel · Scarab" };
+    case GOD_NEPHTHYS:
+      return { name: "Nephthys", detail: "Ancestors · Scorpion Man" };
+    case GOD_HORUS:
+      return { name: "Horus", detail: "Tornado · Avenger" };
+    case GOD_OSIRIS:
+      return { name: "Osiris", detail: "Son of Osiris · Mummy" };
+    case GOD_THOTH:
+      return { name: "Thoth", detail: "Meteor · Phoenix" };
     default:
       return { name: `God ${minorGod}`, detail: "Minor god" };
   }
+}
+
+function researchUnavailableReason(
+  technology: TechnologyDefinition,
+  activeResearchId: number,
+  playerState: PlayerState | null,
+): string | undefined {
+  if (!playerState) return "Checking availability";
+  if (activeResearchId >= 0) return "Research already in progress";
+  if (playerState.age < technology.requiredAge) {
+    return `Requires ${AGE_NAMES[technology.requiredAge] ?? "a later age"}`;
+  }
+  for (const prerequisite of technology.prerequisiteResearch) {
+    if (playerState.completedResearch[prerequisite] !== 1) return "Requires prior upgrade";
+  }
+  const cost = technologyCost(technology, playerState.majorGod);
+  const resources = [playerState.food, playerState.wood, playerState.gold, playerState.favor];
+  for (let resource = 0; resource < cost.length; resource += 1) {
+    if (resources[resource]! < cost[resource]!) {
+      return `Requires ${cost[resource]} ${resourceLabel(resource).toLowerCase()}`;
+    }
+  }
+  return undefined;
 }
 
 function MinorGodButton({
@@ -519,20 +682,15 @@ function availabilityReason(availability: TypeAvailability | null): string | und
 
 function canAffordAndUse(
   playerState: PlayerState | null,
-  stats: {
-    readonly costFood: number;
-    readonly costWood: number;
-    readonly costGold: number;
-    readonly costFavor: number;
-  },
+  cost: readonly [food: number, wood: number, gold: number, favor: number],
   availability: TypeAvailability | null,
 ): boolean {
   return (
     availability?.available === true &&
-    (playerState?.food ?? 0) >= stats.costFood &&
-    (playerState?.wood ?? 0) >= stats.costWood &&
-    (playerState?.gold ?? 0) >= stats.costGold &&
-    (playerState?.favor ?? 0) >= stats.costFavor
+    (playerState?.food ?? 0) >= cost[FOOD] &&
+    (playerState?.wood ?? 0) >= cost[WOOD] &&
+    (playerState?.gold ?? 0) >= cost[GOLD] &&
+    (playerState?.favor ?? 0) >= cost[FAVOR]
   );
 }
 

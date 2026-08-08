@@ -252,7 +252,12 @@ export function buildFlowField(
 
     const lengthSq = x * x + z * z;
 
-    if (lengthSq > 0) {
+    // A weighted blend may point sideways or even uphill when several shallow
+    // neighbors oppose the steepest legal descent beside a wide obstruction.
+    // Keep smoothing only while it still agrees with that deterministic escape.
+    const agreesWithSteepestDescent = x * fallbackX + z * fallbackZ > 0;
+
+    if (lengthSq > 0 && agreesWithSteepestDescent) {
       const inverseLength = 1 / Math.sqrt(lengthSq);
       dirX[cell] = x * inverseLength;
       dirZ[cell] = z * inverseLength;

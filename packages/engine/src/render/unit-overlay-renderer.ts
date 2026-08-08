@@ -166,7 +166,7 @@ export function createUnitOverlayRenderer(
         staging[offset + 2] = z;
         staging[offset + 3] = curr.selected[i]!;
         staging[offset + 4] = curr.owner[i]!;
-        staging[offset + 5] = curr.hp[i]! / stats.maxHp;
+        staging[offset + 5] = curr.hp[i]! / curr.maxHp[i]!;
         staging[offset + 6] = buildFrac;
         staging[offset + 7] = presentation.worldHeight - presentation.bottomPadding;
         staging[offset + 8] = stats.footprint > 0 ? 0 : 1;

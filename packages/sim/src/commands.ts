@@ -22,6 +22,10 @@ export const COMMAND_TRADE = 15;
 export const COMMAND_HEAL = 16;
 export const COMMAND_EMPOWER = 17;
 export const COMMAND_CONVERT = 18;
+export const COMMAND_TOWN_BELL = 19;
+export const COMMAND_PLACE_WALL = 20;
+export const COMMAND_RESEARCH = 21;
+export const COMMAND_BUILD_GATE = 22;
 
 export const CHEAT_ADD_FOOD = 0;
 export const CHEAT_ADD_WOOD = 1;
@@ -96,10 +100,28 @@ export interface PlaceCommand {
   tick: number;
   issuer: number;
   type: typeof COMMAND_PLACE;
-  // No unitIds — placement is a player act, not a unit order; the villagers come in M6-5's Build command.
+  // Placement remains a player act; optional builder ids carry the selected
+  // workers that should immediately begin this successful blueprint.
   buildingType: number;
   tileX: number;
   tileZ: number;
+  // Quarter-turn around the vertical axis. Omitted is the authored orientation.
+  rotation?: 0 | 1;
+  builderIds?: number[];
+}
+
+export interface PlaceWallCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_PLACE_WALL;
+  connectorType: number;
+  // Fixed-point endpoints keep arbitrary-angle wall gestures byte-for-byte
+  // deterministic through JSON and across lockstep clients.
+  startXFixed: number;
+  startZFixed: number;
+  endXFixed: number;
+  endZFixed: number;
+  builderIds?: number[];
 }
 
 export interface BuildCommand {
@@ -190,6 +212,13 @@ export interface ConvertCommand {
   targetId: number;
 }
 
+export interface TownBellCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_TOWN_BELL;
+  buildingId: number;
+}
+
 export interface AdvanceAgeCommand {
   tick: number;
   issuer: number;
@@ -198,6 +227,21 @@ export interface AdvanceAgeCommand {
   // from authoritative player state; the command only carries the god choice.
   buildingId: number;
   minorGod: number;
+}
+
+export interface ResearchCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_RESEARCH;
+  buildingId: number;
+  researchId: number;
+}
+
+export interface BuildGateCommand {
+  tick: number;
+  issuer: number;
+  type: typeof COMMAND_BUILD_GATE;
+  wallId: number;
 }
 
 export interface CheatCommand {
@@ -214,6 +258,7 @@ export type Command =
   | GatherCommand
   | PrayCommand
   | PlaceCommand
+  | PlaceWallCommand
   | BuildCommand
   | TrainCommand
   | CancelTrainCommand
@@ -225,7 +270,10 @@ export type Command =
   | HealCommand
   | EmpowerCommand
   | ConvertCommand
+  | TownBellCommand
   | AdvanceAgeCommand
+  | ResearchCommand
+  | BuildGateCommand
   | CheatCommand;
 
 export function enqueueCommand(world: World, command: Command): void {

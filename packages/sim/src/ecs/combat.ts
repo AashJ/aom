@@ -21,7 +21,7 @@ export function matchesDamageTarget(target: DamageBonusTarget, stats: UnitTypeSt
   );
 }
 
-interface DamageSource {
+export interface DamageSource {
   readonly damage: DamageProfile;
   readonly bonuses: readonly DamageBonus[];
 }
@@ -40,10 +40,18 @@ export function centerDistanceForEdgeRange(
 }
 
 export function resolveDamage(source: DamageSource, targetStats: UnitTypeStats): number {
+  return resolveDamageWithArmor(source, targetStats, targetStats.armor);
+}
+
+export function resolveDamageWithArmor(
+  source: DamageSource,
+  targetStats: UnitTypeStats,
+  armor: readonly [number, number, number],
+): number {
   let damage = 0;
 
   for (let damageClass = 0; damageClass < DAMAGE_CLASS_COUNT; damageClass += 1) {
-    damage += source.damage[damageClass]! * (1 - targetStats.armor[damageClass]!);
+    damage += source.damage[damageClass]! * (1 - armor[damageClass]!);
   }
 
   for (const bonus of source.bonuses) {

@@ -1,11 +1,17 @@
-import { AGE_CLASSICAL, NO_GOD } from "../../../ecs/progression";
-import { TYPE_EGYPTIAN_LABORER, TYPE_EGYPTIAN_TOWN_CENTER } from "../../unit-type-ids";
+import { TICK_HZ } from "../../../clock";
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { buildingArrowAttack } from "../../building-attacks";
+import {
+  TYPE_EGYPTIAN_LABORER,
+  TYPE_EGYPTIAN_TOWN_CENTER,
+  TYPE_SETTLEMENT,
+} from "../../unit-type-ids";
 import {
   CULTURE_EGYPTIAN,
-  NO_ARMOR,
   NO_PREREQUISITE_BUILDINGS,
   NO_TYPE_RELATIONSHIPS,
   UNIT_CLASS_BUILDING,
+  UNIT_CLASS_HUMAN,
   type UnitTypeStats,
 } from "../../unit-type-schema";
 
@@ -16,26 +22,36 @@ export const definition = {
   culture: CULTURE_EGYPTIAN,
   classes: UNIT_CLASS_BUILDING,
   maxHp: 2400,
-  lineOfSight: 14,
+  lineOfSight: 24,
   movementSpeed: 0,
-  armor: NO_ARMOR,
-  attack: null,
+  armor: [0.45, 0.96, 0.1],
+  attack: buildingArrowAttack({ damage: 12, range: 20, projectileCount: 2, trackRating: 10 }),
+  garrison: {
+    capacity: 25,
+    enterRange: 10,
+    validOccupants: [{ kind: "classes", classes: UNIT_CLASS_HUMAN }],
+    attackMultiplierPerOccupant: 0.05,
+    ejectOnDeath: true,
+  },
   tradeSite: "town-center",
   isStatic: true,
   resource: -1,
-  bodyRadius: 2.9,
+  bodyRadius: 5,
   collidesWithProjectiles: true,
-  footprint: 4,
-  costFood: 0,
-  costWood: 300,
-  costGold: 0,
+  footprint: 5,
+  placementReplacementType: TYPE_SETTLEMENT,
+  destructionReplacementType: TYPE_SETTLEMENT,
+  costFood: 100,
+  costWood: 0,
+  costGold: 400,
   costFavor: 0,
-  buildTicks: 300,
+  buildTicks: 120 * TICK_HZ,
+  buildLimitByAge: [1, 1, 10, 10],
   populationCost: 0,
   popBonus: 15,
   trainExitOffset: 6.5,
   isDropsite: true,
-  requiredAge: AGE_CLASSICAL,
+  requiredAge: AGE_ARCHAIC,
   requiredGod: NO_GOD,
   prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
   trainedAt: NO_TYPE_RELATIONSHIPS,

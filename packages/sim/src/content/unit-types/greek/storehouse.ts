@@ -1,0 +1,46 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { poseidonMilitiaDeathSpawn } from "../../death-spawns";
+import { TYPE_GREEK_STOREHOUSE, TYPE_GREEK_VILLAGER } from "../../unit-type-ids";
+import {
+  CULTURE_GREEK,
+  GOLD,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  WOOD,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_GREEK_STOREHOUSE,
+  key: "greek-storehouse",
+  label: "Storehouse",
+  culture: CULTURE_GREEK,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 400,
+  lineOfSight: 9,
+  movementSpeed: 0,
+  armor: [0.3, 0.96, 0.05],
+  attack: null,
+  deathSpawn: poseidonMilitiaDeathSpawn(2),
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 2,
+  collidesWithProjectiles: true,
+  footprint: 2,
+  costFood: 0,
+  costWood: 50,
+  costGold: 0,
+  costFavor: 0,
+  buildTicks: 15 * 20,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 0,
+  isDropsite: true,
+  resourceDropsiteResources: [WOOD, GOLD],
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_GREEK_VILLAGER, commandSlot: 10 }],
+} as const satisfies UnitTypeStats;

@@ -14,6 +14,7 @@ import {
   NO_AGE,
   NO_TARGET,
   NO_UNIT_TYPE,
+  PLAYER_RESEARCH_STRIDE,
   registerPlayer,
   RESOURCE_COUNT,
   setSelected,
@@ -71,6 +72,12 @@ function commandInput(x: number, y: number): InputState {
     stopPending: false,
     corruptPending: false,
     escapePending: false,
+    rotatePlacementPending: false,
+    primaryDragActive: false,
+    primaryDragStartX: 0,
+    primaryDragStartY: 0,
+    primaryDragEndX: 0,
+    primaryDragEndY: 0,
     marqueePending: false,
     marqueeMinX: 0,
     marqueeMinY: 0,
@@ -108,6 +115,18 @@ function recordingSink(): CommandSink & {
       calls.push("gather");
       targetIds.push(targetId);
     },
+    submitHeal: (_ids, targetId) => {
+      calls.push("heal");
+      targetIds.push(targetId);
+    },
+    submitEmpower: (_ids, targetId) => {
+      calls.push("empower");
+      targetIds.push(targetId);
+    },
+    submitConvert: (_ids, targetId) => {
+      calls.push("convert");
+      targetIds.push(targetId);
+    },
     submitPray: (_ids, targetId) => {
       calls.push("pray");
       targetIds.push(targetId);
@@ -128,6 +147,14 @@ function recordingSink(): CommandSink & {
       calls.push("ungarrison");
       targetIds.push(targetId);
     },
+    submitTownBell: (targetId) => {
+      calls.push("town-bell");
+      targetIds.push(targetId);
+    },
+    submitBuildGate: (targetId) => {
+      calls.push("build-gate");
+      targetIds.push(targetId);
+    },
     submitTrade: (_ids, targetId) => {
       calls.push("trade");
       targetIds.push(targetId);
@@ -137,9 +164,11 @@ function recordingSink(): CommandSink & {
       targetIds.push(targetId);
     },
     submitPlace: () => calls.push("place"),
+    submitWallLine: () => calls.push("wall-line"),
     submitTrain: () => calls.push("train"),
     submitCancelTrain: () => calls.push("cancel-train"),
     submitAdvanceAge: () => calls.push("advance-age"),
+    submitResearch: () => calls.push("research"),
     submitCheat: () => calls.push("cheat"),
   };
 }
@@ -155,9 +184,11 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     facingX: new Float32Array(xs.length),
     facingZ: new Float32Array(xs.length),
     moving: new Uint8Array(xs.length),
+    gateOpen: new Uint8Array(xs.length),
     mode: new Uint8Array(xs.length),
     gatherTargetType: new Uint16Array(xs.length).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(xs.length),
+    secondaryAttack: new Uint8Array(xs.length),
     beamTargetId: new Uint32Array(xs.length).fill(NO_TARGET),
     beamTargetVisible: new Uint8Array(xs.length),
     meleeActionVariant: new Uint8Array(xs.length),
@@ -172,6 +203,7 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     selected: new Uint8Array(xs.length),
     owner: new Uint8Array(xs.length),
     hp: new Float32Array(xs.length),
+    maxHp: new Float32Array(xs.length).fill(UNIT_TYPES[TYPE_VILLAGER]!.maxHp),
     unitType: new Uint16Array(xs.length).fill(TYPE_VILLAGER),
     carriedRelicCount: new Uint8Array(xs.length),
     projectileCount: 0,
@@ -208,7 +240,9 @@ function snapshot(xs: number[], zs: number[]): RenderSnapshot {
     ageAdvanceTotal: CLASSICAL_AGE_ADVANCE_TICKS,
     ageAdvanceBuilding: NO_TARGET,
     favorRateMilliPerMinute: 0,
+    townBellActive: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    completedResearch: new Uint8Array(PLAYER_RESEARCH_STRIDE),
     carried: new Uint16Array(xs.length),
     buildProgress: new Uint16Array(xs.length),
     lifespanRemaining: new Uint16Array(xs.length),
@@ -661,6 +695,53 @@ describe("pickUnit", () => {
     // A finished building is not a Build target; the click is a plain ground order.
     expect(issued).toBe(1);
     expect(sink.calls).toEqual(["move"]);
+  });
+
+  test("right-click on a damaged completed Town Center repairs before garrisoning", () => {
+    const camera = createCamera();
+    const heights = new Float32Array(VERTS_PER_ROW * VERTS_PER_ROW);
+    const world = createWorld(42);
+    registerPlayer(world, 0);
+    const prev = createSnapshot(8);
+    const curr = createSnapshot(8);
+    const canvas = {
+      clientWidth: 1600,
+      clientHeight: 900,
+    } as HTMLCanvasElement;
+    const sink = recordingSink();
+
+    world.walkable.fill(1);
+    const townCenter = spawnBuilding(
+      world,
+      Math.round(camera.target[0]!) - 2,
+      Math.round(camera.target[2]!) - 2,
+      0,
+      TYPE_TOWN_CENTER,
+      true,
+    );
+    world.hp[0] = UNIT_TYPES[TYPE_TOWN_CENTER]!.maxHp / 2;
+    spawnUnit(world, camera.target[0]! - 20, camera.target[2]!, 0, 0, 0);
+    setSelected(world, 1, true);
+    writeSnapshot(world, prev);
+    writeSnapshot(world, curr);
+    updateMatrices(camera, 16 / 9);
+
+    const issued = consumeCommandInput(
+      commandInput(800, 450),
+      sink,
+      0,
+      camera,
+      prev,
+      curr,
+      0,
+      heights,
+      canvas,
+      new Float32Array(2),
+    );
+
+    expect(issued).toBe(4);
+    expect(sink.calls).toEqual(["build"]);
+    expect(sink.targetIds).toEqual([townCenter]);
   });
 
   test("right-click on an own completed Town Center routes selected Caravans to Trade", () => {

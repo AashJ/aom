@@ -53,7 +53,8 @@ export function tickActiveBeamAttack(
       const reach = effectiveAttackRange(attackerStats, attack, age) + targetStats.bodyRadius;
       if (dx * dx + dz * dz <= reach * reach) {
         const ageMultiplier = effectiveAttackDamageMultiplier(attackerStats, age);
-        dealDamage(world, target, resolveDamage(attack, targetStats) * ageMultiplier, attacker);
+        const damage = resolveDamage(attack, targetStats) * ageMultiplier;
+        dealDamage(world, target, damage, attacker);
 
         const chain = attack.chain;
         if (chain !== undefined && chain.maxTargets > 1) {

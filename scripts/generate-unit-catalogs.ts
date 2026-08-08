@@ -442,6 +442,28 @@ for (const entry of entries) {
   const isResource = (definition.classes & UNIT_CLASS_RESOURCE) !== 0;
   const isBuilding = (definition.classes & UNIT_CLASS_BUILDING) !== 0;
   if (
+    definition.footprintDepth !== undefined &&
+    (!isBuilding ||
+      !Number.isInteger(definition.footprintDepth) ||
+      definition.footprintDepth < 1)
+  ) {
+    throw new Error(`${definition.key} has an invalid rectangular-footprint contract.`);
+  }
+  if (
+    definition.buildLimit !== undefined &&
+    (!isBuilding || !Number.isInteger(definition.buildLimit) || definition.buildLimit < 1)
+  ) {
+    throw new Error(`${definition.key} has an invalid build limit.`);
+  }
+  if (
+    definition.buildLimitByAge !== undefined &&
+    (!isBuilding ||
+      definition.buildLimitByAge.length !== 4 ||
+      definition.buildLimitByAge.some((limit) => !Number.isInteger(limit) || limit < 1))
+  ) {
+    throw new Error(`${definition.key} has an invalid age-dependent build limit.`);
+  }
+  if (
     definition.lifespanTicks !== undefined &&
     (!Number.isInteger(definition.lifespanTicks) ||
       definition.lifespanTicks < 1 ||
@@ -467,8 +489,25 @@ for (const entry of entries) {
   ) {
     throw new Error(`${definition.key} is trainable but declares no trainedAt source.`);
   }
-  if (isBuilding && definition.footprint > 0 && definition.builtBy.length === 0) {
+  if (
+    isBuilding &&
+    definition.footprint > 0 &&
+    definition.isPlacementSocket !== true &&
+    definition.builtBy.length === 0
+  ) {
     throw new Error(`${definition.key} is buildable but declares no builtBy source.`);
+  }
+
+  if (definition.destructionReplacementType !== undefined) {
+    const replacement = definitionsById.get(definition.destructionReplacementType);
+    if (
+      !isBuilding ||
+      replacement?.isPlacementSocket !== true ||
+      replacement.footprint !== definition.footprint ||
+      replacement.footprintDepth !== definition.footprintDepth
+    ) {
+      throw new Error(`${definition.key} has an invalid destroyed-building replacement.`);
+    }
   }
 }
 
@@ -935,6 +974,19 @@ for (const entry of mediaEntries) {
   const localModelsByKey = new Set(media.models.map((model) => model.key));
   if (media.presentation.kind === "model") {
     for (const [actionName, action] of Object.entries(media.presentation.actions)) {
+      if (
+        action.variantValues !== undefined &&
+        (action.variantValues.length !== action.models.length ||
+          new Set(action.variantValues).size !== action.variantValues.length ||
+          action.variantValues.some((value) => !Number.isInteger(value)))
+      ) {
+        throw new Error(
+          `${media.key} action ${actionName} must map one unique integer variant value per model.`,
+        );
+      }
+      if (action.variant === "major-god" && action.variantValues === undefined) {
+        throw new Error(`${media.key} action ${actionName} must map its major-god model values.`);
+      }
       for (const modelKey of action.models) {
         if (!localModelsByKey.has(modelKey)) {
           throw new Error(
@@ -1091,6 +1143,7 @@ function compilePresentation(presentation: UnitPresentation): RuntimeUnitPresent
       modelIndices: action.models.map((model) => modelIndex[model]!) as [number, ...number[]],
       animationClock: action.animationClock,
       variant: action.variant,
+      ...(action.variantValues === undefined ? {} : { variantValues: action.variantValues }),
     };
   }
 

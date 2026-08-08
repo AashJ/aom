@@ -1,0 +1,41 @@
+import { AGE_ARCHAIC, NO_GOD } from "../../../ecs/progression";
+import { TYPE_EGYPTIAN_OUTPOST, TYPE_PRIEST } from "../../unit-type-ids";
+import {
+  CULTURE_EGYPTIAN,
+  NO_PREREQUISITE_BUILDINGS,
+  NO_TYPE_RELATIONSHIPS,
+  UNIT_CLASS_BUILDING,
+  type UnitTypeStats,
+} from "../../unit-type-schema";
+
+export const definition = {
+  id: TYPE_EGYPTIAN_OUTPOST,
+  key: "egyptian-outpost",
+  label: "Obelisk",
+  culture: CULTURE_EGYPTIAN,
+  classes: UNIT_CLASS_BUILDING,
+  maxHp: 50,
+  lineOfSight: 30,
+  movementSpeed: 0,
+  armor: [0.3, 0.9, 0.05],
+  attack: null,
+  isStatic: true,
+  resource: -1,
+  bodyRadius: 1,
+  collidesWithProjectiles: true,
+  footprint: 1,
+  costFood: 0,
+  costWood: 0,
+  costGold: 15,
+  costFavor: 0,
+  buildTicks: 20 * 20,
+  populationCost: 0,
+  popBonus: 0,
+  trainExitOffset: 2,
+  isDropsite: false,
+  requiredAge: AGE_ARCHAIC,
+  requiredGod: NO_GOD,
+  prerequisiteBuildings: NO_PREREQUISITE_BUILDINGS,
+  trainedAt: NO_TYPE_RELATIONSHIPS,
+  builtBy: [{ type: TYPE_PRIEST, commandSlot: 0 }],
+} as const satisfies UnitTypeStats;

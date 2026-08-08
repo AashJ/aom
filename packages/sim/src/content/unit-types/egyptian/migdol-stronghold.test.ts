@@ -14,7 +14,9 @@ describe("Egyptian Migdol Stronghold producer pack", () => {
       costWood: 0,
       costGold: 400,
       costFavor: 10,
-      buildTicks: 130 * 20,
+      // Proto build points; the Laborer's 0.61 target rate yields the displayed ~130 seconds.
+      buildTicks: 80 * 20,
+      buildLimit: 10,
       builtBy: [{ type: TYPE_EGYPTIAN_LABORER, commandSlot: 4 }],
     });
     expect(BUILD_OPTIONS_BY_WORKER[TYPE_EGYPTIAN_LABORER]).toContainEqual({

@@ -7,7 +7,13 @@ import {
 } from "./content/unit-type-schema";
 import { getAgeAdvanceRuleByResearchId } from "./ecs/age-advancement";
 import { isCompletedOwnedBuilding } from "./ecs/availability";
-import { favorCapForMajorGod, greekFavorRateMilliPerMinute } from "./ecs/favor";
+import { effectiveMaxHpForPlayer } from "./ecs/building-technology-effects";
+import {
+  egyptianMonumentRateMilliPerMinute,
+  favorCapForMajorGod,
+  greekFavorRateMilliPerMinute,
+  isGreekMajorGod,
+} from "./ecs/favor";
 import { findAgeAdvanceResearch } from "./ecs/research";
 import { MAX_TRAIN_QUEUE } from "./ecs/production";
 import { MAX_PROJECTILES, NO_PROJECTILE_TICK, projectileProgressAt } from "./ecs/projectiles";
@@ -15,6 +21,7 @@ import { NO_MELEE_ATTACK_VARIANT } from "./ecs/melee-attack-cycles";
 import { jumpElevation } from "./ecs/special-attacks";
 import { resolveId, unitIdAt, NO_TARGET, type World } from "./ecs/world";
 import { AGE_ARCHAIC, AGE_COUNT, NO_AGE, NO_GOD } from "./ecs/progression";
+import { PLAYER_RESEARCH_STRIDE } from "./ecs/technologies";
 import {
   isEntityVisibleTo,
   isPositionVisibleTo,
@@ -31,6 +38,7 @@ export interface RenderSnapshot {
   facingX: Float32Array;
   facingZ: Float32Array;
   moving: Uint8Array;
+  gateOpen: Uint8Array;
   mode: Uint8Array;
   gatherTargetType: Uint16Array;
   actionCooldown: Uint16Array;
@@ -73,6 +81,7 @@ export interface RenderSnapshot {
   deathCarried: Uint16Array;
   deathVisible: Uint8Array;
   hp: Float32Array;
+  maxHp: Float32Array;
   buildProgress: Uint16Array;
   lifespanRemaining: Uint16Array;
   trainRemaining: Uint16Array;
@@ -91,7 +100,9 @@ export interface RenderSnapshot {
   ageAdvanceTotal: number;
   ageAdvanceBuilding: number;
   favorRateMilliPerMinute: number;
+  townBellActive: number;
   completedBuildings: Uint8Array;
+  completedResearch: Uint8Array;
   winner: number;
 }
 
@@ -108,6 +119,7 @@ export function createSnapshot(
     facingX: new Float32Array(capacity),
     facingZ: new Float32Array(capacity),
     moving: new Uint8Array(capacity),
+    gateOpen: new Uint8Array(capacity),
     mode: new Uint8Array(capacity),
     gatherTargetType: new Uint16Array(capacity).fill(NO_UNIT_TYPE),
     actionCooldown: new Uint16Array(capacity),
@@ -150,6 +162,7 @@ export function createSnapshot(
     deathCarried: new Uint16Array(capacity),
     deathVisible: new Uint8Array(capacity),
     hp: new Float32Array(capacity),
+    maxHp: new Float32Array(capacity),
     buildProgress: new Uint16Array(capacity),
     lifespanRemaining: new Uint16Array(capacity),
     trainRemaining: new Uint16Array(capacity),
@@ -168,7 +181,9 @@ export function createSnapshot(
     ageAdvanceTotal: 0,
     ageAdvanceBuilding: NO_TARGET,
     favorRateMilliPerMinute: 0,
+    townBellActive: 0,
     completedBuildings: new Uint8Array(UNIT_TYPES.length),
+    completedResearch: new Uint8Array(PLAYER_RESEARCH_STRIDE),
     winner: -1,
   };
 }
@@ -235,6 +250,7 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.playerMajorGods.set(world.playerMajorGod);
   out.playerAges.set(world.playerAge);
   out.completedBuildings.fill(0);
+  out.completedResearch.fill(0);
   out.carriedRelicCount.fill(0);
   out.poisoned.fill(0);
   out.poisonElapsedTicks.fill(0);
@@ -245,18 +261,26 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
   out.ageAdvanceTotal = 0;
   out.ageAdvanceBuilding = NO_TARGET;
   out.favorRateMilliPerMinute = 0;
+  out.townBellActive = 0;
 
   if (viewerSlot >= 0) {
     out.age = world.playerAge[viewerId]!;
     out.majorGod = world.playerMajorGod[viewerId]!;
+    out.townBellActive = world.townBellActive[viewerId]!;
     const prayingVillagers = world.prayingVillagers[viewerId]!;
     const favor = world.stockpiles[viewerId * RESOURCE_COUNT + FAVOR]!;
     out.favorRateMilliPerMinute =
       favor >= favorCapForMajorGod(out.majorGod)
         ? 0
-        : greekFavorRateMilliPerMinute(prayingVillagers, out.majorGod);
+        : isGreekMajorGod(out.majorGod)
+          ? greekFavorRateMilliPerMinute(prayingVillagers, out.majorGod)
+          : egyptianMonumentRateMilliPerMinute(world, viewerId);
     const minorGodStart = viewerId * AGE_COUNT;
     out.minorGods.set(world.playerMinorGods.subarray(minorGodStart, minorGodStart + AGE_COUNT));
+    const researchStart = viewerId * PLAYER_RESEARCH_STRIDE;
+    out.completedResearch.set(
+      world.playerResearch.subarray(researchStart, researchStart + PLAYER_RESEARCH_STRIDE),
+    );
     const researchBuilding = findAgeAdvanceResearch(world, viewerId);
 
     if (researchBuilding >= 0) {
@@ -325,19 +349,20 @@ export function writeSnapshot(world: World, out: RenderSnapshot, viewerId = 0): 
     out.facingX[i] = world.facingX[i]!;
     out.facingZ[i] = world.facingZ[i]!;
     out.moving[i] = world.moving[i]!;
+    out.gateOpen[i] = world.gateOpen[i]!;
     out.mode[i] = world.mode[i]!;
     const gatherTarget = resolveId(world, world.taskTarget[i]!);
     out.gatherTargetType[i] = gatherTarget >= 0 ? world.unitType[gatherTarget]! : NO_UNIT_TYPE;
     out.actionCooldown[i] = world.attackCooldown[i]!;
     const actionTarget = resolveId(world, world.attackTarget[i]!);
     const stats = UNIT_TYPES[world.unitType[i]!]!;
+    out.maxHp[i] = effectiveMaxHpForPlayer(world, world.owner[i]!, stats);
     const secondaryCycles = stats.buildingAttack?.cycleVariants;
     out.secondaryAttack[i] =
       stats.buildingAttack !== undefined &&
       ((actionTarget >= 0 &&
         (UNIT_TYPES[world.unitType[actionTarget]!]!.classes & UNIT_CLASS_BUILDING) !== 0) ||
-        (secondaryCycles !== undefined &&
-          world.meleeActionVariant[i]! < secondaryCycles.length))
+        (secondaryCycles !== undefined && world.meleeActionVariant[i]! < secondaryCycles.length))
         ? 1
         : 0;
     const attack = stats.attack;

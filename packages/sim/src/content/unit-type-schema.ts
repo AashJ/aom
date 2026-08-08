@@ -42,6 +42,9 @@ export interface UnitTypeStats {
   // Exactly one primary attack shape or none. The discriminant is authoritative:
   // combat never guesses delivery behavior from classes, range, or presentation.
   readonly attack: Attack | null;
+  // Towers and strongholds switch to their authored close-range hand action
+  // inside the projectile attack's minimum range.
+  readonly closeAttack?: MeleeAttack;
   // Siege Tower switches to this ram action only against buildings. Keeping it
   // separate preserves the unit-only projectile volley and its own cadence.
   readonly buildingAttack?: MeleeAttack;
@@ -69,6 +72,10 @@ export interface UnitTypeStats {
   readonly deathReplacement?: DeathReplacement;
   readonly isStatic: boolean;
   readonly resource: number;
+  // Farms expose an authored Resource action while retaining independent combat
+  // hit points. Classic marks their food supply UnlimitedSupply.
+  readonly unlimitedResourceSupply?: boolean;
+  readonly singleGatherer?: boolean;
   // Melee reach measures to the target's surface, not center.
   readonly bodyRadius: number;
   // NonCollideable removes unit-to-unit obstruction without disabling the
@@ -79,14 +86,41 @@ export interface UnitTypeStats {
   readonly collidesWithProjectiles: boolean;
   // Tiles per side, square; 0 = no footprint.
   readonly footprint: number;
+  // Rectangular wall pieces use a separate depth. Omitted remains square.
+  readonly footprintDepth?: number;
   // Docks straddle the coast: every occupied tile must be valid land or water,
   // and the footprint must touch both domains. Omitted buildings require land.
   readonly placementTerrain?: "shoreline";
+  // Town Centers snap to and convert a neutral Settlement socket instead of
+  // occupying arbitrary clear terrain.
+  readonly placementReplacementType?: number;
+  // Destroyed Town Centers uncover the underlying neutral Settlement again.
+  // This is a building replacement (with a stamped footprint), not the
+  // zero-footprint unit replacement used by Phoenix Eggs.
+  readonly destructionReplacementType?: number;
+  // Neutral Settlement sockets occupy terrain but are map sites, not build-menu
+  // entries of their own.
+  readonly isPlacementSocket?: boolean;
   readonly costFood: number;
   readonly costWood: number;
   readonly costGold: number;
   readonly costFavor: number;
   readonly buildTicks: number;
+  // Some building chains permit exactly one live site of each authored tier.
+  // Destroying the site releases the limit so it may be rebuilt.
+  readonly buildLimit?: number;
+  // Settlement Level 1 starts at the proto's one-site cap, then the Heroic
+  // age rule unlocks expansion Town Centers on additional map Settlements.
+  readonly buildLimitByAge?: readonly [number, number, number, number];
+  // Egyptian monuments continuously generate Favor while complete. The rate is
+  // authored per monument because Classic does not use one shared tier formula.
+  readonly favorTricklePerSecond?: number;
+  // A completed Wonder wins after this many uninterrupted simulation ticks.
+  // Destruction resets the owning player's countdown.
+  readonly wonderVictoryTicks?: number;
+  // Gates temporarily release their obstruction for nearby friendly units and
+  // close again only after the opening is clear.
+  readonly gateOpenRange?: number;
   // Persistent Classic regeneration is an always-on content rate. Health itself
   // carries the fractional authoritative remainder, so no parallel timer or
   // unit-specific action state is required.
@@ -103,6 +137,11 @@ export interface UnitTypeStats {
   // prerequisite without changing the trained unit's age, god, cost, or time.
   readonly trainingSite?: TrainingSiteTraits;
   readonly isDropsite: boolean;
+  // Classic dropsites accept explicit resource classes. Town Centers accept
+  // every carried resource, while Granaries, Storehouses, Lumber Camps, and
+  // Mining Camps each serve only their authored subset. Omitted preserves the
+  // all-resource behavior of legacy Town Center/Dock rows.
+  readonly resourceDropsiteResources?: readonly ResourceType[];
   // Water gatherers must not select an unreachable land dropsite merely because
   // it is geometrically closer. Omitted dropsites serve land gatherers.
   readonly resourceDropsiteDomain?: MovementDomain;
@@ -175,6 +214,10 @@ export interface ConstructionTraits {
   readonly range: number;
   readonly ratePerSecond: number;
   readonly baselineRatePerSecond: number;
+  readonly targetRates?: readonly {
+    readonly type: number;
+    readonly ratePerSecond: number;
+  }[];
 }
 
 export interface DamageDeathSpawn {
@@ -214,6 +257,8 @@ export type MovementDomain =
   | typeof MOVEMENT_DOMAIN_WATER
   | typeof MOVEMENT_DOMAIN_AMPHIBIOUS
   | typeof MOVEMENT_DOMAIN_AIR;
+
+export type ResourceType = typeof FOOD | typeof WOOD | typeof GOLD | typeof FAVOR;
 
 export interface HeroTraits {
   // Greek heroes use one live-or-queued copy of each identity per player.

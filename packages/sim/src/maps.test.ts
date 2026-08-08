@@ -8,9 +8,9 @@ import {
   TERRAIN_DOMAIN_WATER,
 } from "./maps";
 import { MAP_TILES } from "./terrain";
-import { createPlayableWorld } from "./ecs/world";
+import { createPlayableWorld, NEUTRAL_OWNER } from "./ecs/world";
 import { GOD_RA, GOD_ZEUS } from "./ecs/progression";
-import { TYPE_BERRY, TYPE_FISH_PERCH } from "./ecs/types";
+import { TYPE_BERRY, TYPE_FISH_PERCH, TYPE_SETTLEMENT } from "./ecs/types";
 
 describe("deterministic map definitions", () => {
   test("keeps Aegean Coast dry and preserves its established start layout", () => {
@@ -117,6 +117,11 @@ describe("deterministic map definitions", () => {
     // river nile.xs: one 10-bush far patch and three 3-fish schools per player.
     expect(berries).toHaveLength(10);
     expect(fish).toHaveLength(18);
+    expect(
+      Array.from(first.unitType.subarray(0, first.count)).filter(
+        (type, index) => type === TYPE_SETTLEMENT && first.owner[index] === NEUTRAL_OWNER,
+      ),
+    ).toHaveLength(4);
 
     for (const berry of berries) {
       for (const [startX, startZ] of starts) {
